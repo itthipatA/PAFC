@@ -13,6 +13,7 @@ interface MapViewProps {
   cellRadius?: number
   centerLat?: number | null
   centerLon?: number | null
+  clickMode?: 'pan' | 'place'
 }
 
 // Map styles
@@ -91,7 +92,7 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'pan' }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
@@ -125,13 +126,15 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
 
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
 
-    // Default cursor: grab for panning (not pointer)
-    map.getCanvas().style.cursor = 'grab'
-    map.on('dragstart', () => { map.getCanvas().style.cursor = 'grabbing' })
-    map.on('dragend', () => { map.getCanvas().style.cursor = 'grab' })
+    // Default cursor based on clickMode
+    map.getCanvas().style.cursor = clickMode === 'place' ? 'crosshair' : 'grab'
+    map.on('dragstart', () => { map.getCanvas().style.cursor = clickMode === 'place' ? 'crosshair' : 'grabbing' })
+    map.on('dragend', () => { map.getCanvas().style.cursor = clickMode === 'place' ? 'crosshair' : 'grab' })
 
     map.on('click', (e) => {
-      onMapClick(e.lngLat.lat, e.lngLat.lng)
+      if (clickMode === 'place') {
+        onMapClick(e.lngLat.lat, e.lngLat.lng)
+      }
     })
 
     mapRef.current = map
@@ -157,6 +160,12 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     const style = MAP_STYLES[mapStyle] || MAP_STYLES.positron
     source.setTiles([style.url])
   }, [mapStyle])
+
+  // Update cursor when clickMode changes
+  useEffect(() => {
+    if (!mapRef.current) return
+    mapRef.current.getCanvas().style.cursor = clickMode === 'place' ? 'crosshair' : 'grab'
+  }, [clickMode])
 
   // Auto-pan when centerLat/centerLon change
   useEffect(() => {

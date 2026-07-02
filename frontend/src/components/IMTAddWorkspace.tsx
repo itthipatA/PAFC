@@ -12,6 +12,7 @@ interface IMTAddWorkspaceProps {
   onMapClickLat?: number | null
   onMapClickLon?: number | null
   onCellRadiusChange?: (r: number) => void
+  onActivateMapClick?: () => void
 }
 
 const LAYER_IDS = {
@@ -24,7 +25,54 @@ const LAYER_IDS = {
   miniIMTSource: 'mini-imt-source',
 }
 
-export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, onMapClickLon, onCellRadiusChange }: IMTAddWorkspaceProps) {
+// ─── Helper: Parse conflict reason from backend ─────────────────────────────
+
+interface ParsedReason {
+  conflictType: 'FS' | 'GUARD' | 'UNKNOWN'
+  linkName?: string
+  iValue?: string      // interference value in dBm
+  threshold?: string    // threshold value in dBm
+  exceedDb?: string     // how much it exceeds threshold
+  raw: string
+}
+
+function parseReason(reason: string): ParsedReason {
+  const raw = reason || ''
+
+  // FS conflict: "FS conflict: BKK-01-Link (I=-54.4 dBm > threshold -114.0 dBm)"
+  const fsMatch = raw.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm\)/)
+  if (fsMatch) {
+    const linkName = fsMatch[1].trim()
+    const iValue = fsMatch[2]
+    const threshold = fsMatch[3]
+    const exceedDb = (parseFloat(iValue) - parseFloat(threshold)).toFixed(1)
+    return { conflictType: 'FS', linkName, iValue, threshold, exceedDb, raw }
+  }
+
+  // Guard band
+  if (raw.toLowerCase().includes('guard') || raw.includes('Guard')) {
+    return { conflictType: 'GUARD', raw }
+  }
+
+  return { conflictType: 'UNKNOWN', raw }
+}
+
+const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: string }> = {
+  free_space: {
+    label: 'Free Space',
+    description: 'คำนวณการสูญเสียสัญญาณในพื้นที่ว่าง (Free Space Path Loss) เหมาะสำหรับพื้นที่โล่งไม่มีสิ่งกีดขวาง',
+  },
+  p452: {
+    label: 'ITU-R P.452',
+    description: 'แบบจำลองการแพร่กระจายคลื่นตามมาตรฐาน ITU-R P.452 คำนึงถึงผลกระทบจากสภาพอากาศและภูมิประเทศ',
+  },
+  hata: {
+    label: 'Hata',
+    description: 'แบบจำลอง Okumura-Hata สำหรับพื้นที่เมือง เหมาะสำหรับความถี่ 150-1500 MHz ในสภาพแวดล้อมเมือง',
+  },
+}
+
+export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, onMapClickLon, onCellRadiusChange, onActivateMapClick }: IMTAddWorkspaceProps) {
   const { fetchWithAuth } = useAuth()
 
   // Form state
@@ -329,7 +377,10 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
               <div className="mt-2">
                 <button
                   type="button"
-                  onClick={() => setMapClickActive(true)}
+                  onClick={() => {
+                    onActivateMapClick?.()
+                    setMapClickActive(true)
+                  }}
                   className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
                     mapClickActive
                       ? 'bg-[#C00000] text-white border-[#C00000]'
@@ -447,30 +498,32 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                 </div>
               </div>
             </div>
+
+            {/* Analyze button — inside Section 1 */}
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <button
+                onClick={handleCalculate}
+                disabled={loading}
+                className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Search className="w-4 h-4" />
+                {loading ? 'กำลังคำนวณ...' : 'Analyze'}
+              </button>
+            </div>
           </section>
 
-          {/* ─── Gradient divider between Input and Calculate ─── */}
-          <div className="flex items-center gap-3 my-1">
-            <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, #D1D5DB)' }} />
-            <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, #D1D5DB)' }} />
-          </div>
+          {/* ─── DIVIDER 1: between Input+Analyze and Log ─── */}
+          {blocks.length > 0 && (
+            <div className="flex items-center gap-3 my-1">
+              <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, #D1D5DB)' }} />
+              <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, #D1D5DB)' }} />
+            </div>
+          )}
 
-          {/* SECTION 2: Calculate Button */}
-          <section>
-            <button
-              onClick={handleCalculate}
-              disabled={loading}
-              className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Search className="w-4 h-4" />
-              {loading ? 'กำลังคำนวณ...' : 'คำนวณคลื่นความถี่'}
-            </button>
-          </section>
-
-          {/* SECTION 3: Calculation Log */}
+          {/* SECTION 2: Calculation Running Log — always visible after first calculation */}
           {logLines.length > 0 && (
             <section className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">กำลังประมวลผล</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Calculation Log</h3>
               <div
                 ref={logContainerRef}
                 className="max-h-40 overflow-y-auto text-xs font-mono text-gray-600 space-y-1"
@@ -488,15 +541,78 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
             </section>
           )}
 
-          {/* ─── Gradient divider between Log and Results (if both visible) ─── */}
-          {logLines.length > 0 && blocks.length > 0 && (
+          {/* ─── DIVIDER 2: between Log and Calculation Details ─── */}
+          {blocks.length > 0 && (
             <div className="flex items-center gap-3 my-1">
               <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, #D1D5DB)' }} />
               <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, #D1D5DB)' }} />
             </div>
           )}
 
-          {/* SECTION 4: Spectrum Results */}
+          {/* SECTION 3: Calculation Details — NEW, shows after calculation completes */}
+          {blocks.length > 0 && (
+            <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <h2 className="text-base font-bold text-[#1A365D] mb-4 flex items-center gap-2">
+                <Info className="w-4 h-4 text-[#C00000]" />
+                รายละเอียดการคำนวณ
+              </h2>
+
+              {/* Sub-section: Parameters */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                  📡 พารามิเตอร์ที่ใช้
+                </h3>
+                <div className="text-xs space-y-1 text-gray-600">
+                  <div>• ตำแหน่ง: {lat.toFixed(4)}, {lon.toFixed(4)}</div>
+                  <div>• รัศมีเซลล์: {cellRadius.toLocaleString()} m</div>
+                  <div>• ความสูงเสาอากาศ: {antennaHeight} m AGL</div>
+                  <div>• Antenna Gain: {antennaGain} dBi</div>
+                  <div>• Max EIRP: {maxEirp} dBm</div>
+                </div>
+              </div>
+
+              {/* Sub-section: Propagation Model */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                  🔬 Propagation Model
+                </h3>
+                <div className="text-xs text-gray-600">
+                  <span className="font-medium text-[#1A1A2E]">
+                    {PROPAGATION_MODEL_INFO[propagationModel]?.label || propagationModel}
+                  </span>
+                  <p className="mt-1 text-gray-500">
+                    {PROPAGATION_MODEL_INFO[propagationModel]?.description || ''}
+                  </p>
+                </div>
+              </div>
+
+              {/* Sub-section: Analysis Results Summary */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                  📊 ผลการวิเคราะห์
+                </h3>
+                <div className="text-xs space-y-1 text-gray-600">
+                  <div>• จำนวนบล็อกทั้งหมด: {blocks.length} (4800-4990 MHz)</div>
+                  <div>• บล็อกที่ว่าง: {statusCounts.available} ({statusCounts.available * 10} MHz)</div>
+                  <div>• บล็อกที่ถูกจอง: {statusCounts.blocked} ({statusCounts.blocked * 10} MHz)</div>
+                  <div>• บล็อก Guard Band: {statusCounts.guard}</div>
+                  <div className="font-medium text-[#1A1A2E] mt-1">
+                    • สรุป: สามารถจัดสรรได้ {statusCounts.available * 10} MHz จาก {blocks.length * 10} MHz
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ─── DIVIDER 3: between Calc Details and Spectrum Results ─── */}
+          {blocks.length > 0 && (
+            <div className="flex items-center gap-3 my-1">
+              <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, #D1D5DB)' }} />
+              <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, #D1D5DB)' }} />
+            </div>
+          )}
+
+          {/* SECTION 4: Spectrum Analysis Results */}
           {blocks.length > 0 && (
             <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-base font-bold text-[#1A365D] mb-3">
@@ -564,29 +680,95 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                 ))}
               </div>
 
-              {/* Selected block detail */}
+              {/* Selected block detail — ENHANCED */}
               {selectedBlockIndex !== null && sorted[selectedBlockIndex] && (
-                <div className="mb-3 p-3 bg-white rounded border border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono font-bold text-[#1A1A2E]">
-                      {sorted[selectedBlockIndex].freq_low.toFixed(0)}-{sorted[selectedBlockIndex].freq_high.toFixed(0)} MHz
-                    </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      sorted[selectedBlockIndex].status === 'green' ? 'bg-green-100 text-green-700' :
-                      sorted[selectedBlockIndex].status === 'gray' ? 'bg-gray-100 text-gray-600' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {sorted[selectedBlockIndex].status === 'green' ? 'ว่าง' :
-                       sorted[selectedBlockIndex].status === 'gray' ? 'Guard Band' : 'ถูกจอง'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    <Info className="w-3 h-3 inline mr-1" />
-                    {sorted[selectedBlockIndex].status === 'green' ? 'สามารถจัดสรรได้' :
-                     sorted[selectedBlockIndex].status === 'red' ? `ไม่สามารถจัดสรรได้ — ${sorted[selectedBlockIndex].reason}` :
-                     `Guard Band — ${sorted[selectedBlockIndex].reason}`}
-                  </p>
-                </div>
+                (() => {
+                  const block = sorted[selectedBlockIndex]
+                  const parsed = parseReason(block.reason)
+                  return (
+                    <div
+                      className={`mb-3 p-3 rounded border shadow-sm ${
+                        block.status === 'green'
+                          ? 'bg-green-50 border-green-200'
+                          : block.status === 'red'
+                          ? 'bg-red-50 border-red-200'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                      style={{
+                        borderLeftWidth: '4px',
+                        borderLeftColor:
+                          block.status === 'green' ? '#16A34A' :
+                          block.status === 'red' ? '#DC2626' : '#9CA3AF',
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-mono font-bold text-[#1A1A2E]">
+                          {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          block.status === 'green' ? 'bg-green-100 text-green-700' :
+                          block.status === 'gray' ? 'bg-gray-100 text-gray-600' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {block.status === 'green' ? 'ว่าง' :
+                           block.status === 'gray' ? 'Guard Band' : 'ถูกจอง'}
+                        </span>
+                      </div>
+
+                      {block.status === 'green' && (
+                        <div className="text-xs text-green-700 space-y-1">
+                          <div className="flex items-center gap-1 font-medium">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            สามารถจัดสรรได้
+                          </div>
+                        </div>
+                      )}
+
+                      {block.status === 'red' && parsed.conflictType === 'FS' && (
+                        <div className="text-xs space-y-1.5">
+                          <div className="flex items-center gap-1 font-medium text-red-700">
+                            <XCircle className="w-3.5 h-3.5" />
+                            ไม่สามารถจัดสรรได้
+                          </div>
+                          <div className="text-red-700 pl-5">
+                            สาเหตุ: ทับซ้อนกับ Fixed Service Link
+                          </div>
+                          <div className="text-red-700 pl-5 space-y-0.5">
+                            <div className="font-medium">📡 รายละเอียดสัญญาณรบกวน:</div>
+                            <div>&nbsp;&nbsp;&nbsp;• ชื่อ FS Link: {parsed.linkName}</div>
+                            <div>&nbsp;&nbsp;&nbsp;• กำลังสัญญาณรบกวน (I): {parsed.iValue} dBm</div>
+                            <div>&nbsp;&nbsp;&nbsp;• Threshold ที่ยอมรับได้: {parsed.threshold} dBm</div>
+                            <div>&nbsp;&nbsp;&nbsp;• เกิน Threshold: {parsed.exceedDb} dB</div>
+                          </div>
+                          <div className="text-xs text-red-600 bg-red-100/50 rounded p-2 mt-1 leading-relaxed">
+                            💡 คำอธิบาย: FS Link {parsed.linkName} ส่งสัญญาณในช่วงความถี่ที่ทับซ้อน
+                            กับบล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz กำลังสัญญาณรบกวนที่คำนวณได้
+                            ({parsed.iValue} dBm) สูงกว่า threshold การป้องกัน ({parsed.threshold} dBm)
+                            อยู่ {parsed.exceedDb} dB จึงไม่สามารถจัดสรรคลื่นความถี่บล็อกนี้ให้กับ IMT ได้
+                          </div>
+                        </div>
+                      )}
+
+                      {block.status === 'gray' && (
+                        <div className="text-xs text-gray-600">
+                          <div className="flex items-center gap-1 font-medium">
+                            <Shield className="w-3.5 h-3.5" />
+                            Guard Band — {block.reason}
+                          </div>
+                        </div>
+                      )}
+
+                      {block.status === 'red' && parsed.conflictType !== 'FS' && (
+                        <div className="text-xs text-red-700">
+                          <div className="flex items-center gap-1 font-medium">
+                            <XCircle className="w-3.5 h-3.5" />
+                            ไม่สามารถจัดสรรได้ — {block.reason}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()
               )}
 
               {/* Legend */}
@@ -605,31 +787,51 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                 </div>
               </div>
 
-              {/* Conflicts detail */}
-              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+              {/* Conflicts detail — ENHANCED */}
+              <div className="space-y-2 max-h-60 overflow-y-auto">
                 {blocks
                   .filter((b) => b.status !== 'green')
-                  .map((b, i) => (
-                    <div key={i} className="text-xs p-2 bg-gray-50 rounded border border-gray-100">
-                      <span className="font-mono font-medium">
-                        {b.freq_low.toFixed(0)}-{b.freq_high.toFixed(0)} MHz
-                      </span>
-                      <span className="text-gray-400"> - {b.reason}</span>
-                    </div>
-                  ))}
-              </div>
-            </section>
-          )}
+                  .map((b, i) => {
+                    const parsed = parseReason(b.reason)
+                    return (
+                      <div
+                        key={i}
+                        className={`text-xs p-3 rounded border ${
+                          b.status === 'red' ? 'bg-red-50/50 border-red-200' : 'bg-gray-50 border-gray-200'
+                        }`}
+                        style={{
+                          borderLeftWidth: '3px',
+                          borderLeftColor: b.status === 'red' ? '#DC2626' : '#9CA3AF',
+                        }}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="font-mono font-bold text-[#1A1A2E]">
+                            {b.freq_low.toFixed(0)}-{b.freq_high.toFixed(0)} MHz
+                          </span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                            b.status === 'red' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {b.status === 'red' ? '⚠️ ไม่สามารถจัดสรร' : 'Guard Band'}
+                          </span>
+                        </div>
 
-          {/* SECTION 5: Save Button */}
-          {blocks.length > 0 && (
-            <>
-              {/* ─── Gradient divider between Results and Save ─── */}
-              <div className="flex items-center gap-3 my-1">
-                <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, #D1D5DB)' }} />
-                <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, #D1D5DB)' }} />
+                        {parsed.conflictType === 'FS' && (
+                          <div className="text-gray-600 space-y-0.5 pl-1">
+                            <div className="text-red-600">ทับซ้อนกับ FS Link: <span className="font-medium">{parsed.linkName}</span></div>
+                            <div className="text-red-600">I={parsed.iValue} dBm {'>'} threshold {parsed.threshold} dBm (เกิน {parsed.exceedDb} dB)</div>
+                          </div>
+                        )}
+
+                        {parsed.conflictType !== 'FS' && (
+                          <div className="text-gray-500">{b.reason}</div>
+                        )}
+                      </div>
+                    )
+                  })}
               </div>
-              <section>
+
+              {/* Save button — inside Section 4 at bottom */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
                 <button
                   onClick={handleSave}
                   disabled={saving}
@@ -650,8 +852,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                     {saveError}
                   </div>
                 )}
-              </section>
-            </>
+              </div>
+            </section>
           )}
         </div>
       </div>

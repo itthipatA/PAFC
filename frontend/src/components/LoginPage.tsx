@@ -53,26 +53,9 @@ export default function LoginPage() {
 
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center w-full px-10 xl:px-16">
-          {/* Image placeholder */}
-          <div className="w-60 xl:w-72 h-44 xl:h-52 bg-white/[0.06] rounded-2xl border-2 border-dashed border-white/15 flex items-center justify-center mb-8">
-            <div className="text-center">
-              <svg
-                className="w-14 h-14 mx-auto text-white/25 mb-3"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21zm15-10.5a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z"
-                />
-              </svg>
-              <span className="text-white/35 text-sm font-medium">
-                ภาพระบบ PAFC
-              </span>
-            </div>
+          {/* Cover image */}
+          <div className="w-60 xl:w-72 h-44 xl:h-52 rounded-2xl overflow-hidden mb-8 relative">
+            <img src="/Cover.png" alt="PAFC Cover" className="absolute inset-0 w-full h-full object-cover opacity-80" />
           </div>
 
           {/* Title */}

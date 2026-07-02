@@ -10,15 +10,12 @@ import {
   PlusCircle,
 } from 'lucide-react'
 import MapView, { MAP_STYLES } from './components/MapView'
-import BlockPanel from './components/BlockPanel'
-import AllocationForm from './components/AllocationForm'
 import LoginPage from './components/LoginPage'
 import FSLinkManager from './components/FSLinkManager'
 import IMTManager from './components/IMTManager'
 import IMTAddWorkspace from './components/IMTAddWorkspace'
 import QueryPanel from './components/QueryPanel'
 import { useAuth } from './contexts/AuthContext'
-import type { BlockResult } from './types'
 
 type Tab = 'dashboard' | 'fslinks' | 'imt' | 'search'
 
@@ -45,9 +42,7 @@ function AuthenticatedApp({
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
   const [workspaceMapClickLat, setWorkspaceMapClickLat] = useState<number | null>(null)
   const [workspaceMapClickLon, setWorkspaceMapClickLon] = useState<number | null>(null)
-  const [blocks, setBlocks] = useState<BlockResult[]>([])
-  const [loading, setLoading] = useState(false)
-  const [model, setModel] = useState('free_space')
+  const [mapClickMode, setMapClickMode] = useState<'pan' | 'place'>('pan')
   const [mapStyle, setMapStyle] = useState('voyager')
   const [showDashboardWorkspace, setShowDashboardWorkspace] = useState(false)
   const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
@@ -56,51 +51,11 @@ function AuthenticatedApp({
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
     setSelectedLon(lon)
-    if (showDashboardWorkspace) {
-      setWorkspaceMapClickLat(lat)
-      setWorkspaceMapClickLon(lon)
-    }
-  }, [showDashboardWorkspace])
-
-  const handleAnalyze = useCallback(
-    async (params: {
-      cell_radius: number
-      antenna_height: number
-      antenna_gain: number
-      max_eirp: number
-    }) => {
-      if (!selectedLat || !selectedLon) return
-
-      setLoading(true)
-      try {
-        const res = await fetchWithAuth('/api/allocate/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            center_lat: selectedLat,
-            center_lon: selectedLon,
-            cell_radius: params.cell_radius,
-            antenna_height: params.antenna_height,
-            antenna_gain: params.antenna_gain,
-            max_eirp: params.max_eirp,
-            model,
-          }),
-        })
-        const data = await res.json()
-        setBlocks(data.blocks || [])
-      } catch (err) {
-        console.error('Analysis failed:', err)
-      } finally {
-        setLoading(false)
-      }
-    },
-    [selectedLat, selectedLon, model, fetchWithAuth],
-  )
-
-  const handleCloseAllocation = useCallback(() => {
-    setSelectedLat(null)
-    setSelectedLon(null)
-    setBlocks([])
+    // Also set workspace coordinates if workspace is open
+    setWorkspaceMapClickLat(lat)
+    setWorkspaceMapClickLon(lon)
+    // After placing, return to pan mode
+    setMapClickMode('pan')
   }, [])
 
   const handleZoomTo = useCallback((lat: number, lon: number) => {
@@ -115,6 +70,7 @@ function AuthenticatedApp({
 
   const handleCloseWorkspace = useCallback(() => {
     setShowDashboardWorkspace(false)
+    setMapClickMode('pan')
   }, [])
 
   return (
@@ -245,11 +201,12 @@ function AuthenticatedApp({
                   onMapClick={handleMapClick}
                   selectedLat={selectedLat}
                   selectedLon={selectedLon}
-                  blocks={blocks}
+                  blocks={[]}
                   mapStyle={mapStyle}
                   cellRadius={workspaceCellRadius}
                   centerLat={selectedLat}
                   centerLon={selectedLon}
+                  clickMode={mapClickMode}
                 />
               </div>
 
@@ -267,41 +224,23 @@ function AuthenticatedApp({
                   onMapClickLat={workspaceMapClickLat}
                   onMapClickLon={workspaceMapClickLon}
                   onCellRadiusChange={setWorkspaceCellRadius}
+                  onActivateMapClick={() => setMapClickMode('place')}
                 />
               </div>
             </div>
           ) : (
-            /* ─── FULL MAP with overlay (existing layout) ─── */
+            /* ─── FULL MAP (pan only, no quick analysis) ─── */
             <div className="flex-1 flex overflow-hidden">
               <div className="flex-1 relative">
                 <MapView
                   onMapClick={handleMapClick}
                   selectedLat={selectedLat}
                   selectedLon={selectedLon}
-                  blocks={blocks}
+                  blocks={[]}
                   mapStyle={mapStyle}
+                  clickMode="pan"
                 />
-
-                {selectedLat && selectedLon && (
-                  <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg p-4 w-80">
-                    <AllocationForm
-                      lat={selectedLat}
-                      lon={selectedLon}
-                      onAnalyze={handleAnalyze}
-                      loading={loading}
-                      onClose={handleCloseAllocation}
-                      model={model}
-                      onModelChange={setModel}
-                    />
-                  </div>
-                )}
               </div>
-
-              {blocks.length > 0 && (
-                <div className="w-80 bg-white border-l overflow-y-auto">
-                  <BlockPanel blocks={blocks} />
-                </div>
-              )}
             </div>
           )}
         </div>
