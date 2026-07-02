@@ -84,9 +84,11 @@ const LAYER_IDS = {
   fsLinksSource: 'fs-links-source',
   fsTxMarkers: 'fs-tx-markers',
   fsRxMarkers: 'fs-rx-markers',
-  fsFresnelFill: 'fs-fresnel-fill',
-  fsFresnelOutline: 'fs-fresnel-outline',
-  fsFresnelSource: 'fs-fresnel-source',
+  fsCoordFill: 'fs-coord-fill',
+  fsCoordOutline: 'fs-coord-outline',
+  fsCoordSource: 'fs-coord-source',
+  fsCoordLineBufSource: 'fs-coord-linebuf-source',
+  fsCoordLineBufFill: 'fs-coord-linebuf-fill',
   imtCoverageFill: 'imt-coverage-fill',
   imtCoverageOutline: 'imt-coverage-outline',
   imtCoverageSource: 'imt-coverage-source',
@@ -287,21 +289,36 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
   // Remove GeoJSON layers
   const ids = [
     LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers,
-    LAYER_IDS.fsFresnelFill, LAYER_IDS.fsFresnelOutline,
+    LAYER_IDS.fsCoordFill, LAYER_IDS.fsCoordOutline, LAYER_IDS.fsCoordLineBufFill,
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
-  const sources = [LAYER_IDS.fsLinksSource, LAYER_IDS.fsFresnelSource]
+  const sources = [LAYER_IDS.fsLinksSource, LAYER_IDS.fsCoordSource, LAYER_IDS.fsCoordLineBufSource]
   sources.forEach((sid) => {
     if (map.getSource(sid)) map.removeSource(sid)
   })
 }
 
-// ─── Fresnel Zone Drawing ──────────────────────────────────────────────────
+// ─── Coordination Zone Drawing (dog-bone shape) ────────────────────────────
 
-function drawFSFresnelZone(map: maplibregl.Map, links: any[]) {
-  const fresnelFeatures: any[] = []
+function calcCoordinationRadius(
+  eirp_dbm: number,
+  freq_mhz: number,
+  threshold_dbm: number = -114,
+): number {
+  // Free Space Path Loss: FSPL(d) = 32.4 + 20*log10(d_km) + 20*log10(f_MHz)
+  // Solve for d where EIRP - FSPL(d) = threshold
+  const exponent = (eirp_dbm - threshold_dbm - 32.4 - 20 * Math.log10(freq_mhz)) / 20
+  const d_km = Math.pow(10, exponent)
+  const radius_m = d_km * 1000
+  // Clamp between 300m - 2000m for map visibility
+  return Math.max(300, Math.min(2000, radius_m))
+}
+
+function drawFSCoordinationZone(map: maplibregl.Map, links: any[]) {
+  const coordFeatures: any[] = []
+  const lineBufFeatures: any[] = []
 
   links.forEach((link: any) => {
     const txLat = link.tx?.lat ?? link.tx_lat
@@ -310,62 +327,116 @@ function drawFSFresnelZone(map: maplibregl.Map, links: any[]) {
     const rxLon = link.rx?.lon ?? link.rx_lon
     const freqLow = link.frequency?.low ?? link.freq_low
     const freqHigh = link.frequency?.high ?? link.freq_high
+    const txPower = link.rf?.tx_power ?? link.tx_power ?? 20
+    const txAntennaGain = link.rf?.tx_antenna_gain ?? link.tx_antenna_gain ?? 30
 
-    const distanceKm = haversineKm(txLat, txLon, rxLat, rxLon)
-    const midFreqGHz = ((freqLow + freqHigh) / 2) / 1000
-    const fresnelRadiusKm = 8.657 * Math.sqrt(distanceKm / midFreqGHz) / 1000
+    const midFreqMHz = (freqLow + freqHigh) / 2
+    const eirp = txPower + txAntennaGain
+    const threshold = -114
 
-    // Minimum 200m radius for visibility at map zoom levels
-    const bufferRadiusKm = Math.max(fresnelRadiusKm, 0.2)
+    // Calculate coordination radii for TX and RX ends
+    const coordRadiusTxM = calcCoordinationRadius(eirp, midFreqMHz, threshold)
+    const coordRadiusRxM = calcCoordinationRadius(eirp, midFreqMHz, threshold)
+
+    const coordRadiusTxKm = coordRadiusTxM / 1000
+    const coordRadiusRxKm = coordRadiusRxM / 1000
 
     try {
-      const linkLine = lineString([[txLon, txLat], [rxLon, rxLat]], {
-        name: link.name,
-        fresnelRadiusM: (fresnelRadiusKm * 1000).toFixed(2),
-        midFreqGHz: midFreqGHz.toFixed(2),
+      // TX circle
+      const txCircle = circle([txLon, txLat], coordRadiusTxKm, {
+        steps: 32,
+        units: 'kilometers',
       })
-      const buffered = buffer(linkLine, bufferRadiusKm, { units: 'kilometers', steps: 32 })
-      if (buffered && buffered.geometry) {
-        buffered.properties = {
+      txCircle.properties = {
+        name: link.name,
+        coordRadiusTxM: coordRadiusTxM.toFixed(0),
+        coordRadiusRxM: coordRadiusRxM.toFixed(0),
+        eirp,
+        threshold,
+        midFreqMHz: midFreqMHz.toFixed(1),
+      }
+      coordFeatures.push(txCircle)
+
+      // RX circle
+      const rxCircle = circle([rxLon, rxLat], coordRadiusRxKm, {
+        steps: 32,
+        units: 'kilometers',
+      })
+      rxCircle.properties = {
+        name: link.name,
+        coordRadiusTxM: coordRadiusTxM.toFixed(0),
+        coordRadiusRxM: coordRadiusRxM.toFixed(0),
+        eirp,
+        threshold,
+        midFreqMHz: midFreqMHz.toFixed(1),
+      }
+      coordFeatures.push(rxCircle)
+
+      // Line buffer (200m minimum corridor)
+      const linkLine = lineString([[txLon, txLat], [rxLon, rxLat]])
+      const lineBuf = buffer(linkLine, 0.2, { units: 'kilometers', steps: 16 })
+      if (lineBuf && lineBuf.geometry) {
+        lineBuf.properties = {
           name: link.name,
-          fresnelRadiusM: (fresnelRadiusKm * 1000).toFixed(2),
-          bufferRadiusM: (bufferRadiusKm * 1000).toFixed(0),
-          midFreqGHz: midFreqGHz.toFixed(2),
+          coordRadiusTxM: coordRadiusTxM.toFixed(0),
+          coordRadiusRxM: coordRadiusRxM.toFixed(0),
+          eirp,
+          threshold,
+          midFreqMHz: midFreqMHz.toFixed(1),
         }
-        fresnelFeatures.push(buffered)
+        lineBufFeatures.push(lineBuf)
       }
     } catch (e) {
-      console.warn('Failed to draw Fresnel corridor for:', link.name, e)
+      console.warn('Failed to draw coordination zone for:', link.name, e)
     }
   })
 
-  if (fresnelFeatures.length === 0) return
+  // Render TX/RX circles — fill + outline
+  if (coordFeatures.length > 0) {
+    map.addSource(LAYER_IDS.fsCoordSource, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: coordFeatures },
+    })
 
-  map.addSource(LAYER_IDS.fsFresnelSource, {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features: fresnelFeatures },
-  })
+    map.addLayer({
+      id: LAYER_IDS.fsCoordFill,
+      type: 'fill',
+      source: LAYER_IDS.fsCoordSource,
+      paint: {
+        'fill-color': '#60A5FA',
+        'fill-opacity': 0.12,
+      },
+    })
 
-  map.addLayer({
-    id: LAYER_IDS.fsFresnelFill,
-    type: 'fill',
-    source: LAYER_IDS.fsFresnelSource,
-    paint: {
-      'fill-color': '#60A5FA',
-      'fill-opacity': 0.15,
-    },
-  })
+    map.addLayer({
+      id: LAYER_IDS.fsCoordOutline,
+      type: 'line',
+      source: LAYER_IDS.fsCoordSource,
+      paint: {
+        'line-color': '#3B82F6',
+        'line-width': 2,
+      },
+    })
+  }
 
-  map.addLayer({
-    id: LAYER_IDS.fsFresnelOutline,
-    type: 'line',
-    source: LAYER_IDS.fsFresnelSource,
-    paint: {
-      'line-color': '#60A5FA',
-      'line-width': 2,
-      'line-opacity': 0.5,
-    },
-  })
+  // Render line buffer — fill only (matched color so it visually merges)
+  if (lineBufFeatures.length > 0) {
+    map.addSource(LAYER_IDS.fsCoordLineBufSource, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: lineBufFeatures },
+    })
+
+    map.addLayer({
+      id: LAYER_IDS.fsCoordLineBufFill,
+      type: 'fill',
+      source: LAYER_IDS.fsCoordLineBufSource,
+      paint: {
+        'fill-color': '#60A5FA',
+        'fill-opacity': 0.12,
+      },
+      // Place below the circle outlines so circles render on top
+    })
+  }
 }
 
 async function loadFSLinks(
@@ -410,6 +481,8 @@ async function loadFSLinks(
           txLon,
           rxLat,
           rxLon,
+          txPower: link.rf?.tx_power ?? link.tx_power ?? 20,
+          txAntennaGain: link.rf?.tx_antenna_gain ?? link.tx_antenna_gain ?? 30,
         },
       })
 
@@ -421,11 +494,16 @@ async function loadFSLinks(
         e.stopPropagation()
         console.log('TX marker clicked:', link.name)
         const d = haversineKm(txLat, txLon, rxLat, rxLon).toFixed(2)
-        const midFreqGHz = ((freqLow + freqHigh) / 2) / 1000
-        const fresnelR = (8.657 * Math.sqrt(parseFloat(d) / midFreqGHz)).toFixed(2)
+        const midFreqMHz = (freqLow + freqHigh) / 2
+        const txPower = link.rf?.tx_power ?? link.tx_power ?? 20
+        const txAntennaGain = link.rf?.tx_antenna_gain ?? link.tx_antenna_gain ?? 30
+        const eirp = txPower + txAntennaGain
+        const threshold = -114
+        const coordTxKm = (calcCoordinationRadius(eirp, midFreqMHz, threshold) / 1000).toFixed(2)
+        const coordRxKm = (calcCoordinationRadius(eirp, midFreqMHz, threshold) / 1000).toFixed(2)
         new maplibregl.Popup()
           .setLngLat([txLon, txLat])
-          .setHTML(popupHTML(link.name, link.operator, freqLow, freqHigh, d, fresnelR, 'TX'))
+          .setHTML(popupHTML(link.name, link.operator, freqLow, freqHigh, d, coordTxKm, coordRxKm, eirp, threshold, 'TX'))
           .addTo(map)
       })
       markers.push(txMarker)
@@ -438,11 +516,16 @@ async function loadFSLinks(
         e.stopPropagation()
         console.log('RX marker clicked:', link.name)
         const d = haversineKm(txLat, txLon, rxLat, rxLon).toFixed(2)
-        const midFreqGHz = ((freqLow + freqHigh) / 2) / 1000
-        const fresnelR = (8.657 * Math.sqrt(parseFloat(d) / midFreqGHz)).toFixed(2)
+        const midFreqMHz = (freqLow + freqHigh) / 2
+        const txPower = link.rf?.tx_power ?? link.tx_power ?? 20
+        const txAntennaGain = link.rf?.tx_antenna_gain ?? link.tx_antenna_gain ?? 30
+        const eirp = txPower + txAntennaGain
+        const threshold = -114
+        const coordTxKm = (calcCoordinationRadius(eirp, midFreqMHz, threshold) / 1000).toFixed(2)
+        const coordRxKm = (calcCoordinationRadius(eirp, midFreqMHz, threshold) / 1000).toFixed(2)
         new maplibregl.Popup()
           .setLngLat([rxLon, rxLat])
-          .setHTML(popupHTML(link.name, link.operator, freqLow, freqHigh, d, fresnelR, 'RX'))
+          .setHTML(popupHTML(link.name, link.operator, freqLow, freqHigh, d, coordTxKm, coordRxKm, eirp, threshold, 'RX'))
           .addTo(map)
       })
       markers.push(rxMarker)
@@ -473,19 +556,22 @@ async function loadFSLinks(
       if (!e.features?.[0]) return
       const p = e.features[0].properties
       const d = haversineKm(p.txLat, p.txLon, p.rxLat, p.rxLon).toFixed(2)
-      const midFreqGHz = ((p.freqLow + p.freqHigh) / 2) / 1000
-      const fresnelR = (8.657 * Math.sqrt(parseFloat(d) / midFreqGHz)).toFixed(2)
+      const midFreqMHz = (p.freqLow + p.freqHigh) / 2
+      const eirp = (p.txPower ?? 20) + (p.txAntennaGain ?? 30)
+      const threshold = -114
+      const coordTxKm = (calcCoordinationRadius(eirp, midFreqMHz, threshold) / 1000).toFixed(2)
+      const coordRxKm = (calcCoordinationRadius(eirp, midFreqMHz, threshold) / 1000).toFixed(2)
       new maplibregl.Popup()
         .setLngLat(e.lngLat)
-        .setHTML(popupHTML(p.name, p.operator, p.freqLow, p.freqHigh, d, fresnelR, ''))
+        .setHTML(popupHTML(p.name, p.operator, p.freqLow, p.freqHigh, d, coordTxKm, coordRxKm, eirp, threshold, ''))
         .addTo(map)
     })
 
     map.on('mouseenter', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = '' })
 
-    // Draw Fresnel zone circles
-    drawFSFresnelZone(map, links)
+    // Draw Coordination Zone (dog-bone shape)
+    drawFSCoordinationZone(map, links)
   } catch (err) {
     console.warn('FS links not available:', err)
   }
@@ -497,18 +583,22 @@ function popupHTML(
   freqLow: number,
   freqHigh: number,
   distance: string,
-  fresnelRadius: string,
+  coordRadiusTxKm: string,
+  coordRadiusRxKm: string,
+  eirp: number,
+  threshold: number,
   role: string,
 ): string {
   const roleText = role ? ` (${role})` : ''
   const midFreqMHz = ((freqLow + freqHigh) / 2).toFixed(1)
   return `
-    <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:220px">
+    <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:260px">
       <strong style="color:#1A1A2E">${escapeHTML(name)}${roleText}</strong><br/>
       <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(operator)}</span><br/>
       <span style="color:#6C757D">ความถี่: ${freqLow}-${freqHigh} MHz</span><br/>
       <span style="color:#6C757D">ระยะทาง: ${distance} km</span><br/>
-      <span style="color:#3B82F6">Fresnel Zone Radius: ${fresnelRadius} m (ที่ ${midFreqMHz} MHz)</span>
+      <span style="color:#3B82F6">Coordination Zone: ${coordRadiusTxKm} km (TX), ${coordRadiusRxKm} km (RX)</span><br/>
+      <span style="color:#6C757D">EIRP: ${eirp} dBm | Threshold: ${threshold} dBm</span>
     </div>`
 }
 
