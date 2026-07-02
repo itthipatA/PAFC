@@ -22,3 +22,40 @@ export interface FSLink {
   }
   status: string
 }
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+  username: string
+  role: string
+}
+
+export interface User {
+  username: string
+  role: string
+}
+
+export interface FSLinkCreate {
+  name: string
+  operator: string
+  tx_lat: number
+  tx_lon: number
+  tx_altitude: number
+  rx_lat: number
+  rx_lon: number
+  rx_altitude: number
+  freq_low: number
+  freq_high: number
+  bandwidth: number
+  tx_power: number
+  tx_antenna_gain: number
+  rx_antenna_gain: number
+  azimuth: number
+  polarization: string
+  status: string
+}

@@ -1,11 +1,40 @@
 import { useState, useCallback } from 'react'
-import MapView from './components/MapView'
+import {
+  Map as MapIcon,
+  Layout,
+  LogOut,
+  Shield,
+} from 'lucide-react'
+import MapView, { MAP_STYLES } from './components/MapView'
 import Header from './components/Header'
 import BlockPanel from './components/BlockPanel'
 import AllocationForm from './components/AllocationForm'
-import { BlockResult } from './types'
+import LoginPage from './components/LoginPage'
+import FSLinkManager from './components/FSLinkManager'
+import { useAuth } from './contexts/AuthContext'
+import type { BlockResult } from './types'
+
+type Tab = 'dashboard' | 'fslinks'
 
 export default function App() {
+  const { isAuthenticated, user, logout } = useAuth()
+
+  if (!isAuthenticated) {
+    return <LoginPage />
+  }
+
+  return <AuthenticatedApp user={user} onLogout={logout} />
+}
+
+function AuthenticatedApp({
+  user,
+  onLogout,
+}: {
+  user: { username: string; role: string } | null
+  onLogout: () => void
+}) {
+  const [tab, setTab] = useState<Tab>('dashboard')
+
   const [selectedLat, setSelectedLat] = useState<number | null>(null)
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
   const [blocks, setBlocks] = useState<BlockResult[]>([])
@@ -18,75 +47,148 @@ export default function App() {
     setSelectedLon(lon)
   }, [])
 
-  const handleAnalyze = useCallback(async (params: {
-    cell_radius: number
-    antenna_height: number
-    antenna_gain: number
-    max_eirp: number
-  }) => {
-    if (!selectedLat || !selectedLon) return
+  const handleAnalyze = useCallback(
+    async (params: {
+      cell_radius: number
+      antenna_height: number
+      antenna_gain: number
+      max_eirp: number
+    }) => {
+      if (!selectedLat || !selectedLon) return
 
-    setLoading(true)
-    try {
-      const res = await fetch('/api/allocate/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          center_lat: selectedLat,
-          center_lon: selectedLon,
-          cell_radius: params.cell_radius,
-          antenna_height: params.antenna_height,
-          antenna_gain: params.antenna_gain,
-          max_eirp: params.max_eirp,
-          model,
-        }),
-      })
-      const data = await res.json()
-      setBlocks(data.blocks || [])
-    } catch (err) {
-      console.error('Analysis failed:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedLat, selectedLon, model])
+      setLoading(true)
+      try {
+        const res = await fetch('/api/allocate/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            center_lat: selectedLat,
+            center_lon: selectedLon,
+            cell_radius: params.cell_radius,
+            antenna_height: params.antenna_height,
+            antenna_gain: params.antenna_gain,
+            max_eirp: params.max_eirp,
+            model,
+          }),
+        })
+        const data = await res.json()
+        setBlocks(data.blocks || [])
+      } catch (err) {
+        console.error('Analysis failed:', err)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [selectedLat, selectedLon, model],
+  )
 
   return (
     <div className="h-screen flex flex-col">
-      <Header
-        model={model}
-        onModelChange={setModel}
-        mapStyle={mapStyle}
-        onMapStyleChange={setMapStyle}
-      />
-
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 relative">
-          <MapView
-            onMapClick={handleMapClick}
-            selectedLat={selectedLat}
-            selectedLon={selectedLon}
-            blocks={blocks}
-            mapStyle={mapStyle}
-          />
-
-          {selectedLat && selectedLon && (
-            <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg p-4 w-80">
-              <AllocationForm
-                lat={selectedLat}
-                lon={selectedLon}
-                onAnalyze={handleAnalyze}
-                loading={loading}
-              />
+      {/* Top Navigation Bar */}
+      <nav className="nbtc-header px-6 py-3 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 bg-white/15 rounded-lg flex items-center justify-center">
+              <Shield className="w-5 h-5 text-white" />
             </div>
-          )}
+            <div>
+              <h1 className="text-lg font-bold leading-tight">PAFC</h1>
+              <p className="text-xs opacity-80 leading-tight">
+                ระบบจัดสรรคลื่นความถี่ | 4800-4990 MHz
+              </p>
+            </div>
+          </div>
         </div>
 
-        {blocks.length > 0 && (
-          <div className="w-80 bg-white border-l overflow-y-auto">
-            <BlockPanel blocks={blocks} />
+        <div className="flex items-center gap-1">
+          {/* Tab: Dashboard */}
+          <button
+            onClick={() => setTab('dashboard')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === 'dashboard'
+                ? 'bg-white/20 text-white'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            <Layout className="w-4 h-4" />
+            Dashboard
+          </button>
+
+          {/* Tab: FS Links */}
+          <button
+            onClick={() => setTab('fslinks')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === 'fslinks'
+                ? 'bg-white/20 text-white'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            <MapIcon className="w-4 h-4" />
+            FS Links
+          </button>
+
+          {/* User info + Logout */}
+          <div className="ml-4 flex items-center gap-2 pl-4 border-l border-white/20">
+            <span className="text-xs text-white/70">
+              {user?.username || 'ผูใช'} ({user?.role || '-'})
+            </span>
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+              title="ออกจากระบบ"
+            >
+              <LogOut className="w-4 h-4" />
+              ออกจากระบบ
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      </nav>
+
+      {/* Tab Content */}
+      {tab === 'dashboard' ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Sub-header with model/style controls */}
+          <Header
+            model={model}
+            onModelChange={setModel}
+            mapStyle={mapStyle}
+            onMapStyleChange={setMapStyle}
+          />
+
+          <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 relative">
+              <MapView
+                onMapClick={handleMapClick}
+                selectedLat={selectedLat}
+                selectedLon={selectedLon}
+                blocks={blocks}
+                mapStyle={mapStyle}
+              />
+
+              {selectedLat && selectedLon && (
+                <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg p-4 w-80">
+                  <AllocationForm
+                    lat={selectedLat}
+                    lon={selectedLon}
+                    onAnalyze={handleAnalyze}
+                    loading={loading}
+                  />
+                </div>
+              )}
+            </div>
+
+            {blocks.length > 0 && (
+              <div className="w-80 bg-white border-l overflow-y-auto">
+                <BlockPanel blocks={blocks} />
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-hidden">
+          <FSLinkManager />
+        </div>
+      )}
     </div>
   )
 }
