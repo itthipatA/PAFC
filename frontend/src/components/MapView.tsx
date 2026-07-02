@@ -747,20 +747,39 @@ async function loadIMTAllocations(
         .addTo(map)
 
       el.addEventListener('click', () => {
-        const blocksStr = (alloc.blocks || [])
-          .map((b: any) => `${b.freq_low}-${b.freq_high} MHz (${b.status})`)
-          .join('<br/>')
+        const blocks = alloc.blocks || []
+        const blocksStr = blocks.length > 0
+          ? blocks
+              .map((b: any) => {
+                const icon = b.status === 'allocated' ? '█' : b.status === 'guard' ? '░' : '?'
+                return `${icon} ${b.freq_low}-${b.freq_high} MHz`
+              })
+              .join('<br/>')
+          : ''
+        const totalMHz = blocks
+          .filter((b: any) => b.status === 'allocated')
+          .reduce((sum: number, b: any) => sum + (b.freq_high - b.freq_low), 0)
+
         new maplibregl.Popup()
           .setLngLat([lon, lat])
           .setHTML(`
-            <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:200px">
-              <strong style="color:#1A1A2E">${escapeHTML(alloc.name)}</strong><br/>
+            <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:240px">
+              <strong style="color:#1A1A2E;font-size:15px">${escapeHTML(alloc.name)}</strong>
+              <span style="color:#16A34A;margin-left:6px;font-size:11px">● IMT</span><br/>
               <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(alloc.operator)}</span><br/>
               <span style="color:#6C757D">รัศมีเซลล์: ${alloc.cell_radius} m</span><br/>
-              <span style="color:#6C757D">ความสูงเสา: ${alloc.antenna_height} m</span><br/>
-              <span style="color:#6C757D">กำลังส่ง: ${alloc.max_eirp} dBm</span><br/>
-              ${blocksStr ? `<span style="color:#6C757D">คลื่นที่จัดสรร:<br/>${blocksStr}</span><br/>` : ''}
-              <span style="color:#6C757D">วันที่: ${new Date(alloc.created_at).toLocaleDateString('th-TH')}</span>
+              <span style="color:#6C757D">ความสูงเสา: ${alloc.antenna_height} m | EIRP: ${alloc.max_eirp} dBm</span>
+              ${blocks.length > 0 ? `
+                <div style="margin-top:8px;padding:6px 8px;background:#F0FDF4;border-radius:6px;border:1px solid #BBF7D0">
+                  <div style="font-weight:600;color:#166534;font-size:12px;margin-bottom:4px">คลื่นที่จัดสรร (${totalMHz} MHz)</div>
+                  <div style="font-family:monospace;font-size:11px;color:#166534;line-height:1.8">${blocksStr}</div>
+                </div>
+              ` : `
+                <div style="margin-top:8px;padding:6px 8px;background:#FEF2F2;border-radius:6px;border:1px solid #FECACA;font-size:12px;color:#991B1B">
+                  ยังไม่มีการจัดสรรคลื่นความถี่
+                </div>
+              `}
+              <span style="color:#9CA3AF;font-size:11px;margin-top:4px;display:block">${new Date(alloc.created_at).toLocaleDateString('th-TH')}</span>
             </div>`)
           .addTo(map)
       })
@@ -802,18 +821,38 @@ async function loadIMTAllocations(
     map.on('click', LAYER_IDS.imtCoverageFill, (e) => {
       if (!e.features?.[0]) return
       const p = e.features[0].properties
-      const blocksStr = (p.blocks || [])
-        .map((b: any) => `${b.freq_low}-${b.freq_high} MHz (${b.status})`)
-        .join('<br/>')
+      const blocks = p.blocks || []
+      const blocksStr = blocks.length > 0
+        ? blocks
+            .map((b: any) => {
+              const icon = b.status === 'allocated' ? '█' : b.status === 'guard' ? '░' : '?'
+              return `${icon} ${b.freq_low}-${b.freq_high} MHz`
+            })
+            .join('<br/>')
+        : ''
+      const totalMHz = blocks
+        .filter((b: any) => b.status === 'allocated')
+        .reduce((sum: number, b: any) => sum + (b.freq_high - b.freq_low), 0)
+
       new maplibregl.Popup()
         .setLngLat(e.lngLat)
         .setHTML(`
-          <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:200px">
-            <strong style="color:#1A1A2E">${escapeHTML(p.name)}</strong><br/>
+          <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:240px">
+            <strong style="color:#1A1A2E;font-size:15px">${escapeHTML(p.name)}</strong>
+            <span style="color:#16A34A;margin-left:6px;font-size:11px">● IMT</span><br/>
             <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(p.operator)}</span><br/>
             <span style="color:#6C757D">รัศมีเซลล์: ${p.cell_radius} m</span><br/>
-            ${blocksStr ? `<span style="color:#6C757D">คลื่นที่จัดสรร:<br/>${blocksStr}</span><br/>` : ''}
-            <span style="color:#6C757D">วันที่: ${new Date(p.created_at).toLocaleDateString('th-TH')}</span>
+            ${blocks.length > 0 ? `
+              <div style="margin-top:8px;padding:6px 8px;background:#F0FDF4;border-radius:6px;border:1px solid #BBF7D0">
+                <div style="font-weight:600;color:#166534;font-size:12px;margin-bottom:4px">คลื่นที่จัดสรร (${totalMHz} MHz)</div>
+                <div style="font-family:monospace;font-size:11px;color:#166534;line-height:1.8">${blocksStr}</div>
+              </div>
+            ` : `
+              <div style="margin-top:8px;padding:6px 8px;background:#FEF2F2;border-radius:6px;border:1px solid #FECACA;font-size:12px;color:#991B1B">
+                ยังไม่มีการจัดสรรคลื่นความถี่
+              </div>
+            `}
+            <span style="color:#9CA3AF;font-size:11px;margin-top:4px;display:block">${new Date(p.created_at).toLocaleDateString('th-TH')}</span>
           </div>`)
         .addTo(map)
     })
