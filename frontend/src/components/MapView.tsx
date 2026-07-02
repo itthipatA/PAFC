@@ -83,6 +83,9 @@ const LAYER_IDS = {
   fsLinksSource: 'fs-links-source',
   fsTxMarkers: 'fs-tx-markers',
   fsRxMarkers: 'fs-rx-markers',
+  fsFresnelFill: 'fs-fresnel-fill',
+  fsFresnelOutline: 'fs-fresnel-outline',
+  fsFresnelSource: 'fs-fresnel-source',
   imtCoverageFill: 'imt-coverage-fill',
   imtCoverageOutline: 'imt-coverage-outline',
   imtCoverageSource: 'imt-coverage-source',
@@ -287,11 +290,84 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
   fsMarkersRef.current = []
 
   // Remove GeoJSON layers
-  const ids = [LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers]
+  const ids = [
+    LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers,
+    LAYER_IDS.fsFresnelFill, LAYER_IDS.fsFresnelOutline,
+  ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
-  if (map.getSource(LAYER_IDS.fsLinksSource)) map.removeSource(LAYER_IDS.fsLinksSource)
+  const sources = [LAYER_IDS.fsLinksSource, LAYER_IDS.fsFresnelSource]
+  sources.forEach((sid) => {
+    if (map.getSource(sid)) map.removeSource(sid)
+  })
+}
+
+// ─── Fresnel Zone Drawing ──────────────────────────────────────────────────
+
+function drawFSFresnelZone(map: maplibregl.Map, links: any[]) {
+  const fresnelFeatures: any[] = []
+
+  links.forEach((link: any) => {
+    const txLat = link.tx?.lat ?? link.tx_lat
+    const txLon = link.tx?.lon ?? link.tx_lon
+    const rxLat = link.rx?.lat ?? link.rx_lat
+    const rxLon = link.rx?.lon ?? link.rx_lon
+    const freqLow = link.frequency?.low ?? link.freq_low
+    const freqHigh = link.frequency?.high ?? link.freq_high
+
+    const distanceKm = haversineKm(txLat, txLon, rxLat, rxLon)
+    const midFreqGHz = ((freqLow + freqHigh) / 2) / 1000
+    const fresnelRadiusM = 8.657 * Math.sqrt(distanceKm / midFreqGHz)
+
+    // Midpoint of the link
+    const midLat = (txLat + rxLat) / 2
+    const midLon = (txLon + rxLon) / 2
+
+    try {
+      const fresnelCircle = circle([midLon, midLat], fresnelRadiusM / 1000, {
+        steps: 64,
+        units: 'kilometers',
+      })
+      fresnelCircle.properties = {
+        name: link.name,
+        fresnelRadiusM: fresnelRadiusM.toFixed(2),
+        midFreqGHz: midFreqGHz.toFixed(2),
+      }
+      fresnelFeatures.push(fresnelCircle)
+    } catch (e) {
+      console.warn('Failed to draw Fresnel zone for:', link.name, e)
+    }
+  })
+
+  if (fresnelFeatures.length === 0) return
+
+  map.addSource(LAYER_IDS.fsFresnelSource, {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: fresnelFeatures },
+  })
+
+  map.addLayer({
+    id: LAYER_IDS.fsFresnelFill,
+    type: 'fill',
+    source: LAYER_IDS.fsFresnelSource,
+    paint: {
+      'fill-color': '#3B82F6',
+      'fill-opacity': 0.1,
+    },
+  })
+
+  map.addLayer({
+    id: LAYER_IDS.fsFresnelOutline,
+    type: 'line',
+    source: LAYER_IDS.fsFresnelSource,
+    paint: {
+      'line-color': '#3B82F6',
+      'line-width': 1.5,
+      'line-dasharray': [6, 3],
+      'line-opacity': 0.5,
+    },
+  })
 }
 
 async function loadFSLinks(
@@ -343,11 +419,15 @@ async function loadFSLinks(
       const txMarker = new maplibregl.Marker({ element: txMarkerEl() })
         .setLngLat([txLon, txLat])
         .addTo(map)
-      txMarker.getElement().addEventListener('click', () => {
+      txMarker.getElement().addEventListener('click', (e) => {
+        e.stopPropagation()
+        console.log('TX marker clicked:', link.name)
         const d = haversineKm(txLat, txLon, rxLat, rxLon).toFixed(2)
+        const midFreqGHz = ((freqLow + freqHigh) / 2) / 1000
+        const fresnelR = (8.657 * Math.sqrt(parseFloat(d) / midFreqGHz)).toFixed(2)
         new maplibregl.Popup()
           .setLngLat([txLon, txLat])
-          .setHTML(popupHTML(link.name, link.operator, freqLow, freqHigh, d, 'TX'))
+          .setHTML(popupHTML(link.name, link.operator, freqLow, freqHigh, d, fresnelR, 'TX'))
           .addTo(map)
       })
       markers.push(txMarker)
@@ -356,11 +436,15 @@ async function loadFSLinks(
       const rxMarker = new maplibregl.Marker({ element: rxMarkerEl() })
         .setLngLat([rxLon, rxLat])
         .addTo(map)
-      rxMarker.getElement().addEventListener('click', () => {
+      rxMarker.getElement().addEventListener('click', (e) => {
+        e.stopPropagation()
+        console.log('RX marker clicked:', link.name)
         const d = haversineKm(txLat, txLon, rxLat, rxLon).toFixed(2)
+        const midFreqGHz = ((freqLow + freqHigh) / 2) / 1000
+        const fresnelR = (8.657 * Math.sqrt(parseFloat(d) / midFreqGHz)).toFixed(2)
         new maplibregl.Popup()
           .setLngLat([rxLon, rxLat])
-          .setHTML(popupHTML(link.name, link.operator, freqLow, freqHigh, d, 'RX'))
+          .setHTML(popupHTML(link.name, link.operator, freqLow, freqHigh, d, fresnelR, 'RX'))
           .addTo(map)
       })
       markers.push(rxMarker)
@@ -391,14 +475,19 @@ async function loadFSLinks(
       if (!e.features?.[0]) return
       const p = e.features[0].properties
       const d = haversineKm(p.txLat, p.txLon, p.rxLat, p.rxLon).toFixed(2)
+      const midFreqGHz = ((p.freqLow + p.freqHigh) / 2) / 1000
+      const fresnelR = (8.657 * Math.sqrt(parseFloat(d) / midFreqGHz)).toFixed(2)
       new maplibregl.Popup()
         .setLngLat(e.lngLat)
-        .setHTML(popupHTML(p.name, p.operator, p.freqLow, p.freqHigh, d, ''))
+        .setHTML(popupHTML(p.name, p.operator, p.freqLow, p.freqHigh, d, fresnelR, ''))
         .addTo(map)
     })
 
     map.on('mouseenter', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = '' })
+
+    // Draw Fresnel zone circles
+    drawFSFresnelZone(map, links)
   } catch (err) {
     console.warn('FS links not available:', err)
   }
@@ -410,15 +499,18 @@ function popupHTML(
   freqLow: number,
   freqHigh: number,
   distance: string,
+  fresnelRadius: string,
   role: string,
 ): string {
   const roleText = role ? ` (${role})` : ''
+  const midFreqMHz = ((freqLow + freqHigh) / 2).toFixed(1)
   return `
-    <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:180px">
+    <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:220px">
       <strong style="color:#1A1A2E">${escapeHTML(name)}${roleText}</strong><br/>
       <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(operator)}</span><br/>
       <span style="color:#6C757D">ความถี่: ${freqLow}-${freqHigh} MHz</span><br/>
-      <span style="color:#6C757D">ระยะทาง: ${distance} km</span>
+      <span style="color:#6C757D">ระยะทาง: ${distance} km</span><br/>
+      <span style="color:#3B82F6">Fresnel Zone Radius: ${fresnelRadius} m (ที่ ${midFreqMHz} MHz)</span>
     </div>`
 }
 

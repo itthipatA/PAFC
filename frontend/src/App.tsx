@@ -193,10 +193,10 @@ function AuthenticatedApp({
           </div>
 
           {showDashboardWorkspace ? (
-            /* ─── 70/30 SPLIT: Map left 30%, Workspace right 70% ─── */
+            /* ─── 60/40 SPLIT: Map left 40%, Workspace right 60% ─── */
             <div className="flex-1 flex overflow-hidden">
-              {/* Left 30% — Compact Map */}
-              <div className="w-[30%] min-w-[280px] relative border-r border-gray-300">
+              {/* Left 40% — Compact Map */}
+              <div className="w-[40%] min-w-[280px] relative border-r border-gray-300">
                 <MapView
                   onMapClick={handleMapClick}
                   selectedLat={selectedLat}
@@ -210,7 +210,7 @@ function AuthenticatedApp({
                 />
               </div>
 
-              {/* Right 70% — Workspace Panel with slide-in animation */}
+              {/* Right 60% — Workspace Panel with slide-in animation */}
               <div
                 className="flex-1 overflow-hidden transition-all duration-300 ease-in-out"
                 style={{

@@ -96,6 +96,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
   const [saving, setSaving] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   // Mini map refs
   const miniMapContainerRef = useRef<HTMLDivElement>(null)
@@ -209,6 +210,21 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
   useEffect(() => {
     onCellRadiusChange?.(cellRadius)
   }, [cellRadius, onCellRadiusChange])
+
+  // ESC key triggers/dismisses close confirmation
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showCloseConfirm) {
+          setShowCloseConfirm(false)
+        } else {
+          setShowCloseConfirm(true)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [showCloseConfirm])
 
   const handleCalculate = useCallback(async () => {
     setLoading(true)
@@ -328,7 +344,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                 เพิ่ม IMT ใหม่
               </h2>
               <button
-                onClick={onBack}
+                onClick={() => setShowCloseConfirm(true)}
                 className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 title="ปิด"
               >
@@ -549,60 +565,72 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
             </div>
           )}
 
-          {/* SECTION 3: Calculation Details — NEW, shows after calculation completes */}
-          {blocks.length > 0 && (
-            <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-base font-bold text-[#1A365D] mb-4 flex items-center gap-2">
-                <Info className="w-4 h-4 text-[#C00000]" />
-                รายละเอียดการคำนวณ
-              </h2>
+          {/* SECTION 3: Terminal Calculation Report */}          {blocks.length > 0 && (() => {
+            const availableMhz = statusCounts.available * 10
+            const totalMhz = blocks.length * 10
+            const pct = totalMhz > 0 ? ((availableMhz / totalMhz) * 100).toFixed(1) : '0.0'
+            const modelLabel = PROPAGATION_MODEL_INFO[propagationModel]?.label || propagationModel
+            const modelDesc = PROPAGATION_MODEL_INFO[propagationModel]?.description || ''
+            const guardBlocks = blocks.filter(b => b.status === 'gray')
+            const guardMhz = statusCounts.guard * 10
 
-              {/* Sub-section: Parameters */}
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  📡 พารามิเตอร์ที่ใช้
-                </h3>
-                <div className="text-xs space-y-1 text-gray-600">
-                  <div>• ตำแหน่ง: {lat.toFixed(4)}, {lon.toFixed(4)}</div>
-                  <div>• รัศมีเซลล์: {cellRadius.toLocaleString()} m</div>
-                  <div>• ความสูงเสาอากาศ: {antennaHeight} m AGL</div>
-                  <div>• Antenna Gain: {antennaGain} dBi</div>
-                  <div>• Max EIRP: {maxEirp} dBm</div>
-                </div>
-              </div>
+            // Build box-drawing report lines
+            const W = 46 // total inner width
+            const padR = (s: string, n: number) => { const str = String(s); return str + ' '.repeat(Math.max(0, n - str.length)) }
+            const dash = (label: string) => padR('\u2500\u2500\u2500', W - label.length - 3)
+            let lines: string[] = []
+            lines.push('\u250C\u2500\u2500 Calculation Report ' + '\u2500'.repeat(W - 22) + '\u2510')
+            // PARAMETERS
+            lines.push('\u2502  PARAMETERS' + ' '.repeat(W - 16) + '\u2502')
+            lines.push('\u2502  ' + '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' + '  \u2502')
+            lines.push('\u2502  position     = (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')' + ' '.repeat(Math.max(0, W - 5 - 36 - ('(' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')').length)) + '\u2502')
+            lines.push('\u2502  cell_radius  = ' + padR(cellRadius.toLocaleString() + ' m', W - 32) + '\u2502')
+            lines.push('\u2502  ant_height   = ' + padR(antennaHeight + ' m AGL', W - 33) + '\u2502')
+            lines.push('\u2502  ant_gain     = ' + padR(antennaGain + ' dBi', W - 33) + '\u2502')
+            lines.push('\u2502  max_eirp     = ' + padR(maxEirp + ' dBm', W - 33) + '\u2502')
+            lines.push('\u2502  name         = ' + padR((name || '-'), W - 34) + '\u2502')
+            lines.push('\u2502  operator     = ' + padR((operator || '-'), W - 34) + '\u2502')
+            lines.push('\u2502' + ' '.repeat(W + 1) + '\u2502')
+            // MODEL
+            lines.push('\u2502  MODEL: ' + padR(modelLabel, W - 30) + '\u2502')
+            lines.push('\u2502  # FSPL(dB) = 32.4 + 20log10(d) + 20log10(f)' + ' '.repeat(Math.max(0, W - 1 - 45)) + '\u2502')
+            lines.push('\u2502  # ' + padR(modelDesc, W - 5) + '\u2502')
+            lines.push('\u2502' + ' '.repeat(W + 1) + '\u2502')
+            // GUARD BAND ANALYSIS
+            lines.push('\u2502  GUARD BAND ANALYSIS' + ' '.repeat(W - 22) + '\u2502')
+            lines.push('\u2502  ' + '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' + '  \u2502')
+            lines.push('\u2502  Guard bands provide frequency separation' + ' '.repeat(Math.max(0, W - 5 - 43)) + '\u2502')
+            lines.push('\u2502  between IMT and FS services to prevent' + ' '.repeat(Math.max(0, W - 5 - 38)) + '\u2502')
+            lines.push('\u2502  adjacent-channel interference.' + ' '.repeat(Math.max(0, W - 5 - 30)) + '\u2502')
+            if (statusCounts.guard === 0) {
+              lines.push('\u2502  No guard bands required in this' + ' '.repeat(Math.max(0, W - 5 - 30)) + '\u2502')
+              lines.push('\u2502  allocation scenario.' + ' '.repeat(Math.max(0, W - 5 - 19)) + '\u2502')
+            } else {
+              lines.push('\u2502  Guard bands required: ' + padR(statusCounts.guard + ' blocks (' + guardMhz + ' MHz)', W - 26) + '\u2502')
+              guardBlocks.forEach(b => {
+                lines.push('\u2502    ' + padR(b.freq_low.toFixed(0) + '-' + b.freq_high.toFixed(0) + ' MHz (guard)', W - 30) + '\u2502')
+              })
+            }
+            lines.push('\u2502' + ' '.repeat(W + 1) + '\u2502')
+            // RESULTS
+            lines.push('\u2502  RESULTS' + ' '.repeat(W - 13) + '\u2502')
+            lines.push('\u2502  ' + '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' + '  \u2502')
+            lines.push('\u2502  total_blocks  = ' + padR(blocks.length + ' (4800-4990 MHz)', W - 34) + '\u2502')
+            lines.push('\u2502  available     = ' + padR(statusCounts.available + ' (' + availableMhz + ' MHz)', W - 34) + '\u2502')
+            lines.push('\u2502  blocked       = ' + padR(statusCounts.blocked + ' (' + (statusCounts.blocked * 10) + ' MHz)', W - 34) + '\u2502')
+            lines.push('\u2502  guard_bands   = ' + padR(String(statusCounts.guard), W - 34) + '\u2502')
+            lines.push('\u2502' + ' '.repeat(W + 1) + '\u2502')
+            lines.push('\u2502  SUMMARY: ' + padR(availableMhz + '/' + totalMhz + ' MHz available (' + pct + '%)', W - 13) + '\u2502')
+            lines.push('\u2514' + '\u2500'.repeat(W + 1) + '\u2518')
 
-              {/* Sub-section: Propagation Model */}
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  🔬 Propagation Model
-                </h3>
-                <div className="text-xs text-gray-600">
-                  <span className="font-medium text-[#1A1A2E]">
-                    {PROPAGATION_MODEL_INFO[propagationModel]?.label || propagationModel}
-                  </span>
-                  <p className="mt-1 text-gray-500">
-                    {PROPAGATION_MODEL_INFO[propagationModel]?.description || ''}
-                  </p>
-                </div>
-              </div>
-
-              {/* Sub-section: Analysis Results Summary */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  📊 ผลการวิเคราะห์
-                </h3>
-                <div className="text-xs space-y-1 text-gray-600">
-                  <div>• จำนวนบล็อกทั้งหมด: {blocks.length} (4800-4990 MHz)</div>
-                  <div>• บล็อกที่ว่าง: {statusCounts.available} ({statusCounts.available * 10} MHz)</div>
-                  <div>• บล็อกที่ถูกจอง: {statusCounts.blocked} ({statusCounts.blocked * 10} MHz)</div>
-                  <div>• บล็อก Guard Band: {statusCounts.guard}</div>
-                  <div className="font-medium text-[#1A1A2E] mt-1">
-                    • สรุป: สามารถจัดสรรได้ {statusCounts.available * 10} MHz จาก {blocks.length * 10} MHz
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
+            return (
+              <section className="bg-[#0D1117] rounded-lg border border-gray-700 p-4 overflow-x-auto">
+                <pre className="text-green-400 font-mono text-xs leading-relaxed m-0 whitespace-pre">
+                  {lines.join('\n')}
+                </pre>
+              </section>
+            )
+          })()}
 
           {/* ─── DIVIDER 3: between Calc Details and Spectrum Results ─── */}
           {blocks.length > 0 && (
@@ -734,14 +762,14 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                             สาเหตุ: ทับซ้อนกับ Fixed Service Link
                           </div>
                           <div className="text-red-700 pl-5 space-y-0.5">
-                            <div className="font-medium">📡 รายละเอียดสัญญาณรบกวน:</div>
+                            <div className="font-medium">รายละเอียดสัญญาณรบกวน:</div>
                             <div>&nbsp;&nbsp;&nbsp;• ชื่อ FS Link: {parsed.linkName}</div>
                             <div>&nbsp;&nbsp;&nbsp;• กำลังสัญญาณรบกวน (I): {parsed.iValue} dBm</div>
                             <div>&nbsp;&nbsp;&nbsp;• Threshold ที่ยอมรับได้: {parsed.threshold} dBm</div>
                             <div>&nbsp;&nbsp;&nbsp;• เกิน Threshold: {parsed.exceedDb} dB</div>
                           </div>
                           <div className="text-xs text-red-600 bg-red-100/50 rounded p-2 mt-1 leading-relaxed">
-                            💡 คำอธิบาย: FS Link {parsed.linkName} ส่งสัญญาณในช่วงความถี่ที่ทับซ้อน
+                            คำอธิบาย: FS Link {parsed.linkName} ส่งสัญญาณในช่วงความถี่ที่ทับซ้อน
                             กับบล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz กำลังสัญญาณรบกวนที่คำนวณได้
                             ({parsed.iValue} dBm) สูงกว่า threshold การป้องกัน ({parsed.threshold} dBm)
                             อยู่ {parsed.exceedDb} dB จึงไม่สามารถจัดสรรคลื่นความถี่บล็อกนี้ให้กับ IMT ได้
@@ -811,7 +839,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                             b.status === 'red' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
                           }`}>
-                            {b.status === 'red' ? '⚠️ ไม่สามารถจัดสรร' : 'Guard Band'}
+                            {b.status === 'red' ? 'ไม่สามารถจัดสรร' : 'Guard Band'}
                           </span>
                         </div>
 
@@ -857,6 +885,33 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
           )}
         </div>
       </div>
+
+      {/* Close confirmation dialog */}
+      {showCloseConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowCloseConfirm(false)}>
+          <div
+            className="bg-white rounded-xl shadow-2xl p-6 w-[360px] max-w-[90vw]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-[#1A1A2E] mb-2">ยกเลิกการทำงาน</h3>
+            <p className="text-sm text-gray-600 mb-6">แน่ใจใช่ไหม? ข้อมูลที่ใส่ไว้ทั้งหมดจะสูญหาย</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowCloseConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={onBack}
+                className="px-4 py-2 text-sm font-medium text-white bg-[#C00000] hover:bg-[#8B0000] rounded-lg transition-colors"
+              >
+                ยืนยัน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
