@@ -1,0 +1,264 @@
+This file replaces the log generation logic in IMTAddWorkspace.tsx.
+Insert this code block to replace lines 242-265 (the calculation log animation useEffect)
+and lines 294-321 (the handleCalculate function).
+
+=== REPLACE lines 242-265 (useEffect for log animation) ===
+```typescript
+  // ─── Calculation Log: Narrative Generation ─────────────────────────────
+
+  function generateNarrativeLog(
+    params: { lat: number; lon: number; cellRadius: number; antH: number; antG: number; eirp: number; model: string },
+    response: any,
+    elapsedMs: number,
+  ): string[] {
+    const lines: string[] = []
+    const { lat, lon, cellRadius, antH, antG, eirp, model } = params
+    const blocks = response.blocks || []
+    const summary = response.summary || {}
+    const neighborsChecked = response.neighbor_imts_checked || 0
+    const modelLabel = PROPAGATION_MODEL_INFO[model]?.label || model
+    
+    const green = blocks.filter((b: any) => b.status === 'green')
+    const red = blocks.filter((b: any) => b.status === 'red')
+    const gray = blocks.filter((b: any) => b.status === 'gray')
+
+    // ── Header ──
+    lines.push('╔══════════════════════════════════════════════════════════════╗')
+    lines.push('║     PAFC INTERFERENCE ANALYSIS — DETAILED REPORT             ║')
+    lines.push('╠══════════════════════════════════════════════════════════════╣')
+    lines.push('')
+
+    // ── Section 1: Input Parameters ──
+    lines.push('─── 1. INPUT PARAMETERS ────────────────────────────────────────')
+    lines.push(`   Location        : (${lat.toFixed(4)}, ${lon.toFixed(4)})`)
+    lines.push(`   Cell Radius     : ${cellRadius} m`)
+    lines.push(`   Antenna Height  : ${antH} m AGL`)
+    lines.push(`   Antenna Gain    : ${antG} dBi`)
+    lines.push(`   Max EIRP        : ${eirp} dBm`)
+    lines.push(`   Propagation     : ${modelLabel}`)
+    lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks × 10 MHz)`)
+    lines.push('')
+
+    // ── Section 2: Propagation Model ──
+    lines.push('─── 2. PROPAGATION MODEL ───────────────────────────────────────')
+    if (model === 'free_space') {
+      lines.push(`   Model           : Free Space Path Loss (FSPL)`)
+      lines.push(`   Formula         : FSPL(dB) = 32.4 + 20·log₁₀(d_km) + 20·log₁₀(f_MHz)`)
+      lines.push(`   Description     : คำนวณการสูญเสียในพื้นที่ว่าง ไม่มีสิ่งกีดขวาง`)
+      lines.push(`   Applied to      : ทุกระยะระหว่าง IMT ↔ FS receiver`)
+      lines.push(`                      และ IMT ↔ IMT neighbor`)
+      lines.push('')
+      lines.push(`   Example: ที่ระยะ 1 km, ความถี่ 4900 MHz:`)
+      const fspl1km = 32.4 + 20 * Math.log10(1) + 20 * Math.log10(4900)
+      lines.push(`     FSPL = 32.4 + 20·log₁₀(1) + 20·log₁₀(4900)`)
+      lines.push(`          = 32.4 + 0 + 73.8`)
+      lines.push(`          = ${fspl1km.toFixed(1)} dB`)
+      lines.push('')
+    } else if (model === 'p452') {
+      lines.push(`   Model           : ITU-R P.452`)
+      lines.push(`   Description     : คำนึงถึงสภาพอากาศ ภูมิประเทศ และการกระเจิง`)
+    } else {
+      lines.push(`   Model           : Hata (Okumura-Hata)`)
+      lines.push(`   Description     : สำหรับพื้นที่เมือง/ชานเมือง`)
+    }
+
+    // ── Section 3: FS Link Conflict Analysis ──
+    lines.push('─── 3. FS LINK CONFLICT ANALYSIS ────────────────────────────────')
+    const fsConflicts = red.filter((b: any) => b.reason?.includes('FS conflict'))
+    const fsCount = fsConflicts.length
+    lines.push(`   FS links in DB  : <all active links>`)
+    lines.push(`   Conflicts found : ${fsCount} block(s) affected by FS links`)
+    lines.push('')
+    
+    if (fsConflicts.length > 0) {
+      lines.push('   ┌─ Conflict Detail ─────────────────────────────────────────┐')
+      fsConflicts.forEach((b: any, idx: number) => {
+        const fsMatch = b.reason.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm\)/)
+        if (fsMatch) {
+          const name = fsMatch[1].trim()
+          const iVal = fsMatch[2]
+          const thresh = fsMatch[3]
+          const exceed = (parseFloat(iVal) - parseFloat(thresh)).toFixed(1)
+          lines.push(`   │ Block ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz`)
+          lines.push(`   │   FS Link       : ${name}`)
+          lines.push(`   │   Interference  : I = ${iVal} dBm`)
+          lines.push(`   │   Threshold     : ${thresh} dBm`)
+          lines.push(`   │   Exceed by     : ${exceed} dB`)
+          lines.push(`   │   Status        : BLOCKED — I > threshold`)
+          lines.push(`   │   Calculation   : I = EIRP_IMT - FSPL(d, f_MHz) + G_RX`)
+          lines.push(`   │                   where d = distance to FS receiver`)
+          if (idx < fsConflicts.length - 1) lines.push('   │')
+        } else {
+          lines.push(`   │ ${b.reason}`)
+        }
+      })
+      lines.push('   └───────────────────────────────────────────────────────────┘')
+    } else {
+      lines.push('   No FS link conflicts detected — all blocks clear for FS.')
+    }
+    lines.push('')
+
+    // ── Section 4: IMT Neighbor Co-Channel Analysis ──
+    lines.push('─── 4. IMT CO-CHANNEL ANALYSIS ──────────────────────────────────')
+    const imtConflicts = red.filter((b: any) => b.reason?.includes('IMT co-channel'))
+    lines.push(`   Active IMTs     : ${neighborsChecked} block(s) from neighboring IMT stations`)
+    lines.push(`   Co-channel hits : ${imtConflicts.length} block(s) with same-frequency IMT nearby`)
+    lines.push('')
+    
+    if (imtConflicts.length > 0) {
+      lines.push('   ┌─ Co-Channel Detail ───────────────────────────────────────┐')
+      imtConflicts.forEach((b: any, idx: number) => {
+        const imtMatch = b.reason.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
+        if (imtMatch) {
+          const name = imtMatch[1].trim()
+          const actual = imtMatch[2]
+          const needed = imtMatch[3]
+          lines.push(`   │ Block ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz`)
+          lines.push(`   │   Neighbor IMT  : ${name}`)
+          lines.push(`   │   Distance      : ${actual} km`)
+          lines.push(`   │   Min Required  : ${needed} km (cell_radius₁ + cell_radius₂ + protection)`)
+          lines.push(`   │   Status        : BLOCKED — distance < minimum separation`)
+          if (idx < imtConflicts.length - 1) lines.push('   │')
+        } else {
+          lines.push(`   │ ${b.reason}`)
+        }
+      })
+      lines.push('   └───────────────────────────────────────────────────────────┘')
+    } else {
+      lines.push('   No co-channel conflicts — all neighboring IMTs use different blocks.')
+    }
+    lines.push('')
+
+    // ── Section 5: Guard Band Analysis ──
+    lines.push('─── 5. GUARD BAND ANALYSIS ──────────────────────────────────────')
+    const guardBlocks = gray.filter((b: any) => b.reason?.includes('Guard band'))
+    lines.push(`   Guard bands     : ${guardBlocks.length} block(s)`)
+    lines.push('')
+    if (guardBlocks.length > 0) {
+      lines.push('   ┌─ Guard Band Detail ───────────────────────────────────────┐')
+      guardBlocks.forEach((b: any, idx: number) => {
+        const gMatch = b.reason.match(/Guard band:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
+        if (gMatch) {
+          const name = gMatch[1].trim().replace('adjacent to ', '')
+          const actual = gMatch[2]
+          const needed = gMatch[3]
+          lines.push(`   │ Block ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz`)
+          lines.push(`   │   Adjacent to   : ${name}`)
+          lines.push(`   │   Distance      : ${actual} km < ${needed} km (adjacent-channel minimum)`)
+          lines.push(`   │   Status        : GUARD BAND — prevent adjacent-channel interference`)
+          if (idx < guardBlocks.length - 1) lines.push('   │')
+        } else {
+          lines.push(`   │ ${b.reason}`)
+        }
+      })
+      lines.push('   └───────────────────────────────────────────────────────────┘')
+      lines.push('')
+      lines.push('   Guard bands (10 MHz) ensure frequency separation between')
+      lines.push('   adjacent blocks of different IMT networks. Without them,')
+      lines.push('   out-of-band emissions could cause harmful interference.')
+    } else {
+      lines.push('   No guard bands required — all blocks have sufficient')
+      lines.push('   frequency separation from neighboring IMT allocations.')
+    }
+    lines.push('')
+
+    // ── Section 6: Final Results ──
+    lines.push('─── 6. FINAL BLOCK ALLOCATION ──────────────────────────────────')
+    lines.push(`   Total Blocks    : ${blocks.length}`)
+    lines.push(`   Available (G)   : ${green.length}  (${green.length * 10} MHz)`)
+    lines.push(`   Blocked  (R)    : ${red.length}  (${red.length * 10} MHz)`)
+    lines.push(`   Guard    (Y)    : ${gray.length}  (${gray.length * 10} MHz)`)
+    lines.push('')
+    
+    // ASCII spectrum bar
+    let barLine = '   ['
+    blocks.forEach((b: any) => {
+      if (b.status === 'green') barLine += '█'
+      else if (b.status === 'red') barLine += '▓'
+      else barLine += '░'
+    })
+    barLine += `] 4800 ────────────────────────── 4990 MHz`
+    lines.push(barLine)
+    lines.push(`    █ = Available   ▓ = Blocked   ░ = Guard Band`)
+    lines.push('')
+
+    const availMHz = green.length * 10
+    const pct = ((availMHz / 190) * 100).toFixed(1)
+    lines.push(`   SUMMARY: ${availMHz} / 190 MHz available (${pct}%)`)
+    lines.push(`   Response time  : ${elapsedMs} ms`)
+    lines.push('')
+    lines.push('╚══════════════════════════════════════════════════════════════╝')
+    
+    return lines
+  }
+```
+
+=== REPLACE lines 294-321 (handleCalculate) ===
+```typescript
+  const handleCalculate = useCallback(async () => {
+    setLoading(true)
+    setBlocks([])
+    setSavedMessage('')
+    setSaveError('')
+    setLogLines([])
+    
+    const t0 = performance.now()
+    
+    // Initial log lines while waiting
+    setLogLines([
+      '╔══════════════════════════════════════════════════════════════╗',
+      '║     Sending analysis request to backend...                  ║',
+      '╚══════════════════════════════════════════════════════════════╝',
+    ])
+    
+    try {
+      const res = await fetchWithAuth('/api/allocate/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          center_lat: lat,
+          center_lon: lon,
+          cell_radius: cellRadius,
+          antenna_height: antennaHeight,
+          antenna_gain: antennaGain,
+          max_eirp: maxEirp,
+          model: propagationModel,
+        }),
+      })
+      
+      const t1 = performance.now()
+      const elapsedMs = Math.round(t1 - t0)
+      const data = await res.json()
+      setBlocks(data.blocks || [])
+      
+      // Generate comprehensive narrative log from response data
+      const narrative = generateNarrativeLog(
+        { lat, lon, cellRadius, antH: antennaHeight, antG: antennaGain, eirp: maxEirp, model: propagationModel },
+        data,
+        elapsedMs,
+      )
+      setLogLines(narrative)
+      
+    } catch (err) {
+      console.error('Analysis failed:', err)
+      setLogLines((prev) => [
+        ...prev,
+        '',
+        '*** ERROR: Analysis request failed ***',
+        `  ${err instanceof Error ? err.message : 'Unknown error'}`,
+      ])
+      setSaveError('การวิเคราะห์ล้มเหลว กรุณาลองใหม่')
+    } finally {
+      setLoading(false)
+    }
+  }, [lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, propagationModel, fetchWithAuth])
+
+  const handleSave = useCallback(async () => {
+```
+
+=== ALSO: The render section for log (around line 593) needs minor update ===
+The log display already renders logLines.map(). Just ensure the container is scrollable and full-width.
+Check that the log container has font-mono, text-xs, and sufficient max-height.
+
+=== ALSO: Remove the old log animation useEffect (lines 242-265) entirely ===
+The animation is no longer needed — the log is generated from actual response data.

@@ -147,6 +147,149 @@ const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: strin
   },
 }
 
+// ─── Narrative ASCII Log Generator ────────────────────────────────────────
+
+function generateNarrativeLog(
+  params: { lat: number; lon: number; cellRadius: number; antH: number; antG: number; eirp: number; model: string },
+  response: any,
+  elapsedMs: number,
+): string[] {
+  const lines: string[] = []
+  const blocks = response.blocks || []
+  const modelLabel = PROPAGATION_MODEL_INFO[params.model]?.label || params.model
+  const green = blocks.filter((b: any) => b.status === 'green')
+  const red = blocks.filter((b: any) => b.status === 'red')
+  const gray = blocks.filter((b: any) => b.status === 'gray')
+
+  lines.push('╔══════════════════════════════════════════════════════════════╗')
+  lines.push('║     PAFC INTERFERENCE ANALYSIS — DETAILED REPORT             ║')
+  lines.push('╠══════════════════════════════════════════════════════════════╣')
+  lines.push('')
+
+  // Section 1: Input Parameters
+  lines.push('─── 1. INPUT PARAMETERS ────────────────────────────────────────')
+  lines.push(`   Location        : (${params.lat.toFixed(4)}, ${params.lon.toFixed(4)})`)
+  lines.push(`   Cell Radius     : ${params.cellRadius} m`)
+  lines.push(`   Antenna Height  : ${params.antH} m AGL`)
+  lines.push(`   Antenna Gain    : ${params.antG} dBi`)
+  lines.push(`   Max EIRP        : ${params.eirp} dBm`)
+  lines.push(`   Propagation     : ${modelLabel}`)
+  lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks × 10 MHz)`)
+  lines.push('')
+
+  // Section 2: Propagation Model
+  lines.push('─── 2. PROPAGATION MODEL ───────────────────────────────────────')
+  if (params.model === 'free_space') {
+    const fspl1km = 32.4 + 20 * Math.log10(1) + 20 * Math.log10(4900)
+    lines.push('   Model           : Free Space Path Loss (FSPL)')
+    lines.push('   Formula         : FSPL(dB) = 32.4 + 20·log10(d_km) + 20·log10(f_MHz)')
+    lines.push('   Description     : คำนวณการสูญเสียในพื้นที่ว่าง ไม่มีสิ่งกีดขวาง')
+    lines.push('')
+    lines.push(`   Example: ที่ระยะ 1 km, ความถี่ 4900 MHz:`)
+    lines.push(`     FSPL = 32.4 + 20·log10(1) + 20·log10(4900)`)
+    lines.push(`          = 32.4 + 0 + 73.8`)
+    lines.push(`          = ${fspl1km.toFixed(1)} dB`)
+  } else if (params.model === 'p452') {
+    lines.push('   Model           : ITU-R P.452')
+    lines.push('   Description     : คำนึงถึงสภาพอากาศ ภูมิประเทศ และการกระเจิง')
+  } else {
+    lines.push('   Model           : Hata (Okumura-Hata)')
+    lines.push('   Description     : สำหรับพื้นที่เมือง')
+  }
+  lines.push('')
+
+  // Section 3: FS Link Conflict
+  const fsConflicts = red.filter((b: any) => b.reason?.includes('FS conflict'))
+  lines.push('─── 3. FS LINK CONFLICT ANALYSIS ────────────────────────────────')
+  lines.push(`   Conflicts found : ${fsConflicts.length} block(s)`)
+  if (fsConflicts.length > 0) {
+    lines.push('   ┌─ Details ─────────────────────────────────────────────────┐')
+    fsConflicts.forEach((b: any) => {
+      const m = b.reason.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm\)/)
+      if (m) {
+        const exceed = (parseFloat(m[2]) - parseFloat(m[3])).toFixed(1)
+        lines.push(`   │ ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : ${m[1].trim()}`)
+        lines.push(`   │   I = ${m[2]} dBm > threshold ${m[3]} dBm (exceed by ${exceed} dB)`)
+        lines.push(`   │   I = EIRP_IMT − FSPL(d, f) + G_RX_FS`)
+      } else {
+        lines.push(`   │ ${b.reason}`)
+      }
+    })
+    lines.push('   └───────────────────────────────────────────────────────────┘')
+  } else {
+    lines.push('   No FS link conflicts detected.')
+  }
+  lines.push('')
+
+  // Section 4: IMT Co-Channel
+  const imtConflicts = red.filter((b: any) => b.reason?.includes('IMT co-channel'))
+  const neighborsChecked = response.neighbor_imts_checked || 0
+  lines.push('─── 4. IMT CO-CHANNEL ANALYSIS ──────────────────────────────────')
+  lines.push(`   Neighbors       : ${neighborsChecked} block(s) from nearby IMT stations`)
+  lines.push(`   Co-channel hits : ${imtConflicts.length} block(s)`)
+  if (imtConflicts.length > 0) {
+    imtConflicts.forEach((b: any) => {
+      const m = b.reason.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
+      if (m) {
+        lines.push(`   ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : ${m[1].trim()} at ${m[2]} km (need ${m[3]} km)`)
+      } else {
+        lines.push(`   ${b.reason}`)
+      }
+    })
+  } else {
+    lines.push('   No co-channel conflicts.')
+  }
+  lines.push('')
+
+  // Section 5: Guard Band
+  const guardBlocks = gray.filter((b: any) => b.reason?.includes('Guard band'))
+  lines.push('─── 5. GUARD BAND ANALYSIS ──────────────────────────────────────')
+  lines.push(`   Guard bands     : ${guardBlocks.length} block(s)`)
+  if (guardBlocks.length > 0) {
+    guardBlocks.forEach((b: any) => {
+      const m = b.reason.match(/Guard band:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
+      if (m) {
+        const name = m[1].trim().replace('adjacent to ', '')
+        lines.push(`   ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : adjacent to ${name} (${m[2]} km < ${m[3]} km)`)
+      } else {
+        lines.push(`   ${b.reason}`)
+      }
+    })
+    lines.push('')
+    lines.push('   Guard bands prevent adjacent-channel interference between')
+    lines.push('   different IMT networks operating in close proximity.')
+  } else {
+    lines.push('   No guard bands required.')
+  }
+  lines.push('')
+
+  // Section 6: Final Results with ASCII bar
+  lines.push('─── 6. FINAL BLOCK ALLOCATION ──────────────────────────────────')
+  lines.push(`   Total    : ${blocks.length} blocks (190 MHz)`)
+  lines.push(`   Available: ${green.length} (${green.length * 10} MHz)  █`)
+  lines.push(`   Blocked  : ${red.length} (${red.length * 10} MHz)  ▓`)
+  lines.push(`   Guard    : ${gray.length} (${gray.length * 10} MHz)  ░`)
+  lines.push('')
+  let barLine = '   ['
+  blocks.forEach((b: any) => {
+    barLine += b.status === 'green' ? '█' : b.status === 'red' ? '▓' : '░'
+  })
+  barLine += ']'
+  lines.push(barLine)
+  lines.push('   4800                                                                 4990 MHz')
+  lines.push('   █ = Available   ▓ = Blocked   ░ = Guard Band')
+  lines.push('')
+
+  const availMHz = green.length * 10
+  const pct = ((availMHz / 190) * 100).toFixed(1)
+  lines.push(`   RESULT: ${availMHz} / 190 MHz available (${pct}%)`)
+  lines.push(`   Response time: ${elapsedMs} ms`)
+  lines.push('')
+  lines.push('╚══════════════════════════════════════════════════════════════╝')
+
+  return lines
+}
+
 export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusChange, onConfirmLocation }: IMTAddWorkspaceProps) {
   const { fetchWithAuth } = useAuth()
 
@@ -177,7 +320,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const miniMapRef = useRef<maplibregl.Map | null>(null)
   const miniMarkerRef = useRef<maplibregl.Marker | null>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
-  const stepRef = useRef(0)
 
   // Init mini map
   useEffect(() => {
@@ -239,31 +381,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     drawMiniCellRadius(map, lat, lon, cellRadius)
   }, [lat, lon, cellRadius])
 
-  // Calculation log animation
-  useEffect(() => {
-    if (loading) {
-      setLogLines([])
-      stepRef.current = 0
-      const steps = [
-        'กำลังคำนวณ propagation loss...',
-        'กำลังตรวจสอบ FS links...',
-        'กำลังวิเคราะห์ guard band...',
-        'กำลังสรุปผล...',
-      ]
-      const timer = setInterval(() => {
-        if (stepRef.current < steps.length) {
-          setLogLines((prev) => prev.concat(steps[stepRef.current]))
-          stepRef.current++
-          if (stepRef.current >= steps.length) {
-            clearInterval(timer)
-          }
-        }
-      }, 500)
-      return () => clearInterval(timer)
-    }
-    // Keep logLines visible after loading completes; only clear on next calculate
-  }, [loading])
-
   // Auto-scroll log
   useEffect(() => {
     if (logContainerRef.current) {
@@ -292,10 +409,16 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   }, [showCloseConfirm])
 
   const handleCalculate = useCallback(async () => {
+    const startTime = performance.now()
     setLoading(true)
     setBlocks([])
     setSavedMessage('')
     setSaveError('')
+    setLogLines([
+      '╔══════════════════════════════════════════════════════════════╗',
+      '║  Sending analysis request to backend...                     ║',
+      '╚══════════════════════════════════════════════════════════════╝',
+    ])
     try {
       const res = await fetchWithAuth('/api/allocate/analyze', {
         method: 'POST',
@@ -311,9 +434,16 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         }),
       })
       const data = await res.json()
+      const elapsedMs = Math.round(performance.now() - startTime)
       setBlocks(data.blocks || [])
+      setLogLines(generateNarrativeLog(
+        { lat, lon, cellRadius, antH: antennaHeight, antG: antennaGain, eirp: maxEirp, model: propagationModel },
+        data,
+        elapsedMs,
+      ))
     } catch (err) {
       console.error('Analysis failed:', err)
+      setLogLines((prev) => [...prev, '', 'ERROR: การวิเคราะห์ล้มเหลว กรุณาลองใหม่'])
       setSaveError('การวิเคราะห์ล้มเหลว กรุณาลองใหม่')
     } finally {
       setLoading(false)
@@ -592,19 +722,13 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
           {/* SECTION 2: Calculation Running Log — always visible after first calculation */}
           {logLines.length > 0 && (
             <section className="bg-gray-50 rounded-lg border border-gray-200 p-4 animate-fade-in-up">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Calculation Log</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Detailed Analysis Report</h3>
               <div
                 ref={logContainerRef}
-                className="max-h-40 overflow-y-auto text-xs font-mono text-gray-600 space-y-1"
+                className="max-h-[500px] overflow-y-auto text-xs font-mono text-gray-800 whitespace-pre-wrap leading-snug"
               >
                 {logLines.map((line, i) => (
-                  <div
-                    key={i}
-                    className="py-0.5 transition-opacity duration-300"
-                    style={{ opacity: 1 }}
-                  >
-                    [{i + 1}/4] {line}
-                  </div>
+                  <div key={i}>{line || '\u00A0'}</div>
                 ))}
               </div>
             </section>
