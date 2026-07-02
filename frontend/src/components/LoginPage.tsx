@@ -29,59 +29,27 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex relative bg-white">
-      {/* Left Panel — Diagonal Split (hidden on mobile) */}
+    <div className="min-h-screen flex relative bg-[#F5F5F0]">
+      {/* Left Panel — Diagonal Split with full-bleed cover image (hidden on mobile) */}
       <div
-        className="hidden lg:flex relative w-[45%] min-h-screen overflow-hidden"
+        className="hidden lg:block relative w-[45%] min-h-screen overflow-hidden"
         style={{
-          backgroundColor: '#1A1A2E',
           clipPath: 'polygon(0 0, 100% 0, 82% 100%, 0 100%)',
           filter: 'drop-shadow(3px 0 6px rgba(0,0,0,0.12))',
         }}
       >
-        {/* Subtle background texture */}
+        <img
+          src="/Cover.png"
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        {/* Subtle overlay gradient for depth */}
         <div
           className="absolute inset-0"
           style={{
-            backgroundImage: `
-              radial-gradient(ellipse at 30% 20%, rgba(192,0,0,0.15) 0%, transparent 60%),
-              radial-gradient(ellipse at 70% 80%, rgba(192,0,0,0.08) 0%, transparent 50%),
-              radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 70%)
-            `,
+            background: 'linear-gradient(135deg, rgba(26,26,46,0.3) 0%, transparent 60%)',
           }}
         />
-
-        {/* Content */}
-        <div className="relative z-10 flex flex-col items-center justify-center w-full px-10 xl:px-16">
-          {/* Cover image */}
-          <div className="w-60 xl:w-72 h-44 xl:h-52 rounded-2xl overflow-hidden mb-8 relative">
-            <img src="/Cover.png" alt="PAFC Cover" className="absolute inset-0 w-full h-full object-cover opacity-80" />
-          </div>
-
-          {/* Title */}
-          <h1 className="text-2xl xl:text-3xl font-bold text-white text-center leading-snug mb-4">
-            Private Network Automatic
-            <br />
-            Frequency Coordination
-          </h1>
-
-          {/* Subtitle */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className="h-px w-8 bg-[#C00000]/60" />
-            <h2 className="text-xl xl:text-2xl font-bold text-[#C00000]">
-              ระบบ PAFC
-            </h2>
-            <div className="h-px w-8 bg-[#C00000]/60" />
-          </div>
-
-          {/* Tagline */}
-          <p className="text-white/50 text-sm tracking-wide">
-            4800-4990 MHz | สำนักงาน กสทช.
-          </p>
-        </div>
-
-        {/* Bottom accent bar */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#C00000]/50 to-transparent" />
       </div>
 
       {/* Right Panel — Login Form */}
