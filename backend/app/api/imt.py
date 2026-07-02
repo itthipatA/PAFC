@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.database import get_db
-from app.models.imt import IMTAllocation
+from app.models.imt import IMTAllocation, SpectrumBlock
 
 router = APIRouter()
 
@@ -23,7 +23,25 @@ async def list_imt_allocations(
 
     result = await db.execute(query)
     allocations = result.scalars().all()
-    return {"count": len(allocations), "allocations": [_imt_to_dict(a) for a in allocations]}
+
+    # Batch query all blocks for these allocations
+    alloc_ids = [str(a.id) for a in allocations]
+    blocks_by_alloc = {}
+    if alloc_ids:
+        block_query = select(SpectrumBlock).where(
+            SpectrumBlock.allocation_id.in_(alloc_ids)
+        )
+        block_result = await db.execute(block_query)
+        for block in block_result.scalars().all():
+            aid = str(block.allocation_id)
+            if aid not in blocks_by_alloc:
+                blocks_by_alloc[aid] = []
+            blocks_by_alloc[aid].append(_block_to_dict(block))
+
+    return {
+        "count": len(allocations),
+        "allocations": [_imt_to_dict(a, blocks_by_alloc.get(str(a.id), [])) for a in allocations],
+    }
 
 
 @router.get("/{allocation_id}")
@@ -33,7 +51,13 @@ async def get_imt_allocation(allocation_id: str, db: AsyncSession = Depends(get_
     alloc = result.scalar_one_or_none()
     if not alloc:
         raise HTTPException(status_code=404, detail="IMT Allocation not found")
-    return _imt_to_dict(alloc)
+
+    # Query blocks
+    block_query = select(SpectrumBlock).where(SpectrumBlock.allocation_id == allocation_id)
+    block_result = await db.execute(block_query)
+    blocks = [_block_to_dict(b) for b in block_result.scalars().all()]
+
+    return _imt_to_dict(alloc, blocks)
 
 
 @router.post("/")
@@ -43,8 +67,7 @@ async def create_imt_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     if "area_wkt" not in data and "center_lat" in data and "center_lon" in data:
         lat, lon = data["center_lat"], data["center_lon"]
         radius = data.get("cell_radius", 500)
-        # Simple square WKT around center
-        dlat = radius / 111320.0  # meters to degrees lat
+        dlat = radius / 111320.0
         dlon = radius / (111320.0 * abs(lat / 90.0 + 1e-9)) if abs(lat) > 1e-6 else radius / 111320.0
         data["area_wkt"] = (
             f"POLYGON(({lon-dlon} {lat-dlat},{lon+dlon} {lat-dlat},"
@@ -53,9 +76,26 @@ async def create_imt_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     
     alloc = IMTAllocation(**{k: v for k, v in data.items() if hasattr(IMTAllocation, k)})
     db.add(alloc)
+    await db.flush()  # Get alloc.id without committing yet
+
+    # Save blocks to spectrum_blocks table
+    blocks_data = data.get("blocks", [])
+    saved_blocks = []
+    for b in blocks_data:
+        block = SpectrumBlock(
+            allocation_id=str(alloc.id),
+            freq_low=float(b["freq_low"]),
+            freq_high=float(b["freq_high"]),
+            status=b.get("status", "allocated"),
+            max_eirp=b.get("max_eirp"),
+        )
+        db.add(block)
+        saved_blocks.append(block)
+
     await db.commit()
     await db.refresh(alloc)
-    return _imt_to_dict(alloc)
+
+    return _imt_to_dict(alloc, [_block_to_dict(b) for b in saved_blocks])
 
 
 @router.put("/{allocation_id}")
@@ -72,7 +112,13 @@ async def update_imt_allocation(allocation_id: str, data: dict, db: AsyncSession
 
     await db.commit()
     await db.refresh(alloc)
-    return _imt_to_dict(alloc)
+
+    # Query blocks
+    block_query = select(SpectrumBlock).where(SpectrumBlock.allocation_id == allocation_id)
+    block_result = await db.execute(block_query)
+    blocks = [_block_to_dict(b) for b in block_result.scalars().all()]
+
+    return _imt_to_dict(alloc, blocks)
 
 
 @router.delete("/{allocation_id}")
@@ -88,10 +134,8 @@ async def delete_imt_allocation(allocation_id: str, db: AsyncSession = Depends(g
     return {"message": f"IMT Allocation {allocation_id} expired"}
 
 
-def _imt_to_dict(a: IMTAllocation) -> dict:
-    # Extract center from WKT area_wkt
+def _imt_to_dict(a: IMTAllocation, blocks: list) -> dict:
     center_lat, center_lon = _extract_center_from_wkt(str(a.area_wkt))
-    
     return {
         "id": str(a.id),
         "name": a.name,
@@ -108,15 +152,22 @@ def _imt_to_dict(a: IMTAllocation) -> dict:
         "valid_from": str(a.valid_from) if a.valid_from else None,
         "valid_until": str(a.valid_until) if a.valid_until else None,
         "created_at": str(a.created_at),
-        "blocks": [],  # populated by spectrum_blocks query if needed
+        "blocks": blocks,
+    }
+
+
+def _block_to_dict(b: SpectrumBlock) -> dict:
+    return {
+        "freq_low": b.freq_low,
+        "freq_high": b.freq_high,
+        "status": b.status,
+        "max_eirp": b.max_eirp,
     }
 
 
 def _extract_center_from_wkt(wkt: str) -> tuple:
-    """Extract center lat/lon from WKT POLYGON string.
-    Takes the centroid of the polygon as the center point."""
+    """Extract center lat/lon from WKT POLYGON string."""
     try:
-        # Simple WKT parser: "POLYGON((lon lat,lon lat,...))"
         coords_str = wkt.replace("POLYGON", "").replace("(", "").replace(")", "").strip()
         pairs = coords_str.split(",")
         lons, lats = [], []
@@ -129,4 +180,4 @@ def _extract_center_from_wkt(wkt: str) -> tuple:
             return sum(lats) / len(lats), sum(lons) / len(lons)
     except Exception:
         pass
-    return 13.75, 100.5  # default Bangkok
+    return 13.75, 100.5

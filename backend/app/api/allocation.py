@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.database import get_db
 from app.models.fs_link import FSLink
-from app.models.imt import IMTAllocation
+from app.models.imt import IMTAllocation, SpectrumBlock
 from app.services.interference import (
     InterferenceEngine, FSLinkData, IMTNeighborData
 )
@@ -61,29 +61,52 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         for fs in fs_links_raw
     ]
 
-    # Query active IMT neighbors
+    # Query active IMT allocations with their spectrum blocks
     imt_query = select(IMTAllocation).where(IMTAllocation.status == "active")
     imt_result = await db.execute(imt_query)
     imt_raw = imt_result.scalars().all()
 
-    # Get blocks for each neighbor IMT (simplified — per allocation, assume full block range for now)
+    # Batch query all spectrum blocks for active IMTs
+    imt_ids = [str(imt.id) for imt in imt_raw]
+    blocks_by_imt = {}
+    if imt_ids:
+        block_query = select(SpectrumBlock).where(
+            SpectrumBlock.allocation_id.in_(imt_ids)
+        ).where(SpectrumBlock.status == "allocated")
+        block_result = await db.execute(block_query)
+        for block in block_result.scalars().all():
+            aid = str(block.allocation_id)
+            if aid not in blocks_by_imt:
+                blocks_by_imt[aid] = []
+            blocks_by_imt[aid].append(block)
+
+    # Build neighbor IMT data — ONE entry per allocated block per neighbor
     neighbor_imts = []
     for imt in imt_raw:
-        # Parse area_wkt for center (simplified: use first coordinate)
+        imt_id = str(imt.id)
+        blocks = blocks_by_imt.get(imt_id, [])
+        
+        # Get center from WKT
         center = _parse_wkt_center(imt.area_wkt)
         if center is None:
             continue
-        neighbor_imts.append(
-            IMTNeighborData(
-                id=str(imt.id),
-                name=imt.name,
-                center_lat=center["lat"],
-                center_lon=center["lon"],
-                cell_radius=imt.cell_radius,
-                freq_low=4800,   # Simplified — would query spectrum_blocks
-                freq_high=4990,  # In production: per-block neighbor check
+        
+        if not blocks:
+            # Legacy IMT with no spectrum_blocks — skip (won't trigger conflicts)
+            continue
+        
+        for block in blocks:
+            neighbor_imts.append(
+                IMTNeighborData(
+                    id=imt_id,
+                    name=str(imt.name),
+                    center_lat=center["lat"],
+                    center_lon=center["lon"],
+                    cell_radius=float(imt.cell_radius),
+                    freq_low=float(block.freq_low),
+                    freq_high=float(block.freq_high),
+                )
             )
-        )
 
     # Run interference analysis
     engine = InterferenceEngine(propagation_model=model_name)
@@ -111,13 +134,13 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         ],
         "summary": result.summary,
         "model_used": model_name,
+        "neighbor_imts_checked": len(neighbor_imts),
     }
 
 
 def _parse_wkt_center(wkt: str) -> dict | None:
     """Parse WKT POLYGON and return approximate center from first point."""
     try:
-        # "POLYGON((lon lat, lon lat, ...))"
         inner = wkt.replace("POLYGON", "").replace("(", "").replace(")", "").strip()
         coords = [c.strip().split() for c in inner.split(",") if c.strip()]
         if coords:
