@@ -104,9 +104,8 @@ function destPoint(
 
 function txMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.style.width = '28px'
-  el.style.height = '36px'
-  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36">
+  el.style.cssText = 'width:28px !important;height:36px !important;overflow:visible'
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36" style="display:block">
       <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
         <line x1="50" y1="25" x2="25" y2="115" stroke-width="3.5" />
         <line x1="50" y1="25" x2="75" y2="115" stroke-width="3.5" />
@@ -141,9 +140,8 @@ function txMarkerEl(): HTMLDivElement {
 
 function rxMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.style.width = '28px'
-  el.style.height = '36px'
-  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36">
+  el.style.cssText = 'width:28px !important;height:36px !important;overflow:visible'
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36" style="display:block">
       <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
         <line x1="50" y1="25" x2="25" y2="115" stroke-width="3.5" />
         <line x1="50" y1="25" x2="75" y2="115" stroke-width="3.5" />
@@ -178,9 +176,8 @@ function rxMarkerEl(): HTMLDivElement {
 
 function imtMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.style.width = '28px'
-  el.style.height = '36px'
-  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36">
+  el.style.cssText = 'width:28px !important;height:36px !important;overflow:visible'
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36" style="display:block">
       <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
         <line x1="40" y1="38" x2="40" y2="112" stroke-width="3" />
         <line x1="50" y1="42" x2="50" y2="115" stroke-width="3" />
