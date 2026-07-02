@@ -26,11 +26,13 @@ const LAYER_IDS = {
 // ─── Helper: Parse conflict reason from backend ─────────────────────────────
 
 interface ParsedReason {
-  conflictType: 'FS' | 'GUARD' | 'UNKNOWN'
-  linkName?: string
-  iValue?: string      // interference value in dBm
-  threshold?: string    // threshold value in dBm
-  exceedDb?: string     // how much it exceeds threshold
+  conflictType: 'FS' | 'IMT_COCHANNEL' | 'GUARD' | 'UNKNOWN' | 'AVAILABLE'
+  linkName?: string      // FS link or IMT name
+  iValue?: string         // Interference dBm (FS)
+  threshold?: string      // Threshold dBm (FS) or separation distance
+  exceedDb?: string       // Exceed value (FS) or actual distance
+  imtDistance?: string    // Actual IMT separation distance
+  neededSeparation?: string // Required separation distance
   raw: string
 }
 
@@ -47,9 +49,26 @@ function parseReason(reason: string): ParsedReason {
     return { conflictType: 'FS', linkName, iValue, threshold, exceedDb, raw }
   }
 
-  // Guard band
-  if (raw.toLowerCase().includes('guard') || raw.includes('Guard')) {
-    return { conflictType: 'GUARD', raw }
+  // IMT co-channel: "IMT co-channel conflict: TEST-IMT-01 (0.6 km < 3.0 km)"
+  const imtMatch = raw.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
+  if (imtMatch) {
+    const linkName = imtMatch[1].trim()
+    const imtDistance = imtMatch[2]
+    const neededSeparation = imtMatch[3]
+    return { conflictType: 'IMT_COCHANNEL', linkName, imtDistance, neededSeparation, raw }
+  }
+
+  // Guard band: "Guard band: adjacent to TEST-IMT-01 (0.6 km < 1.5 km)"
+  const guardMatch = raw.match(/Guard band:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
+  if (guardMatch) {
+    const linkName = guardMatch[1].trim().replace('adjacent to ', '')
+    const imtDistance = guardMatch[2]
+    const neededSeparation = guardMatch[3]
+    return { conflictType: 'GUARD', linkName, imtDistance, neededSeparation, raw }
+  }
+
+  if (raw.toLowerCase().includes('available')) {
+    return { conflictType: 'AVAILABLE', raw }
   }
 
   return { conflictType: 'UNKNOWN', raw }
@@ -581,11 +600,12 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 <div className="mb-4">
                   <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Guard Band Analysis</h4>
                   <div className="text-sm text-gray-800">
-                    <p>Guard bands provide frequency separation between IMT and FS services to prevent adjacent-channel interference.</p>
+                    <p>Guard bands (10 MHz) separate adjacent frequency blocks between different IMT networks to prevent adjacent-channel interference.</p>
+                    <p className="mt-1">When two IMT stations operate in close proximity (&lt; 1.5 km), adjacent blocks require guard bands regardless of operator.</p>
                     {statusCounts.guard === 0 ? (
-                      <p className="text-green-700 mt-1">No guard bands required in this allocation scenario.</p>
+                      <p className="text-green-700 mt-1">No guard bands required — sufficient frequency separation exists between all neighboring IMT networks.</p>
                     ) : (
-                      <p className="text-amber-700 mt-1">Guard bands required: {statusCounts.guard} blocks ({guardMhz} MHz)</p>
+                      <p className="text-amber-700 mt-1">Guard bands required: {statusCounts.guard} blocks ({guardMhz} MHz) — blocks adjacent to conflicting IMT networks.</p>
                     )}
                   </div>
                 </div>
@@ -753,7 +773,49 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                         </div>
                       )}
 
-                      {block.status === 'gray' && (
+                      {block.status === 'red' && parsed.conflictType === 'IMT_COCHANNEL' && (
+                        <div className="text-xs space-y-1.5">
+                          <div className="flex items-center gap-1 font-medium text-red-700">
+                            <XCircle className="w-3.5 h-3.5" />
+                            ไม่สามารถจัดสรรได้
+                          </div>
+                          <div className="text-red-700 pl-5">
+                            สาเหตุ: ทับซ้อนกับ IMT เครือข่ายอื่น (Co-Channel)
+                          </div>
+                          <div className="text-red-700 pl-5 space-y-0.5">
+                            <div className="font-medium">รายละเอียด:</div>
+                            <div>&nbsp;&nbsp;&nbsp;• ชื่อ IMT: {parsed.linkName}</div>
+                            <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>
+                            <div>&nbsp;&nbsp;&nbsp;• ระยะห่างขั้นต่ำที่ต้องการ: {parsed.neededSeparation} km</div>
+                          </div>
+                          <div className="text-xs text-red-600 bg-red-100/50 rounded p-2 mt-1 leading-relaxed">
+                            IMT "{parsed.linkName}" ใช้ความถี่เดียวกันกับบล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz
+                            และอยู่ห่างเพียง {parsed.imtDistance} km ซึ่งน้อยกว่าระยะห่างขั้นต่ำ {parsed.neededSeparation} km
+                            ที่ต้องการสำหรับ Co-Channel protection จึงไม่สามารถใช้บล็อกนี้ได้
+                          </div>
+                        </div>
+                      )}
+
+                      {block.status === 'gray' && parsed.conflictType === 'GUARD' && parsed.linkName && (
+                        <div className="text-xs space-y-1.5">
+                          <div className="flex items-center gap-1 font-medium text-gray-700">
+                            <Shield className="w-3.5 h-3.5" />
+                            Guard Band
+                          </div>
+                          <div className="text-gray-600 pl-5 space-y-0.5">
+                            <div>&nbsp;&nbsp;&nbsp;• ช่องว่างป้องกันระหว่าง IMT: {parsed.linkName}</div>
+                            <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>
+                            <div>&nbsp;&nbsp;&nbsp;• ระยะขั้นต่ำ: {parsed.neededSeparation} km</div>
+                          </div>
+                          <div className="text-xs text-gray-600 bg-gray-100 rounded p-2 mt-1 leading-relaxed">
+                            บล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz อยู่ติดกับความถี่ของ IMT "{parsed.linkName}"
+                            (Adjacent Channel) ระยะห่าง {parsed.imtDistance} km ต่ำกว่าระยะขั้นต่ำ {parsed.neededSeparation} km
+                            จึงต้องเว้นเป็น Guard Band เพื่อป้องกันสัญญาณรบกวนระหว่างช่องความถี่
+                          </div>
+                        </div>
+                      )}
+
+                      {block.status === 'gray' && (!parsed.linkName) && (
                         <div className="text-xs text-gray-600">
                           <div className="flex items-center gap-1 font-medium">
                             <Shield className="w-3.5 h-3.5" />
