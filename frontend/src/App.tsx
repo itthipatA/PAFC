@@ -40,22 +40,13 @@ function AuthenticatedApp({
 
   const [selectedLat, setSelectedLat] = useState<number | null>(null)
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
-  const [workspaceMapClickLat, setWorkspaceMapClickLat] = useState<number | null>(null)
-  const [workspaceMapClickLon, setWorkspaceMapClickLon] = useState<number | null>(null)
-  const [mapClickMode, setMapClickMode] = useState<'pan' | 'place'>('pan')
   const [mapStyle, setMapStyle] = useState('voyager')
   const [showDashboardWorkspace, setShowDashboardWorkspace] = useState(false)
   const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
-  const { fetchWithAuth } = useAuth()
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
     setSelectedLon(lon)
-    // Also set workspace coordinates if workspace is open
-    setWorkspaceMapClickLat(lat)
-    setWorkspaceMapClickLon(lon)
-    // After placing, return to pan mode
-    setMapClickMode('pan')
   }, [])
 
   const handleZoomTo = useCallback((lat: number, lon: number) => {
@@ -70,7 +61,12 @@ function AuthenticatedApp({
 
   const handleCloseWorkspace = useCallback(() => {
     setShowDashboardWorkspace(false)
-    setMapClickMode('pan')
+  }, [])
+
+  const handleConfirmLocation = useCallback((lat: number, lon: number, cellRadius: number) => {
+    setSelectedLat(lat)
+    setSelectedLon(lon)
+    setWorkspaceCellRadius(cellRadius)
   }, [])
 
   return (
@@ -206,7 +202,6 @@ function AuthenticatedApp({
                   cellRadius={workspaceCellRadius}
                   centerLat={selectedLat}
                   centerLon={selectedLon}
-                  clickMode={mapClickMode}
                 />
               </div>
 
@@ -221,10 +216,8 @@ function AuthenticatedApp({
                 <IMTAddWorkspace
                   onBack={handleCloseWorkspace}
                   mode="panel"
-                  onMapClickLat={workspaceMapClickLat}
-                  onMapClickLon={workspaceMapClickLon}
                   onCellRadiusChange={setWorkspaceCellRadius}
-                  onActivateMapClick={() => setMapClickMode('place')}
+                  onConfirmLocation={handleConfirmLocation}
                 />
               </div>
             </div>
@@ -238,7 +231,6 @@ function AuthenticatedApp({
                   selectedLon={selectedLon}
                   blocks={[]}
                   mapStyle={mapStyle}
-                  clickMode="pan"
                 />
               </div>
             </div>

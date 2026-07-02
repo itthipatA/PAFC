@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
-import { circle } from '@turf/turf'
+import { circle, lineString } from '@turf/turf'
+import buffer from '@turf/buffer'
 import { useAuth } from '../contexts/AuthContext'
 import type { BlockResult, IMTAllocation } from '../types'
 
@@ -13,7 +14,6 @@ interface MapViewProps {
   cellRadius?: number
   centerLat?: number | null
   centerLon?: number | null
-  clickMode?: 'pan' | 'place'
 }
 
 // Map styles
@@ -95,7 +95,7 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'pan' }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
@@ -129,15 +129,13 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
 
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
 
-    // Default cursor based on clickMode
-    map.getCanvas().style.cursor = clickMode === 'place' ? 'crosshair' : 'grab'
-    map.on('dragstart', () => { map.getCanvas().style.cursor = clickMode === 'place' ? 'crosshair' : 'grabbing' })
-    map.on('dragend', () => { map.getCanvas().style.cursor = clickMode === 'place' ? 'crosshair' : 'grab' })
+    // Default cursor
+    map.getCanvas().style.cursor = 'grab'
+    map.on('dragstart', () => { map.getCanvas().style.cursor = 'grabbing' })
+    map.on('dragend', () => { map.getCanvas().style.cursor = 'grab' })
 
     map.on('click', (e) => {
-      if (clickMode === 'place') {
-        onMapClick(e.lngLat.lat, e.lngLat.lng)
-      }
+      onMapClick(e.lngLat.lat, e.lngLat.lng)
     })
 
     mapRef.current = map
@@ -163,12 +161,6 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     const style = MAP_STYLES[mapStyle] || MAP_STYLES.positron
     source.setTiles([style.url])
   }, [mapStyle])
-
-  // Update cursor when clickMode changes
-  useEffect(() => {
-    if (!mapRef.current) return
-    mapRef.current.getCanvas().style.cursor = clickMode === 'place' ? 'crosshair' : 'grab'
-  }, [clickMode])
 
   // Auto-pan when centerLat/centerLon change
   useEffect(() => {
@@ -318,25 +310,29 @@ function drawFSFresnelZone(map: maplibregl.Map, links: any[]) {
 
     const distanceKm = haversineKm(txLat, txLon, rxLat, rxLon)
     const midFreqGHz = ((freqLow + freqHigh) / 2) / 1000
-    const fresnelRadiusM = 8.657 * Math.sqrt(distanceKm / midFreqGHz)
+    const fresnelRadiusKm = 8.657 * Math.sqrt(distanceKm / midFreqGHz) / 1000
 
-    // Midpoint of the link
-    const midLat = (txLat + rxLat) / 2
-    const midLon = (txLon + rxLon) / 2
+    // Minimum 200m radius for visibility at map zoom levels
+    const bufferRadiusKm = Math.max(fresnelRadiusKm, 0.2)
 
     try {
-      const fresnelCircle = circle([midLon, midLat], fresnelRadiusM / 1000, {
-        steps: 64,
-        units: 'kilometers',
-      })
-      fresnelCircle.properties = {
+      const linkLine = lineString([[txLon, txLat], [rxLon, rxLat]], {
         name: link.name,
-        fresnelRadiusM: fresnelRadiusM.toFixed(2),
+        fresnelRadiusM: (fresnelRadiusKm * 1000).toFixed(2),
         midFreqGHz: midFreqGHz.toFixed(2),
+      })
+      const buffered = buffer(linkLine, bufferRadiusKm, { units: 'kilometers', steps: 32 })
+      if (buffered && buffered.geometry) {
+        buffered.properties = {
+          name: link.name,
+          fresnelRadiusM: (fresnelRadiusKm * 1000).toFixed(2),
+          bufferRadiusM: (bufferRadiusKm * 1000).toFixed(0),
+          midFreqGHz: midFreqGHz.toFixed(2),
+        }
+        fresnelFeatures.push(buffered)
       }
-      fresnelFeatures.push(fresnelCircle)
     } catch (e) {
-      console.warn('Failed to draw Fresnel zone for:', link.name, e)
+      console.warn('Failed to draw Fresnel corridor for:', link.name, e)
     }
   })
 
@@ -352,8 +348,8 @@ function drawFSFresnelZone(map: maplibregl.Map, links: any[]) {
     type: 'fill',
     source: LAYER_IDS.fsFresnelSource,
     paint: {
-      'fill-color': '#3B82F6',
-      'fill-opacity': 0.1,
+      'fill-color': '#60A5FA',
+      'fill-opacity': 0.15,
     },
   })
 
@@ -362,7 +358,7 @@ function drawFSFresnelZone(map: maplibregl.Map, links: any[]) {
     type: 'line',
     source: LAYER_IDS.fsFresnelSource,
     paint: {
-      'line-color': '#3B82F6',
+      'line-color': '#60A5FA',
       'line-width': 1.5,
       'line-dasharray': [6, 3],
       'line-opacity': 0.5,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
-import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, Info, MapPin } from 'lucide-react'
+import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
 import type { BlockResult } from '../types'
@@ -9,10 +9,8 @@ import type { BlockResult } from '../types'
 interface IMTAddWorkspaceProps {
   onBack: () => void
   mode?: 'full' | 'panel'
-  onMapClickLat?: number | null
-  onMapClickLon?: number | null
   onCellRadiusChange?: (r: number) => void
-  onActivateMapClick?: () => void
+  onConfirmLocation?: (lat: number, lon: number, cellRadius: number) => void
 }
 
 const LAYER_IDS = {
@@ -72,7 +70,7 @@ const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: strin
   },
 }
 
-export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, onMapClickLon, onCellRadiusChange, onActivateMapClick }: IMTAddWorkspaceProps) {
+export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusChange, onConfirmLocation }: IMTAddWorkspaceProps) {
   const { fetchWithAuth } = useAuth()
 
   // Form state
@@ -85,7 +83,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
   const [propagationModel, setPropagationModel] = useState('free_space')
   const [name, setName] = useState('')
   const [operator, setOperator] = useState('')
-  const [mapClickActive, setMapClickActive] = useState(false)
 
   // Calculation state
   const [loading, setLoading] = useState(false)
@@ -196,15 +193,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
     }
   }, [logLines])
-
-  // Sync map-click position to lat/lon inputs
-  useEffect(() => {
-    if (onMapClickLat != null && onMapClickLon != null && mapClickActive) {
-      setLat(onMapClickLat)
-      setLon(onMapClickLon)
-      setMapClickActive(false)
-    }
-  }, [onMapClickLat, onMapClickLon, mapClickActive])
 
   // Notify parent when cellRadius changes
   useEffect(() => {
@@ -393,25 +381,12 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
               <div className="mt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    onActivateMapClick?.()
-                    setMapClickActive(true)
-                  }}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                    mapClickActive
-                      ? 'bg-[#C00000] text-white border-[#C00000]'
-                      : 'bg-white text-[#C00000] border-[#C00000]/30 hover:bg-red-50'
-                  }`}
+                  onClick={() => onConfirmLocation?.(lat, lon, cellRadius)}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border bg-[#C00000] text-white border-[#C00000] hover:bg-[#8B0000] transition-colors"
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  คลิกตำแหน่งจากแผนที่
+                  ตกลง
                 </button>
-                {mapClickActive && (
-                  <p className="text-xs text-[#C00000] mt-1.5 flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />
-                    คลิกตำแหน่งบนแผนที่ด้านซ้าย...
-                  </p>
-                )}
               </div>
             </div>
 
@@ -538,7 +513,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
 
           {/* SECTION 2: Calculation Running Log — always visible after first calculation */}
           {logLines.length > 0 && (
-            <section className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+            <section className="bg-gray-50 rounded-lg border border-gray-200 p-4 animate-fade-in-up">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Calculation Log</h3>
               <div
                 ref={logContainerRef}
@@ -565,69 +540,70 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
             </div>
           )}
 
-          {/* SECTION 3: Terminal Calculation Report */}          {blocks.length > 0 && (() => {
+          {/* SECTION 3: Calculation Report */}
+          {blocks.length > 0 && (() => {
             const availableMhz = statusCounts.available * 10
             const totalMhz = blocks.length * 10
             const pct = totalMhz > 0 ? ((availableMhz / totalMhz) * 100).toFixed(1) : '0.0'
             const modelLabel = PROPAGATION_MODEL_INFO[propagationModel]?.label || propagationModel
             const modelDesc = PROPAGATION_MODEL_INFO[propagationModel]?.description || ''
-            const guardBlocks = blocks.filter(b => b.status === 'gray')
             const guardMhz = statusCounts.guard * 10
 
-            // Build box-drawing report lines
-            const W = 46 // total inner width
-            const padR = (s: string, n: number) => { const str = String(s); return str + ' '.repeat(Math.max(0, n - str.length)) }
-            const dash = (label: string) => padR('\u2500\u2500\u2500', W - label.length - 3)
-            let lines: string[] = []
-            lines.push('\u250C\u2500\u2500 Calculation Report ' + '\u2500'.repeat(W - 22) + '\u2510')
-            // PARAMETERS
-            lines.push('\u2502  PARAMETERS' + ' '.repeat(W - 16) + '\u2502')
-            lines.push('\u2502  ' + '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' + '  \u2502')
-            lines.push('\u2502  position     = (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')' + ' '.repeat(Math.max(0, W - 5 - 36 - ('(' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')').length)) + '\u2502')
-            lines.push('\u2502  cell_radius  = ' + padR(cellRadius.toLocaleString() + ' m', W - 32) + '\u2502')
-            lines.push('\u2502  ant_height   = ' + padR(antennaHeight + ' m AGL', W - 33) + '\u2502')
-            lines.push('\u2502  ant_gain     = ' + padR(antennaGain + ' dBi', W - 33) + '\u2502')
-            lines.push('\u2502  max_eirp     = ' + padR(maxEirp + ' dBm', W - 33) + '\u2502')
-            lines.push('\u2502  name         = ' + padR((name || '-'), W - 34) + '\u2502')
-            lines.push('\u2502  operator     = ' + padR((operator || '-'), W - 34) + '\u2502')
-            lines.push('\u2502' + ' '.repeat(W + 1) + '\u2502')
-            // MODEL
-            lines.push('\u2502  MODEL: ' + padR(modelLabel, W - 30) + '\u2502')
-            lines.push('\u2502  # FSPL(dB) = 32.4 + 20log10(d) + 20log10(f)' + ' '.repeat(Math.max(0, W - 1 - 45)) + '\u2502')
-            lines.push('\u2502  # ' + padR(modelDesc, W - 5) + '\u2502')
-            lines.push('\u2502' + ' '.repeat(W + 1) + '\u2502')
-            // GUARD BAND ANALYSIS
-            lines.push('\u2502  GUARD BAND ANALYSIS' + ' '.repeat(W - 22) + '\u2502')
-            lines.push('\u2502  ' + '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' + '  \u2502')
-            lines.push('\u2502  Guard bands provide frequency separation' + ' '.repeat(Math.max(0, W - 5 - 43)) + '\u2502')
-            lines.push('\u2502  between IMT and FS services to prevent' + ' '.repeat(Math.max(0, W - 5 - 38)) + '\u2502')
-            lines.push('\u2502  adjacent-channel interference.' + ' '.repeat(Math.max(0, W - 5 - 30)) + '\u2502')
-            if (statusCounts.guard === 0) {
-              lines.push('\u2502  No guard bands required in this' + ' '.repeat(Math.max(0, W - 5 - 30)) + '\u2502')
-              lines.push('\u2502  allocation scenario.' + ' '.repeat(Math.max(0, W - 5 - 19)) + '\u2502')
-            } else {
-              lines.push('\u2502  Guard bands required: ' + padR(statusCounts.guard + ' blocks (' + guardMhz + ' MHz)', W - 26) + '\u2502')
-              guardBlocks.forEach(b => {
-                lines.push('\u2502    ' + padR(b.freq_low.toFixed(0) + '-' + b.freq_high.toFixed(0) + ' MHz (guard)', W - 30) + '\u2502')
-              })
-            }
-            lines.push('\u2502' + ' '.repeat(W + 1) + '\u2502')
-            // RESULTS
-            lines.push('\u2502  RESULTS' + ' '.repeat(W - 13) + '\u2502')
-            lines.push('\u2502  ' + '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' + '  \u2502')
-            lines.push('\u2502  total_blocks  = ' + padR(blocks.length + ' (4800-4990 MHz)', W - 34) + '\u2502')
-            lines.push('\u2502  available     = ' + padR(statusCounts.available + ' (' + availableMhz + ' MHz)', W - 34) + '\u2502')
-            lines.push('\u2502  blocked       = ' + padR(statusCounts.blocked + ' (' + (statusCounts.blocked * 10) + ' MHz)', W - 34) + '\u2502')
-            lines.push('\u2502  guard_bands   = ' + padR(String(statusCounts.guard), W - 34) + '\u2502')
-            lines.push('\u2502' + ' '.repeat(W + 1) + '\u2502')
-            lines.push('\u2502  SUMMARY: ' + padR(availableMhz + '/' + totalMhz + ' MHz available (' + pct + '%)', W - 13) + '\u2502')
-            lines.push('\u2514' + '\u2500'.repeat(W + 1) + '\u2518')
-
             return (
-              <section className="bg-[#0D1117] rounded-lg border border-gray-700 p-4 overflow-x-auto">
-                <pre className="text-green-400 font-mono text-xs leading-relaxed m-0 whitespace-pre">
-                  {lines.join('\n')}
-                </pre>
+              <section className="bg-white rounded-xl border border-gray-200 p-5 font-serif animate-fade-in-up">
+                <h3 className="text-base font-bold text-gray-900 mb-3">Calculation Report</h3>
+
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Parameters</h4>
+                  <div className="space-y-1 text-sm text-gray-800">
+                    <div>position     = ({lat.toFixed(4)}, {lon.toFixed(4)})</div>
+                    <div>cell_radius  = {cellRadius.toLocaleString()} m</div>
+                    <div>ant_height   = {antennaHeight} m AGL</div>
+                    <div>ant_gain     = {antennaGain} dBi</div>
+                    <div>max_eirp     = {maxEirp} dBm</div>
+                    <div>name         = {name || '-'}</div>
+                    <div>operator     = {operator || '-'}</div>
+                  </div>
+                </div>
+
+                <hr className="my-3 border-gray-200" />
+
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Model: {modelLabel}</h4>
+                  <div className="space-y-1 text-sm text-gray-800">
+                    <div className="italic text-gray-600"># FSPL(dB) = 32.4 + 20\u00b7log10(d) + 20\u00b7log10(f)</div>
+                    <div className="italic text-gray-600"># {modelDesc}</div>
+                  </div>
+                </div>
+
+                <hr className="my-3 border-gray-200" />
+
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Guard Band Analysis</h4>
+                  <div className="text-sm text-gray-800">
+                    <p>Guard bands provide frequency separation between IMT and FS services to prevent adjacent-channel interference.</p>
+                    {statusCounts.guard === 0 ? (
+                      <p className="text-green-700 mt-1">No guard bands required in this allocation scenario.</p>
+                    ) : (
+                      <p className="text-amber-700 mt-1">Guard bands required: {statusCounts.guard} blocks ({guardMhz} MHz)</p>
+                    )}
+                  </div>
+                </div>
+
+                <hr className="my-3 border-gray-200" />
+
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Results</h4>
+                  <div className="space-y-1 text-sm text-gray-800">
+                    <div>total_blocks   = {blocks.length} (4800-4990 MHz)</div>
+                    <div>available      = {statusCounts.available} ({availableMhz} MHz)</div>
+                    <div>blocked        = {statusCounts.blocked} ({(statusCounts.blocked * 10)} MHz)</div>
+                    <div>guard_bands    = {statusCounts.guard}</div>
+                  </div>
+                  <div className="mt-3 py-2 px-3 bg-gray-50 rounded text-sm font-mono text-gray-900">
+                    SUMMARY: {availableMhz}/{totalMhz} MHz available ({pct}%)
+                  </div>
+                </div>
               </section>
             )
           })()}
@@ -642,7 +618,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
 
           {/* SECTION 4: Spectrum Analysis Results */}
           {blocks.length > 0 && (
-            <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-fade-in-up">
               <h2 className="text-base font-bold text-[#1A365D] mb-3">
                 ผลการวิเคราะห์คลื่นความถี่
               </h2>
