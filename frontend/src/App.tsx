@@ -47,7 +47,7 @@ function AuthenticatedApp({
   const [loading, setLoading] = useState(false)
   const [model, setModel] = useState('free_space')
   const [mapStyle, setMapStyle] = useState('voyager')
-  const [showIMTWorkspace, setShowIMTWorkspace] = useState(false)
+  const [showDashboardWorkspace, setShowDashboardWorkspace] = useState(false)
   const { fetchWithAuth } = useAuth()
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
@@ -102,12 +102,12 @@ function AuthenticatedApp({
     setSelectedLon(lon)
   }, [])
 
-  const handleOpenIMTWorkspace = useCallback(() => {
-    setShowIMTWorkspace(true)
+  const handleOpenWorkspace = useCallback(() => {
+    setShowDashboardWorkspace(true)
   }, [])
 
-  const handleCloseIMTWorkspace = useCallback(() => {
-    setShowIMTWorkspace(false)
+  const handleCloseWorkspace = useCallback(() => {
+    setShowDashboardWorkspace(false)
   }, [])
 
   return (
@@ -215,37 +215,73 @@ function AuthenticatedApp({
       {/* Tab Content */}
       {tab === 'dashboard' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 flex overflow-hidden">
-            <div className="flex-1 relative">
-              <MapView
-                onMapClick={handleMapClick}
-                selectedLat={selectedLat}
-                selectedLon={selectedLon}
-                blocks={blocks}
-                mapStyle={mapStyle}
-              />
+          {/* Dashboard toolbar */}
+          <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shadow-sm">
+            <h2 className="text-sm font-semibold text-[#1A1A2E]">
+              แผนที่จัดสรรคลื่นความถี่ 4800-4990 MHz
+            </h2>
+            <button
+              onClick={handleOpenWorkspace}
+              className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+            >
+              <PlusCircle className="w-4 h-4" />
+              เพิ่ม IMT
+            </button>
+          </div>
 
-              {selectedLat && selectedLon && (
-                <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg p-4 w-80">
-                  <AllocationForm
-                    lat={selectedLat}
-                    lon={selectedLon}
-                    onAnalyze={handleAnalyze}
-                    loading={loading}
-                    onClose={handleCloseAllocation}
-                    model={model}
-                    onModelChange={setModel}
-                  />
+          {showDashboardWorkspace ? (
+            /* ─── 70/30 SPLIT: Map left 30%, Workspace right 70% ─── */
+            <div className="flex-1 flex overflow-hidden">
+              {/* Left 30% — Compact Map */}
+              <div className="w-[30%] min-w-[280px] relative border-r border-gray-300">
+                <MapView
+                  onMapClick={handleMapClick}
+                  selectedLat={selectedLat}
+                  selectedLon={selectedLon}
+                  blocks={blocks}
+                  mapStyle={mapStyle}
+                />
+              </div>
+
+              {/* Right 70% — Workspace Panel */}
+              <div className="flex-1 overflow-hidden">
+                <IMTAddWorkspace onBack={handleCloseWorkspace} mode="panel" />
+              </div>
+            </div>
+          ) : (
+            /* ─── FULL MAP with overlay (existing layout) ─── */
+            <div className="flex-1 flex overflow-hidden">
+              <div className="flex-1 relative">
+                <MapView
+                  onMapClick={handleMapClick}
+                  selectedLat={selectedLat}
+                  selectedLon={selectedLon}
+                  blocks={blocks}
+                  mapStyle={mapStyle}
+                />
+
+                {selectedLat && selectedLon && (
+                  <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg p-4 w-80">
+                    <AllocationForm
+                      lat={selectedLat}
+                      lon={selectedLon}
+                      onAnalyze={handleAnalyze}
+                      loading={loading}
+                      onClose={handleCloseAllocation}
+                      model={model}
+                      onModelChange={setModel}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {blocks.length > 0 && (
+                <div className="w-80 bg-white border-l overflow-y-auto">
+                  <BlockPanel blocks={blocks} />
                 </div>
               )}
             </div>
-
-            {blocks.length > 0 && (
-              <div className="w-80 bg-white border-l overflow-y-auto">
-                <BlockPanel blocks={blocks} />
-              </div>
-            )}
-          </div>
+          )}
         </div>
       ) : tab === 'fslinks' ? (
         <div className="flex-1 overflow-hidden">
@@ -253,11 +289,7 @@ function AuthenticatedApp({
         </div>
       ) : tab === 'imt' ? (
         <div className="flex-1 overflow-hidden">
-          {showIMTWorkspace ? (
-            <IMTAddWorkspace onBack={handleCloseIMTWorkspace} />
-          ) : (
-            <IMTManager onAddWorkspace={handleOpenIMTWorkspace} />
-          )}
+          <IMTManager />
         </div>
       ) : (
         <div className="flex-1 overflow-hidden">

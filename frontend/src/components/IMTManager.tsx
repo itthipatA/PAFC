@@ -24,7 +24,7 @@ const EMPTY_FORM: IMTAllocationCreate = {
   max_eirp: 23,
 }
 
-export default function IMTManager({ onAddWorkspace }: { onAddWorkspace: () => void }) {
+export default function IMTManager() {
   const { fetchWithAuth } = useAuth()
 
   const [allocations, setAllocations] = useState<IMTAllocation[]>([])
@@ -170,7 +170,7 @@ export default function IMTManager({ onAddWorkspace }: { onAddWorkspace: () => v
             รีเฟรช
           </button>
           <button
-            onClick={onAddWorkspace}
+            onClick={openCreate}
             className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
           >
             <PlusCircle className="w-4 h-4" />
