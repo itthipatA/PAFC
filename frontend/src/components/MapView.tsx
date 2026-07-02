@@ -86,12 +86,10 @@ const LAYER_IDS = {
   fsCoordFill: 'fs-coord-fill',
   fsCoordOutline: 'fs-coord-outline',
   fsCoordSource: 'fs-coord-source',
-  fsGradientOuterFill: 'fs-gradient-outer-fill',
-  fsGradientMiddleFill: 'fs-gradient-middle-fill',
-  fsGradientInnerFill: 'fs-gradient-inner-fill',
-  fsGradientOuterSource: 'fs-gradient-outer-source',
-  fsGradientMiddleSource: 'fs-gradient-middle-source',
-  fsGradientInnerSource: 'fs-gradient-inner-source',
+  fsCoordMidFill: 'fs-coord-mid-fill',
+  fsCoordMidSource: 'fs-coord-mid-source',
+  fsCoordInnerFill: 'fs-coord-inner-fill',
+  fsCoordInnerSource: 'fs-coord-inner-source',
   imtCoverageFill: 'imt-coverage-fill',
   imtCoverageOutline: 'imt-coverage-outline',
   imtCoverageSource: 'imt-coverage-source',
@@ -293,14 +291,14 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
   const ids = [
     LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers,
     LAYER_IDS.fsCoordFill, LAYER_IDS.fsCoordOutline,
-    LAYER_IDS.fsGradientOuterFill, LAYER_IDS.fsGradientMiddleFill, LAYER_IDS.fsGradientInnerFill,
+    LAYER_IDS.fsCoordMidFill, LAYER_IDS.fsCoordInnerFill,
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
   const sources = [
     LAYER_IDS.fsLinksSource, LAYER_IDS.fsCoordSource,
-    LAYER_IDS.fsGradientOuterSource, LAYER_IDS.fsGradientMiddleSource, LAYER_IDS.fsGradientInnerSource,
+    LAYER_IDS.fsCoordMidSource, LAYER_IDS.fsCoordInnerSource,
   ]
   sources.forEach((sid) => {
     if (map.getSource(sid)) map.removeSource(sid)
@@ -375,8 +373,10 @@ function calcCoordinationRadius(
  * rendering overlapping turf circles that naturally merge into a tapered
  * polygon — wide at endpoints, narrow in mid-path.
  */
-function drawFSCoordinationZone(map: maplibregl.Map, links: any[]) {
-  const allCircles: any[] = []
+function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
+  const allCirclesOuter: any[] = []
+  const allCirclesMid: any[] = []
+  const allCirclesInner: any[] = []
 
   links.forEach((link: any) => {
     const txLat = link.tx?.lat ?? link.tx_lat
@@ -417,18 +417,34 @@ function drawFSCoordinationZone(map: maplibregl.Map, links: any[]) {
           threshold,
           midFreqMHz: midFreqMHz.toFixed(1),
         }
-        allCircles.push(c)
+        allCirclesOuter.push(c)
+
+        // Middle layer (60% radius)
+        const rMid = rM * 0.6
+        if (rMid >= 30) {
+          const cMid = circle([lon, lat], rMid / 1000, { steps: 32, units: 'kilometers' })
+          cMid.properties = { name: link.name, radiusM: rMid.toFixed(0) }
+          allCirclesMid.push(cMid)
+        }
+
+        // Inner layer (30% radius)
+        const rInner = rM * 0.3
+        if (rInner >= 30) {
+          const cInner = circle([lon, lat], rInner / 1000, { steps: 32, units: 'kilometers' })
+          cInner.properties = { name: link.name, radiusM: rInner.toFixed(0) }
+          allCirclesInner.push(cInner)
+        }
       } catch (e) {
         console.warn('Failed to create tapered circle at point', i, 'for:', link.name, e)
       }
     }
   })
 
-  // Render all circles as a single fill + outline source (they visually merge)
-  if (allCircles.length > 0) {
+  // Render outer layer (100% radius, blue, 6%)
+  if (allCirclesOuter.length > 0) {
     map.addSource(LAYER_IDS.fsCoordSource, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: allCircles },
+      data: { type: 'FeatureCollection', features: allCirclesOuter },
     })
 
     map.addLayer({
@@ -437,7 +453,7 @@ function drawFSCoordinationZone(map: maplibregl.Map, links: any[]) {
       source: LAYER_IDS.fsCoordSource,
       paint: {
         'fill-color': '#60A5FA',
-        'fill-opacity': 0.12,
+        'fill-opacity': 0.06,
       },
     })
 
@@ -451,86 +467,44 @@ function drawFSCoordinationZone(map: maplibregl.Map, links: any[]) {
       },
     })
   }
-}
 
-// ─── Signal Strength Gradient Rings ─────────────────────────────────────────
-
-/** Steps definition: outer→inner so layers stack correctly */
-const GRADIENT_STEPS = [
-  { frac: 1.0, color: '#3B82F6', opacity: 0.06, sourceId: 'fsGradientOuterSource', fillId: 'fsGradientOuterFill' },   // outer
-  { frac: 0.6, color: '#F59E0B', opacity: 0.12, sourceId: 'fsGradientMiddleSource', fillId: 'fsGradientMiddleFill' }, // middle
-  { frac: 0.3, color: '#EF4444', opacity: 0.20, sourceId: 'fsGradientInnerSource', fillId: 'fsGradientInnerFill' },   // inner
-] as const
-
-function drawGradientRings(map: maplibregl.Map, links: any[]) {
-  // Build feature collections for each gradient step
-  const stepFeatures: { outer: any[]; middle: any[]; inner: any[] } = {
-    outer: [],
-    middle: [],
-    inner: [],
-  }
-
-  links.forEach((link: any) => {
-    const txLat = link.tx?.lat ?? link.tx_lat
-    const txLon = link.tx?.lon ?? link.tx_lon
-    const rxLat = link.rx?.lat ?? link.rx_lat
-    const rxLon = link.rx?.lon ?? link.rx_lon
-    const freqLow = link.frequency?.low ?? link.freq_low
-    const freqHigh = link.frequency?.high ?? link.freq_high
-    const txPower = link.rf?.tx_power ?? link.tx_power ?? 20
-    const txAntennaGain = link.rf?.tx_antenna_gain ?? link.tx_antenna_gain ?? 30
-
-    const midFreqMHz = (freqLow + freqHigh) / 2
-    const eirp = txPower + txAntennaGain
-    const threshold = -114
-    const maxRadiusKm = calcCoordinationRadius(eirp, midFreqMHz, threshold) / 1000
-
-    // Draw gradients for both TX and RX
-    for (const [lon, lat] of [[txLon, txLat], [rxLon, rxLat]]) {
-      GRADIENT_STEPS.forEach((step, si) => {
-        const rKm = maxRadiusKm * step.frac
-        if (rKm < 0.05) return // skip tiny circles
-        try {
-          const c = circle([lon, lat], rKm, { steps: 48, units: 'kilometers' })
-          c.properties = { name: link.name, step: si, radiusKm: rKm.toFixed(3) }
-          const key = si === 0 ? 'outer' : si === 1 ? 'middle' : 'inner'
-          stepFeatures[key].push(c)
-        } catch (e) {
-          console.warn('Failed gradient ring for:', link.name, e)
-        }
-      })
-    }
-  })
-
-  // Add/update sources and layers (outer → middle → inner for proper stacking)
-  GRADIENT_STEPS.forEach((step, si) => {
-    const key = si === 0 ? 'outer' : si === 1 ? 'middle' : 'inner'
-    const features = stepFeatures[key]
-    if (features.length === 0) return
-
-    const srcId = LAYER_IDS[step.sourceId as keyof typeof LAYER_IDS]
-    const fillId = LAYER_IDS[step.fillId as keyof typeof LAYER_IDS]
-
-    // Remove old layer/source if exists
-    if (map.getLayer(fillId)) map.removeLayer(fillId)
-    if (map.getSource(srcId)) map.removeSource(srcId)
-
-    map.addSource(srcId, {
+  // Render middle layer (60% radius, amber, 10%)
+  if (allCirclesMid.length > 0) {
+    map.addSource(LAYER_IDS.fsCoordMidSource, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features },
+      data: { type: 'FeatureCollection', features: allCirclesMid },
     })
 
     map.addLayer({
-      id: fillId,
+      id: LAYER_IDS.fsCoordMidFill,
       type: 'fill',
-      source: srcId,
+      source: LAYER_IDS.fsCoordMidSource,
       paint: {
-        'fill-color': step.color,
-        'fill-opacity': step.opacity,
+        'fill-color': '#F59E0B',
+        'fill-opacity': 0.10,
       },
     })
-  })
+  }
+
+  // Render inner layer (30% radius, red, 15%)
+  if (allCirclesInner.length > 0) {
+    map.addSource(LAYER_IDS.fsCoordInnerSource, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: allCirclesInner },
+    })
+
+    map.addLayer({
+      id: LAYER_IDS.fsCoordInnerFill,
+      type: 'fill',
+      source: LAYER_IDS.fsCoordInnerSource,
+      paint: {
+        'fill-color': '#EF4444',
+        'fill-opacity': 0.15,
+      },
+    })
+  }
 }
+
 
 async function loadFSLinks(
   map: maplibregl.Map,
@@ -663,11 +637,8 @@ async function loadFSLinks(
     map.on('mouseenter', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = '' })
 
-    // Draw Coordination Zone (tapered, FSLP-derived)
-    drawFSCoordinationZone(map, links)
-
-    // Draw signal strength gradient rings around endpoints
-    drawGradientRings(map, links)
+    // Draw Coordination Zone (tapered, FSLP-derived) with 3-layer gradient
+    drawTaperedCoordinationZone(map, links)
   } catch (err) {
     console.warn('FS links not available:', err)
   }

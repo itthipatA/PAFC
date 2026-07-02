@@ -161,9 +161,9 @@ function generateNarrativeLog(
   const red = blocks.filter((b: any) => b.status === 'red')
   const gray = blocks.filter((b: any) => b.status === 'gray')
 
-  lines.push('╔══════════════════════════════════════════════════════════════╗')
-  lines.push('║     PAFC INTERFERENCE ANALYSIS — DETAILED REPORT             ║')
-  lines.push('╠══════════════════════════════════════════════════════════════╣')
+  lines.push('═══════════════════════════════════════════════')
+  lines.push('  PAFC INTERFERENCE ANALYSIS — DETAILED REPORT')
+  lines.push('═══════════════════════════════════════════════')
   lines.push('')
 
   // Section 1: Input Parameters
@@ -197,25 +197,28 @@ function generateNarrativeLog(
     lines.push('   Description     : สำหรับพื้นที่เมือง')
   }
   lines.push('')
+  lines.push('   IMT Parameters   : cell_radius, antenna_height, antenna_gain, max_eirp')
+  lines.push('   Standard         : ITU-R SM.1047 — sufficient for spectrum coordination')
+  lines.push('                      at 4.8–5.0 GHz (omni-pattern assumed, conservative)')
+  lines.push('')
 
   // Section 3: FS Link Conflict
   const fsConflicts = red.filter((b: any) => b.reason?.includes('FS conflict'))
   lines.push('─── 3. FS LINK CONFLICT ANALYSIS ────────────────────────────────')
   lines.push(`   Conflicts found : ${fsConflicts.length} block(s)`)
   if (fsConflicts.length > 0) {
-    lines.push('   ┌─ Details ─────────────────────────────────────────────────┐')
+    lines.push('   Details:')
     fsConflicts.forEach((b: any) => {
       const m = b.reason.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm\)/)
       if (m) {
         const exceed = (parseFloat(m[2]) - parseFloat(m[3])).toFixed(1)
-        lines.push(`   │ ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : ${m[1].trim()}`)
-        lines.push(`   │   I = ${m[2]} dBm > threshold ${m[3]} dBm (exceed by ${exceed} dB)`)
-        lines.push(`   │   I = EIRP_IMT − FSPL(d, f) + G_RX_FS`)
+        lines.push(`     ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : ${m[1].trim()}`)
+        lines.push(`       I = ${m[2]} dBm > threshold ${m[3]} dBm (exceed by ${exceed} dB)`)
+        lines.push(`       I = EIRP_IMT − FSPL(d, f) + G_RX_FS`)
       } else {
-        lines.push(`   │ ${b.reason}`)
+        lines.push(`     ${b.reason}`)
       }
     })
-    lines.push('   └───────────────────────────────────────────────────────────┘')
   } else {
     lines.push('   No FS link conflicts detected.')
   }
@@ -285,7 +288,7 @@ function generateNarrativeLog(
   lines.push(`   RESULT: ${availMHz} / 190 MHz available (${pct}%)`)
   lines.push(`   Response time: ${elapsedMs} ms`)
   lines.push('')
-  lines.push('╚══════════════════════════════════════════════════════════════╝')
+  lines.push('═══════════════════════════════════════════════')
 
   return lines
 }
@@ -415,9 +418,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     setSavedMessage('')
     setSaveError('')
     setLogLines([
-      '╔══════════════════════════════════════════════════════════════╗',
-      '║  Sending analysis request to backend...                     ║',
-      '╚══════════════════════════════════════════════════════════════╝',
+      '═══════════════════════════════════════════════',
+      '  Sending analysis request to backend...',
+      '═══════════════════════════════════════════════',
     ])
     try {
       const res = await fetchWithAuth('/api/allocate/analyze', {
