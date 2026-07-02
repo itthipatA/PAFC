@@ -104,19 +104,107 @@ function destPoint(
 
 function txMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.innerHTML = `<div style="width:12px;height:12px;background:#C00000;border:2px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.5)"></div>`
+  el.innerHTML = `<div style="width:24px;height:32px">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="24" height="32">
+      <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <line x1="50" y1="25" x2="25" y2="115" stroke-width="3.5" />
+        <line x1="50" y1="25" x2="75" y2="115" stroke-width="3.5" />
+        <line x1="50" y1="25" x2="50" y2="115" stroke-width="1.5" stroke-dasharray="1,2" />
+        <line x1="45" y1="42" x2="55" y2="42" />
+        <line x1="40" y1="60" x2="60" y2="60" />
+        <line x1="34" y1="80" x2="66" y2="80" />
+        <line x1="28" y1="100" x2="72" y2="100" />
+        <line x1="45" y1="42" x2="50" y2="60" />
+        <line x1="55" y1="42" x2="50" y2="60" />
+        <line x1="40" y1="60" x2="50" y2="80" />
+        <line x1="60" y1="60" x2="50" y2="80" />
+        <line x1="34" y1="80" x2="50" y2="100" />
+        <line x1="66" y1="80" x2="50" y2="100" />
+        <line x1="28" y1="100" x2="50" y2="115" />
+        <line x1="72" y1="100" x2="50" y2="115" />
+      </g>
+      <g stroke="#2D3748" stroke-width="2.5" stroke-linejoin="round">
+        <line x1="50" y1="12" x2="50" y2="35" stroke-width="3.5" stroke-linecap="round" />
+        <ellipse cx="32" cy="30" rx="11" ry="15" fill="#CBD5E1" />
+        <path d="M 32,15 A 11,15 0 0,0 32,45 Z" fill="#94A3B8" />
+        <line x1="32" y1="30" x2="43" y2="30" stroke-width="2.5" />
+        <polygon points="43,28 48,30 43,32" fill="#2D3748" />
+        <ellipse cx="66" cy="42" rx="8" ry="11" fill="#E2E8F0" />
+        <path d="M 66,31 A 8,11 0 0,0 66,53 Z" fill="#CBD5E1" />
+        <line x1="66" y1="42" x2="55" y2="42" stroke-width="2" />
+        <polygon points="55,40 51,42 55,44" fill="#2D3748" />
+      </g>
+    </svg>
+  </div>`
   return el
 }
 
 function rxMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.innerHTML = `<div style="width:12px;height:12px;background:#2563EB;border:2px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.5)"></div>`
+  el.innerHTML = `<div style="width:24px;height:32px">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="24" height="32">
+      <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <line x1="50" y1="25" x2="25" y2="115" stroke-width="3.5" />
+        <line x1="50" y1="25" x2="75" y2="115" stroke-width="3.5" />
+        <line x1="50" y1="25" x2="50" y2="115" stroke-width="1.5" stroke-dasharray="1,2" />
+        <line x1="45" y1="42" x2="55" y2="42" />
+        <line x1="40" y1="60" x2="60" y2="60" />
+        <line x1="34" y1="80" x2="66" y2="80" />
+        <line x1="28" y1="100" x2="72" y2="100" />
+        <line x1="45" y1="42" x2="50" y2="60" />
+        <line x1="55" y1="42" x2="50" y2="60" />
+        <line x1="40" y1="60" x2="50" y2="80" />
+        <line x1="60" y1="60" x2="50" y2="80" />
+        <line x1="34" y1="80" x2="50" y2="100" />
+        <line x1="66" y1="80" x2="50" y2="100" />
+        <line x1="28" y1="100" x2="50" y2="115" />
+        <line x1="72" y1="100" x2="50" y2="115" />
+      </g>
+      <g stroke="#2D3748" stroke-width="2.5" stroke-linejoin="round">
+        <line x1="50" y1="12" x2="50" y2="35" stroke-width="3.5" stroke-linecap="round" />
+        <ellipse cx="32" cy="30" rx="11" ry="15" fill="#FECACA" />
+        <path d="M 32,15 A 11,15 0 0,0 32,45 Z" fill="#FCA5A5" />
+        <line x1="32" y1="30" x2="43" y2="30" stroke-width="2.5" />
+        <polygon points="43,28 48,30 43,32" fill="#2D3748" />
+        <ellipse cx="66" cy="42" rx="8" ry="11" fill="#FEE2E2" />
+        <path d="M 66,31 A 8,11 0 0,0 66,53 Z" fill="#FECACA" />
+        <line x1="66" y1="42" x2="55" y2="42" stroke-width="2" />
+        <polygon points="55,40 51,42 55,44" fill="#2D3748" />
+      </g>
+    </svg>
+  </div>`
   return el
 }
 
 function imtMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.innerHTML = `<div style="width:16px;height:16px;background:#16A34A;border:3px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`
+  el.innerHTML = `<div style="width:24px;height:32px">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="24" height="32">
+      <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <line x1="40" y1="38" x2="40" y2="112" stroke-width="3" />
+        <line x1="50" y1="42" x2="50" y2="115" stroke-width="3" />
+        <line x1="60" y1="38" x2="60" y2="112" stroke-width="3" />
+        <line x1="40" y1="112" x2="50" y2="94" /><line x1="50" y1="115" x2="60" y2="92" />
+        <line x1="40" y1="92" x2="50" y2="94" stroke-width="2"/><line x1="50" y1="94" x2="60" y2="92" stroke-width="2"/>
+        <line x1="40" y1="92" x2="50" y2="74" /><line x1="50" y1="94" x2="60" y2="72" />
+        <line x1="40" y1="72" x2="50" y2="74" stroke-width="2"/><line x1="50" y1="74" x2="60" y2="72" stroke-width="2"/>
+        <line x1="40" y1="72" x2="50" y2="54" /><line x1="50" y1="74" x2="60" y2="52" />
+        <line x1="40" y1="52" x2="50" y2="54" stroke-width="2"/><line x1="50" y1="54" x2="60" y2="52" stroke-width="2"/>
+        <line x1="40" y1="52" x2="50" y2="38" /><line x1="50" y1="54" x2="60" y2="35" />
+        <line x1="40" y1="35" x2="50" y2="38" stroke-width="2.5"/><line x1="50" y1="38" x2="60" y2="35" stroke-width="2.5"/>
+      </g>
+      <polygon points="35,32 50,36 65,32 50,28" fill="#CBD5E1" stroke="#334155" stroke-width="2" />
+      <g>
+        <polygon points="30,20 40,24 40,58 30,54" fill="#94A3B8" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
+        <polygon points="25,18 30,20 30,54 25,52" fill="#64748B" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
+      </g>
+      <g>
+        <polygon points="60,24 70,20 70,54 60,58" fill="#F1F5F9" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
+        <polygon points="70,20 75,18 75,52 70,54" fill="#CBD5E1" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
+      </g>
+      <line x1="50" y1="28" x2="50" y2="10" stroke="#334155" stroke-width="2.5" stroke-linecap="round" />
+    </svg>
+  </div>`
   return el
 }
 
@@ -277,7 +365,7 @@ function drawCellRadius(map: maplibregl.Map, lat: number, lon: number, radiusM?:
         source: sid,
         paint: {
           'fill-color': '#C00000',
-          'fill-opacity': 0.15,
+          'fill-opacity': 0.12,
         },
       })
 
@@ -288,7 +376,7 @@ function drawCellRadius(map: maplibregl.Map, lat: number, lon: number, radiusM?:
         paint: {
           'line-color': '#C00000',
           'line-width': 2,
-          'line-opacity': 0.6,
+          'line-opacity': 0.5,
         },
       })
     } catch (e) {
@@ -482,7 +570,7 @@ function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
       source: LAYER_IDS.fsCoordSource,
       paint: {
         'fill-color': '#60A5FA',
-        'fill-opacity': 0.06,
+        'fill-opacity': 0.03,
       },
     })
   }
@@ -500,12 +588,12 @@ function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
       source: LAYER_IDS.fsCoordMidSource,
       paint: {
         'fill-color': '#F59E0B',
-        'fill-opacity': 0.10,
+        'fill-opacity': 0.05,
       },
     })
   }
 
-  // Render inner layer (30% radius, red #EF4444, 15%, no outline)
+  // Render inner layer (30% radius, red #EF4444, 8%, no outline)
   if (innerFeatures.length > 0) {
     map.addSource(LAYER_IDS.fsCoordInnerSource, {
       type: 'geojson',
@@ -518,7 +606,7 @@ function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
       source: LAYER_IDS.fsCoordInnerSource,
       paint: {
         'fill-color': '#EF4444',
-        'fill-opacity': 0.15,
+        'fill-opacity': 0.08,
       },
     })
   }
