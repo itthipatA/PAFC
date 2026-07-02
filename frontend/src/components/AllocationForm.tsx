@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Search, MapPin } from 'lucide-react'
 
 interface AllocationFormProps {
   lat: number
@@ -20,15 +21,15 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading }: Allocat
 
   return (
     <div>
-      <h3 className="font-bold text-[#1A365D] mb-2 text-sm">
-        📍 วิเคราะห์พื้นที่
+      <h3 className="font-bold text-[#1A365D] mb-2 text-sm flex items-center gap-1.5">
+        <MapPin className="w-4 h-4 text-[#C00000]" />
+        Analyze Location
       </h3>
 
       <div className="text-xs text-gray-500 mb-3 font-mono">
         {lat.toFixed(6)}, {lon.toFixed(6)}
       </div>
 
-      {/* Parameters */}
       <div className="space-y-2 mb-3">
         <div>
           <label className="text-xs text-gray-500 block mb-0.5">
@@ -38,7 +39,7 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading }: Allocat
             type="number"
             value={cellRadius}
             onChange={(e) => setCellRadius(Number(e.target.value))}
-            className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm"
+            className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
           />
         </div>
         <div>
@@ -49,7 +50,7 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading }: Allocat
             type="number"
             value={antennaHeight}
             onChange={(e) => setAntennaHeight(Number(e.target.value))}
-            className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm"
+            className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
           />
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -61,7 +62,7 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading }: Allocat
               type="number"
               value={antennaGain}
               onChange={(e) => setAntennaGain(Number(e.target.value))}
-              className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm"
+              className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
             />
           </div>
           <div>
@@ -72,7 +73,7 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading }: Allocat
               type="number"
               value={maxEirp}
               onChange={(e) => setMaxEirp(Number(e.target.value))}
-              className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm"
+              className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
             />
           </div>
         </div>
@@ -86,9 +87,10 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading }: Allocat
           max_eirp: maxEirp,
         })}
         disabled={loading}
-        className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-medium py-2 rounded text-sm transition-colors disabled:opacity-50"
+        className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-medium py-2 rounded text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
       >
-        {loading ? 'กำลังคำนวณ...' : '🔍 วิเคราะห์ Spectrum'}
+        <Search className="w-4 h-4" />
+        {loading ? 'Analyzing...' : 'Analyze Spectrum'}
       </button>
     </div>
   )

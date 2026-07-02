@@ -15,19 +15,5 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    environment:
-      PAFC_DATABASE_URL: "postgresql+asyncpg://pafc:pafc@db:5432/pafc"
-      PAFC_CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
 volumes:
   pgdata:

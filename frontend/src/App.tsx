@@ -11,6 +11,7 @@ export default function App() {
   const [blocks, setBlocks] = useState<BlockResult[]>([])
   const [loading, setLoading] = useState(false)
   const [model, setModel] = useState('free_space')
+  const [mapStyle, setMapStyle] = useState('voyager')
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
@@ -51,19 +52,23 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col">
-      <Header model={model} onModelChange={setModel} />
+      <Header
+        model={model}
+        onModelChange={setModel}
+        mapStyle={mapStyle}
+        onMapStyleChange={setMapStyle}
+      />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Map */}
         <div className="flex-1 relative">
           <MapView
             onMapClick={handleMapClick}
             selectedLat={selectedLat}
             selectedLon={selectedLon}
             blocks={blocks}
+            mapStyle={mapStyle}
           />
 
-          {/* Floating panel */}
           {selectedLat && selectedLon && (
             <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg p-4 w-80">
               <AllocationForm
@@ -76,7 +81,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Block Results */}
         {blocks.length > 0 && (
           <div className="w-80 bg-white border-l overflow-y-auto">
             <BlockPanel blocks={blocks} />

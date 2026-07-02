@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import { BlockResult } from '../types'
 
@@ -7,33 +7,62 @@ interface MapViewProps {
   selectedLat: number | null
   selectedLon: number | null
   blocks: BlockResult[]
+  mapStyle: string
 }
 
-// OpenMapTiles free tile server
-const TILE_URL = 'https://tileserver.urbica.co/styles/positron/{z}/{x}/{y}.png'
+// Map styles
+export const MAP_STYLES: Record<string, { label: string; url: string; attribution: string }> = {
+  voyager: {
+    label: 'Voyager',
+    url: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+    attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://osm.org">OSM</a>',
+  },
+  positron: {
+    label: 'Positron',
+    url: 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+    attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://osm.org">OSM</a>',
+  },
+  dark: {
+    label: 'Dark Matter',
+    url: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+    attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://osm.org">OSM</a>',
+  },
+  satellite: {
+    label: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© <a href="https://www.esri.com/">Esri</a>',
+  },
+  osm: {
+    label: 'OSM Basic',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© <a href="https://osm.org">OSM</a>',
+  },
+}
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
 
   // Init map
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
+    if (!containerRef.current) return
+
+    const style = MAP_STYLES[mapStyle] || MAP_STYLES.positron
 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: {
         version: 8,
         sources: {
-          osm: {
+          basemap: {
             type: 'raster',
-            tiles: [TILE_URL],
+            tiles: [style.url],
             tileSize: 256,
-            attribution: '© <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+            attribution: style.attribution,
           },
         },
-        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+        layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
       },
       center: [100.5, 13.75],  // Bangkok
       zoom: 8,
@@ -53,23 +82,32 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks }
     }
   }, [])
 
+  // Switch map style
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current
+    const source = map.getSource('basemap') as maplibregl.RasterTileSource
+    if (!source) return
+
+    const style = MAP_STYLES[mapStyle] || MAP_STYLES.positron
+    source.setTiles([style.url])
+  }, [mapStyle])
+
   // Update marker
   useEffect(() => {
     if (!mapRef.current || !selectedLat || !selectedLon) return
 
     const map = mapRef.current
-
     if (markerRef.current) markerRef.current.remove()
 
     markerRef.current = new maplibregl.Marker({ color: '#C00000' })
       .setLngLat([selectedLon, selectedLat])
       .addTo(map)
 
-    // Draw cell radius circle
-    drawCellRadius(map, selectedLat, selectedLon, blocks)
-  }, [selectedLat, selectedLon, blocks])
+    drawCellRadius(map, selectedLat, selectedLon)
+  }, [selectedLat, selectedLon])
 
-  // Draw FS links when blocks change
+  // Load FS links on init
   useEffect(() => {
     if (!mapRef.current) return
     loadFSLinks(mapRef.current)
@@ -78,28 +116,14 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks }
   return <div ref={containerRef} className="w-full h-full" />
 }
 
-function drawCellRadius(map: maplibregl.Map, lat: number, lon: number, blocks: BlockResult[]) {
-  if (blocks.length === 0) return
-
+function drawCellRadius(map: maplibregl.Map, lat: number, lon: number) {
   const sourceId = 'cell-radius'
-  if (map.getSource(sourceId)) {
-    map.removeLayer(`${sourceId}-fill`)
-    map.removeSource(sourceId)
-  }
-
-  // 500m radius circle in degrees (approximation)
-  const radiusDeg = 0.005  // ~500m at equator
+  if (map.getLayer(`${sourceId}-fill`)) map.removeLayer(`${sourceId}-fill`)
+  if (map.getSource(sourceId)) map.removeSource(sourceId)
 
   map.addSource(sourceId, {
     type: 'geojson',
-    data: {
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: [lon, lat],
-      },
-      properties: {},
-    },
+    data: { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties: {} },
   })
 
   map.addLayer({
@@ -107,10 +131,7 @@ function drawCellRadius(map: maplibregl.Map, lat: number, lon: number, blocks: B
     type: 'circle',
     source: sourceId,
     paint: {
-      'circle-radius': {
-        stops: [[8, 20], [14, 200]],
-        base: 2,
-      },
+      'circle-radius': { stops: [[8, 20], [14, 200]] },
       'circle-opacity': 0.2,
       'circle-color': '#C00000',
       'circle-stroke-width': 2,
@@ -125,21 +146,18 @@ async function loadFSLinks(map: maplibregl.Map) {
     const res = await fetch('/api/fs-links/')
     const data = await res.json()
 
-    const features = data.links?.map((link: any) => ({
+    const features = (data.links || []).map((link: any) => ({
       type: 'Feature',
       geometry: {
         type: 'LineString',
-        coordinates: [
-          [link.rx.lon, link.rx.lat],
-          [link.tx.lon, link.tx.lat],
-        ],
+        coordinates: [[link.rx.lon, link.rx.lat], [link.tx.lon, link.tx.lat]],
       },
       properties: {
         name: link.name,
         operator: link.operator,
         freq: `${link.frequency.low}-${link.frequency.high} MHz`,
       },
-    })) || []
+    }))
 
     const sourceId = 'fs-links'
     if (map.getSource(sourceId)) {
@@ -164,30 +182,18 @@ async function loadFSLinks(map: maplibregl.Map) {
       },
     })
 
-    // Click popup
     map.on('click', `${sourceId}-line`, (e) => {
       if (!e.features?.[0]) return
       const p = e.features[0].properties
       new maplibregl.Popup()
         .setLngLat(e.lngLat)
-        .setHTML(`
-          <div style="font-family: Sarabun, sans-serif;">
-            <strong>${p.name}</strong><br/>
-            <span style="color:#6C757D;">${p.operator} | ${p.freq}</span>
-          </div>
-        `)
+        .setHTML(`<div style="font-family:Sarabun,sans-serif"><strong>${p.name}</strong><br/><span style="color:#6C757D">${p.operator} | ${p.freq}</span></div>`)
         .addTo(map)
     })
 
-    map.on('mouseenter', `${sourceId}-line`, () => {
-      map.getCanvas().style.cursor = 'pointer'
-    })
-    map.on('mouseleave', `${sourceId}-line`, () => {
-      map.getCanvas().style.cursor = ''
-    })
+    map.on('mouseenter', `${sourceId}-line`, () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', `${sourceId}-line`, () => { map.getCanvas().style.cursor = '' })
   } catch (err) {
-    console.warn('Failed to load FS links:', err)
+    console.warn('FS links not available:', err)
   }
 }
-
-export { drawCellRadius, loadFSLinks }
