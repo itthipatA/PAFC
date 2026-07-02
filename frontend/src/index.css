@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+}
+
+/* NBTC Dark Red Header */
+.nbtc-header {
+  background: linear-gradient(135deg, #C00000 0%, #8B0000 100%);
+  color: white;
+}
+
+/* MapLibre override */
+.maplibregl-popup-content {
+  font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Spectrum Block Grid */
+.block-cell {
+  @apply px-3 py-2 text-center font-mono text-sm font-medium rounded;
+}
+.block-cell.green {
+  background-color: #16A34A;
+  color: white;
+}
+.block-cell.gray {
+  background-color: #9CA3AF;
+  color: white;
+}
+.block-cell.red {
+  background-color: #DC2626;
+  color: white;
+}
