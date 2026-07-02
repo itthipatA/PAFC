@@ -4,6 +4,8 @@ import {
   Layout,
   LogOut,
   Shield,
+  Radio,
+  Search,
 } from 'lucide-react'
 import MapView, { MAP_STYLES } from './components/MapView'
 import Header from './components/Header'
@@ -11,10 +13,12 @@ import BlockPanel from './components/BlockPanel'
 import AllocationForm from './components/AllocationForm'
 import LoginPage from './components/LoginPage'
 import FSLinkManager from './components/FSLinkManager'
+import IMTManager from './components/IMTManager'
+import QueryPanel from './components/QueryPanel'
 import { useAuth } from './contexts/AuthContext'
 import type { BlockResult } from './types'
 
-type Tab = 'dashboard' | 'fslinks'
+type Tab = 'dashboard' | 'fslinks' | 'imt' | 'search'
 
 export default function App() {
   const { isAuthenticated, user, logout } = useAuth()
@@ -82,6 +86,19 @@ function AuthenticatedApp({
     [selectedLat, selectedLon, model],
   )
 
+  const handleCloseAllocation = useCallback(() => {
+    setSelectedLat(null)
+    setSelectedLon(null)
+    setBlocks([])
+  }, [])
+
+  const handleZoomTo = useCallback((lat: number, lon: number) => {
+    // Switch to dashboard tab and set the selected location
+    setTab('dashboard')
+    setSelectedLat(lat)
+    setSelectedLon(lon)
+  }, [])
+
   return (
     <div className="h-screen flex flex-col">
       {/* Top Navigation Bar */}
@@ -127,10 +144,36 @@ function AuthenticatedApp({
             FS Links
           </button>
 
+          {/* Tab: IMT */}
+          <button
+            onClick={() => setTab('imt')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === 'imt'
+                ? 'bg-white/20 text-white'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            <Radio className="w-4 h-4" />
+            IMT
+          </button>
+
+          {/* Tab: Search */}
+          <button
+            onClick={() => setTab('search')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === 'search'
+                ? 'bg-white/20 text-white'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            <Search className="w-4 h-4" />
+            ค้นหา
+          </button>
+
           {/* User info + Logout */}
           <div className="ml-4 flex items-center gap-2 pl-4 border-l border-white/20">
             <span className="text-xs text-white/70">
-              {user?.username || 'ผูใช'} ({user?.role || '-'})
+              {user?.username || 'ผู้ใช้'} ({user?.role || '-'})
             </span>
             <button
               onClick={onLogout}
@@ -172,6 +215,7 @@ function AuthenticatedApp({
                     lon={selectedLon}
                     onAnalyze={handleAnalyze}
                     loading={loading}
+                    onClose={handleCloseAllocation}
                   />
                 </div>
               )}
@@ -184,9 +228,17 @@ function AuthenticatedApp({
             )}
           </div>
         </div>
-      ) : (
+      ) : tab === 'fslinks' ? (
         <div className="flex-1 overflow-hidden">
           <FSLinkManager />
+        </div>
+      ) : tab === 'imt' ? (
+        <div className="flex-1 overflow-hidden">
+          <IMTManager />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-hidden">
+          <QueryPanel onZoomTo={handleZoomTo} />
         </div>
       )}
     </div>

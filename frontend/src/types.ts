@@ -59,3 +59,34 @@ export interface FSLinkCreate {
   polarization: string
   status: string
 }
+
+export interface IMTBlock {
+  freq_low: number
+  freq_high: number
+  status: string
+}
+
+export interface IMTAllocation {
+  id: string
+  name: string
+  operator: string
+  center_lat: number
+  center_lon: number
+  cell_radius: number
+  antenna_height: number
+  antenna_gain: number
+  max_eirp: number
+  blocks: IMTBlock[]
+  created_at: string
+}
+
+export interface IMTAllocationCreate {
+  name: string
+  operator: string
+  center_lat: number
+  center_lon: number
+  cell_radius: number
+  antenna_height: number
+  antenna_gain: number
+  max_eirp: number
+}
