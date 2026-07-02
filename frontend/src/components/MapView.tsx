@@ -60,6 +60,48 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * c
 }
 
+// Haversine distance in meters
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  return haversineKm(lat1, lon1, lat2, lon2) * 1000
+}
+
+// Bearing (azimuth) from point 1 to point 2, in degrees (0-360)
+function bearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const y = Math.sin(dLon) * Math.cos((lat2 * Math.PI) / 180)
+  const x =
+    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
+    Math.sin((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.cos(dLon)
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+}
+
+// Destination point given start [lat, lon], bearing (degrees), and distance (meters)
+// Returns [lon, lat] (GeoJSON order)
+function destinationPoint(
+  lat: number,
+  lon: number,
+  bearingDeg: number,
+  distanceM: number,
+): [number, number] {
+  const R = 6371000
+  const brg = (bearingDeg * Math.PI) / 180
+  const dOverR = distanceM / R
+  const lat1 = (lat * Math.PI) / 180
+  const lon1 = (lon * Math.PI) / 180
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(dOverR) +
+    Math.cos(lat1) * Math.sin(dOverR) * Math.cos(brg),
+  )
+  const lon2 =
+    lon1 +
+    Math.atan2(
+      Math.sin(brg) * Math.sin(dOverR) * Math.cos(lat1),
+      Math.cos(dOverR) - Math.sin(lat1) * Math.sin(lat2),
+    )
+  return [(lon2 * 180) / Math.PI, (lat2 * 180) / Math.PI]
+}
+
 function txMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
   el.innerHTML = `<div style="width:12px;height:12px;background:#C00000;border:2px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.5)"></div>`
@@ -368,15 +410,75 @@ function calcCoordinationRadius(
 }
 
 /**
- * Draw the tapered FS coordination zone by sampling N points along each link,
- * computing the physically-derived coordination radius at each point, and
- * rendering overlapping turf circles that naturally merge into a tapered
- * polygon — wide at endpoints, narrow in mid-path.
+ * Build a true dog-bone polygon from the envelope of the tapered coordination zone.
+ * Samples N points along the link, computes the radius at each, then constructs
+ * a polygon from the upper perimeter chain (offset by +90° bearing) and the
+ * reversed lower perimeter chain (offset by -90° bearing).
+ *
+ * Returns a GeoJSON Polygon coordinate array: [[[lon,lat], ...]]
+ */
+function buildDogbonePolygon(
+  txLat: number,
+  txLon: number,
+  rxLat: number,
+  rxLon: number,
+  eirp: number,
+  freqMid: number,
+  radiusScale: number,
+  numPoints: number = 30,
+): number[][][] {
+  const totalDist = haversineM(txLat, txLon, rxLat, rxLon)
+  const brg = bearing(txLat, txLon, rxLat, rxLon)
+  const threshold = -114
+
+  const upperPoints: [number, number][] = []
+  const lowerPoints: [number, number][] = []
+
+  for (let i = 0; i <= numPoints; i++) {
+    const frac = i / numPoints
+    const dAlong = frac * totalDist
+
+    // Interpolate position linearly (fine for short microwave links < 50 km)
+    const lat = txLat + frac * (rxLat - txLat)
+    const lon = txLon + frac * (rxLon - txLon)
+
+    // Calculate radius at this point (with scale applied)
+    const r = taperedCoordinationRadius(eirp, freqMid, dAlong, totalDist, threshold) * radiusScale
+    if (r < 1) continue // skip negligible radii
+
+    // Perpendicular offsets
+    const up = destinationPoint(lat, lon, brg + 90, r)
+    const down = destinationPoint(lat, lon, brg - 90, r)
+
+    upperPoints.push(up)   // [lon, lat]
+    lowerPoints.push(down) // [lon, lat]
+  }
+
+  if (upperPoints.length < 2) return [] // not enough points for a polygon
+
+  // Build polygon ring: upper chain → lower chain (reversed) → close
+  const ring: number[][] = []
+  for (const p of upperPoints) ring.push([p[0], p[1]])
+  for (let i = lowerPoints.length - 1; i >= 0; i--) {
+    ring.push([lowerPoints[i][0], lowerPoints[i][1]])
+  }
+  ring.push([upperPoints[0][0], upperPoints[0][1]]) // close the ring
+
+  return [ring]
+}
+
+/**
+ * Draw the tapered FS coordination zone as a true dog-bone polygon.
+ * Computes the envelope of the tapered coordination zone by walking N=30
+ * points along each link, computing the radius at each, and constructing
+ * a polygon from the upper (+90° bearing) and lower (-90° bearing)
+ * perimeter chains. Three gradient layers (100%/60%/30% radii) are
+ * rendered as continuous polygons — not discrete circles.
  */
 function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
-  const allCirclesOuter: any[] = []
-  const allCirclesMid: any[] = []
-  const allCirclesInner: any[] = []
+  const allOuter: any[] = []
+  const allMid: any[] = []
+  const allInner: any[] = []
 
   links.forEach((link: any) => {
     const txLat = link.tx?.lat ?? link.tx_lat
@@ -390,61 +492,44 @@ function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
 
     const midFreqMHz = (freqLow + freqHigh) / 2
     const eirp = txPower + txAntennaGain
-    const threshold = -114
-    const totalDistM = haversineKm(txLat, txLon, rxLat, rxLon) * 1000
 
-    const N = 20  // number of sample points along the link
-    for (let i = 0; i <= N; i++) {
-      const frac = i / N
-      const dAlongM = frac * totalDistM
+    try {
+      // Build 3 continuous dog-bone polygon layers
+      const outerCoords = buildDogbonePolygon(txLat, txLon, rxLat, rxLon, eirp, midFreqMHz, 1.0)
+      const midCoords = buildDogbonePolygon(txLat, txLon, rxLat, rxLon, eirp, midFreqMHz, 0.6)
+      const innerCoords = buildDogbonePolygon(txLat, txLon, rxLat, rxLon, eirp, midFreqMHz, 0.3)
 
-      // Interpolate geographic position along the great-circle path
-      const lat = txLat + frac * (rxLat - txLat)
-      const lon = txLon + frac * (rxLon - txLon)
-
-      const rM = taperedCoordinationRadius(eirp, midFreqMHz, dAlongM, totalDistM, threshold)
-
-      try {
-        const c = circle([lon, lat], rM / 1000, {
-          steps: 32,
-          units: 'kilometers',
+      if (outerCoords.length > 0) {
+        allOuter.push({
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: outerCoords },
+          properties: { name: link.name, eirp, midFreqMHz: midFreqMHz.toFixed(1), layer: 'outer' },
         })
-        c.properties = {
-          name: link.name,
-          radiusM: rM.toFixed(0),
-          pointIndex: i,
-          eirp,
-          threshold,
-          midFreqMHz: midFreqMHz.toFixed(1),
-        }
-        allCirclesOuter.push(c)
-
-        // Middle layer (60% radius)
-        const rMid = rM * 0.6
-        if (rMid >= 30) {
-          const cMid = circle([lon, lat], rMid / 1000, { steps: 32, units: 'kilometers' })
-          cMid.properties = { name: link.name, radiusM: rMid.toFixed(0) }
-          allCirclesMid.push(cMid)
-        }
-
-        // Inner layer (30% radius)
-        const rInner = rM * 0.3
-        if (rInner >= 30) {
-          const cInner = circle([lon, lat], rInner / 1000, { steps: 32, units: 'kilometers' })
-          cInner.properties = { name: link.name, radiusM: rInner.toFixed(0) }
-          allCirclesInner.push(cInner)
-        }
-      } catch (e) {
-        console.warn('Failed to create tapered circle at point', i, 'for:', link.name, e)
       }
+      if (midCoords.length > 0) {
+        allMid.push({
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: midCoords },
+          properties: { name: link.name, eirp, midFreqMHz: midFreqMHz.toFixed(1), layer: 'mid' },
+        })
+      }
+      if (innerCoords.length > 0) {
+        allInner.push({
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: innerCoords },
+          properties: { name: link.name, eirp, midFreqMHz: midFreqMHz.toFixed(1), layer: 'inner' },
+        })
+      }
+    } catch (e) {
+      console.warn('Failed to build dogbone polygon for:', link.name, e)
     }
   })
 
-  // Render outer layer (100% radius, blue, 6%)
-  if (allCirclesOuter.length > 0) {
+  // Render outer layer (100% radius, blue #60A5FA, 6%, with outline)
+  if (allOuter.length > 0) {
     map.addSource(LAYER_IDS.fsCoordSource, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: allCirclesOuter },
+      data: { type: 'FeatureCollection', features: allOuter },
     })
 
     map.addLayer({
@@ -468,11 +553,11 @@ function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
     })
   }
 
-  // Render middle layer (60% radius, amber, 10%)
-  if (allCirclesMid.length > 0) {
+  // Render middle layer (60% radius, amber #F59E0B, 10%, no outline)
+  if (allMid.length > 0) {
     map.addSource(LAYER_IDS.fsCoordMidSource, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: allCirclesMid },
+      data: { type: 'FeatureCollection', features: allMid },
     })
 
     map.addLayer({
@@ -486,11 +571,11 @@ function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
     })
   }
 
-  // Render inner layer (30% radius, red, 15%)
-  if (allCirclesInner.length > 0) {
+  // Render inner layer (30% radius, red #EF4444, 15%, no outline)
+  if (allInner.length > 0) {
     map.addSource(LAYER_IDS.fsCoordInnerSource, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: allCirclesInner },
+      data: { type: 'FeatureCollection', features: allInner },
     })
 
     map.addLayer({
@@ -748,38 +833,49 @@ async function loadIMTAllocations(
 
       el.addEventListener('click', () => {
         const blocks = alloc.blocks || []
-        const blocksStr = blocks.length > 0
-          ? blocks
-              .map((b: any) => {
-                const icon = b.status === 'allocated' ? '█' : b.status === 'guard' ? '░' : '?'
-                return `${icon} ${b.freq_low}-${b.freq_high} MHz`
-              })
-              .join('<br/>')
-          : ''
         const totalMHz = blocks
           .filter((b: any) => b.status === 'allocated')
           .reduce((sum: number, b: any) => sum + (b.freq_high - b.freq_low), 0)
 
-        new maplibregl.Popup()
+        // Build 19-block spectrum bar (4800-4990, 10MHz each)
+        const spectrumChars: string[] = []
+        for (let f = 4800; f < 4990; f += 10) {
+          const allocBlock = blocks.find((b: any) => b.freq_low === f)
+          spectrumChars.push(allocBlock ? (allocBlock.status === 'allocated' ? '█' : '░') : '·')
+        }
+        const spectrumBar = spectrumChars.join('')
+        const blockLabels = [4800, 4820, 4840, 4860, 4880, 4900, 4920, 4940, 4960, 4980, 4990]
+
+        // List allocated blocks
+        const allocBlocks = blocks.filter((b: any) => b.status === 'allocated')
+        const guardBlocks = blocks.filter((b: any) => b.status === 'guard')
+
+        new maplibregl.Popup({ maxWidth: '320px' })
           .setLngLat([lon, lat])
           .setHTML(`
-            <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:240px">
-              <strong style="color:#1A1A2E;font-size:15px">${escapeHTML(alloc.name)}</strong>
-              <span style="color:#16A34A;margin-left:6px;font-size:11px">● IMT</span><br/>
-              <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(alloc.operator)}</span><br/>
-              <span style="color:#6C757D">รัศมีเซลล์: ${alloc.cell_radius} m</span><br/>
-              <span style="color:#6C757D">ความสูงเสา: ${alloc.antenna_height} m | EIRP: ${alloc.max_eirp} dBm</span>
-              ${blocks.length > 0 ? `
-                <div style="margin-top:8px;padding:6px 8px;background:#F0FDF4;border-radius:6px;border:1px solid #BBF7D0">
-                  <div style="font-weight:600;color:#166534;font-size:12px;margin-bottom:4px">คลื่นที่จัดสรร (${totalMHz} MHz)</div>
-                  <div style="font-family:monospace;font-size:11px;color:#166534;line-height:1.8">${blocksStr}</div>
+            <div style="font-family:Sarabun,sans-serif;font-size:12px;line-height:1.5;min-width:280px;max-width:300px">
+              <strong style="color:#1A1A2E;font-size:14px">${escapeHTML(alloc.name)}</strong>
+              <span style="color:#16A34A;margin-left:4px;font-size:10px;font-weight:600">IMT</span><br/>
+              <span style="color:#6C757D">${escapeHTML(alloc.operator)} | ${alloc.cell_radius}m | ${alloc.max_eirp} dBm</span>
+
+              <div style="margin-top:6px;padding:6px;background:#F9FAFB;border-radius:4px;border:1px solid #E5E7EB">
+                <div style="font-family:monospace;font-size:9px;color:#374151;line-height:1;letter-spacing:-0.5px;white-space:nowrap;overflow:hidden">
+                  ${spectrumBar}
                 </div>
-              ` : `
-                <div style="margin-top:8px;padding:6px 8px;background:#FEF2F2;border-radius:6px;border:1px solid #FECACA;font-size:12px;color:#991B1B">
-                  ยังไม่มีการจัดสรรคลื่นความถี่
+                <div style="display:flex;justify-content:space-between;font-size:7px;color:#9CA3AF;font-family:monospace;margin-top:1px">
+                  ${blockLabels.map(f => `<span>${f}</span>`).join('')}
                 </div>
-              `}
-              <span style="color:#9CA3AF;font-size:11px;margin-top:4px;display:block">${new Date(alloc.created_at).toLocaleDateString('th-TH')}</span>
+                <div style="margin-top:4px;font-size:10px;color:#374151">
+                  <span style="color:#166534;font-weight:600">█ จัดสรร</span>
+                  ${allocBlocks.length > 0 ? `<span style="color:#166534"> ${allocBlocks.map(b => `${b.freq_low}-${b.freq_high}`).join(', ')}</span>` : ''}
+                  ${guardBlocks.length > 0 ? ` <span style="color:#6B7280">░ Guard</span>` : ''}
+                  <span style="color:#9CA3AF"> · ว่าง</span>
+                </div>
+              </div>
+              <div style="margin-top:4px;font-size:10px;color:#6C757D">
+                จัดสรร: <strong style="color:#166534">${totalMHz} MHz</strong>
+                ${guardBlocks.length > 0 ? ` | Guard: <strong>${guardBlocks.length * 10} MHz</strong>` : ''}
+              </div>
             </div>`)
           .addTo(map)
       })
@@ -822,37 +918,39 @@ async function loadIMTAllocations(
       if (!e.features?.[0]) return
       const p = e.features[0].properties
       const blocks = p.blocks || []
-      const blocksStr = blocks.length > 0
-        ? blocks
-            .map((b: any) => {
-              const icon = b.status === 'allocated' ? '█' : b.status === 'guard' ? '░' : '?'
-              return `${icon} ${b.freq_low}-${b.freq_high} MHz`
-            })
-            .join('<br/>')
-        : ''
       const totalMHz = blocks
         .filter((b: any) => b.status === 'allocated')
         .reduce((sum: number, b: any) => sum + (b.freq_high - b.freq_low), 0)
 
-      new maplibregl.Popup()
+      const spectrumChars: string[] = []
+      for (let f = 4800; f < 4990; f += 10) {
+        const allocBlock = blocks.find((b: any) => b.freq_low === f)
+        spectrumChars.push(allocBlock ? (allocBlock.status === 'allocated' ? '█' : '░') : '·')
+      }
+      const spectrumBar = spectrumChars.join('')
+      const blockLabels = [4800, 4820, 4840, 4860, 4880, 4900, 4920, 4940, 4960, 4980, 4990]
+      const allocBlocks = blocks.filter((b: any) => b.status === 'allocated')
+      const guardBlocks = blocks.filter((b: any) => b.status === 'guard')
+      const allocListStr = allocBlocks.map((b: any) => `${b.freq_low}-${b.freq_high}`).join(', ')
+      const labelsStr = blockLabels.map((f: number) => `<span>${f}</span>`).join('')
+      const guardStr = guardBlocks.length > 0 ? ` | Guard: <strong>${guardBlocks.length * 10} MHz</strong>` : ''
+      const allocGuardLegend = guardBlocks.length > 0 ? ' <span style="color:#6B7280">░ Guard</span>' : ''
+
+      new maplibregl.Popup({ maxWidth: '320px' })
         .setLngLat(e.lngLat)
         .setHTML(`
-          <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:240px">
-            <strong style="color:#1A1A2E;font-size:15px">${escapeHTML(p.name)}</strong>
-            <span style="color:#16A34A;margin-left:6px;font-size:11px">● IMT</span><br/>
-            <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(p.operator)}</span><br/>
-            <span style="color:#6C757D">รัศมีเซลล์: ${p.cell_radius} m</span><br/>
-            ${blocks.length > 0 ? `
-              <div style="margin-top:8px;padding:6px 8px;background:#F0FDF4;border-radius:6px;border:1px solid #BBF7D0">
-                <div style="font-weight:600;color:#166534;font-size:12px;margin-bottom:4px">คลื่นที่จัดสรร (${totalMHz} MHz)</div>
-                <div style="font-family:monospace;font-size:11px;color:#166534;line-height:1.8">${blocksStr}</div>
+          <div style="font-family:Sarabun,sans-serif;font-size:12px;line-height:1.5;min-width:280px;max-width:300px">
+            <strong style="color:#1A1A2E;font-size:14px">${escapeHTML(p.name)}</strong>
+            <span style="color:#16A34A;margin-left:4px;font-size:10px;font-weight:600">IMT</span><br/>
+            <span style="color:#6C757D">${escapeHTML(p.operator)} | ${p.cell_radius}m | ${p.max_eirp} dBm</span>
+            <div style="margin-top:6px;padding:6px;background:#F9FAFB;border-radius:4px;border:1px solid #E5E7EB">
+              <div style="font-family:monospace;font-size:9px;color:#374151;line-height:1;letter-spacing:-0.5px;white-space:nowrap;overflow:hidden">${spectrumBar}</div>
+              <div style="display:flex;justify-content:space-between;font-size:7px;color:#9CA3AF;font-family:monospace;margin-top:1px">${labelsStr}</div>
+              <div style="margin-top:4px;font-size:10px;color:#374151">
+                <span style="color:#166534;font-weight:600">█ จัดสรร</span>${allocListStr ? `<span style="color:#166534"> ${allocListStr}</span>` : ''}${allocGuardLegend} <span style="color:#9CA3AF">· ว่าง</span>
               </div>
-            ` : `
-              <div style="margin-top:8px;padding:6px 8px;background:#FEF2F2;border-radius:6px;border:1px solid #FECACA;font-size:12px;color:#991B1B">
-                ยังไม่มีการจัดสรรคลื่นความถี่
-              </div>
-            `}
-            <span style="color:#9CA3AF;font-size:11px;margin-top:4px;display:block">${new Date(p.created_at).toLocaleDateString('th-TH')}</span>
+            </div>
+            <div style="margin-top:4px;font-size:10px;color:#6C757D">จัดสรร: <strong style="color:#166534">${totalMHz} MHz</strong>${guardStr}</div>
           </div>`)
         .addTo(map)
     })
