@@ -10,6 +10,9 @@ interface MapViewProps {
   selectedLon: number | null
   blocks: BlockResult[]
   mapStyle: string
+  cellRadius?: number
+  centerLat?: number | null
+  centerLon?: number | null
 }
 
 // Map styles
@@ -88,7 +91,7 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
@@ -122,6 +125,11 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
 
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
 
+    // Default cursor: grab for panning (not pointer)
+    map.getCanvas().style.cursor = 'grab'
+    map.on('dragstart', () => { map.getCanvas().style.cursor = 'grabbing' })
+    map.on('dragend', () => { map.getCanvas().style.cursor = 'grab' })
+
     map.on('click', (e) => {
       onMapClick(e.lngLat.lat, e.lngLat.lng)
     })
@@ -150,6 +158,12 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     source.setTiles([style.url])
   }, [mapStyle])
 
+  // Auto-pan when centerLat/centerLon change
+  useEffect(() => {
+    if (!mapRef.current || centerLat == null || centerLon == null) return
+    mapRef.current.flyTo({ center: [centerLon, centerLat], zoom: 12, duration: 800 })
+  }, [centerLat, centerLon])
+
   // Update selected-location marker
   useEffect(() => {
     if (!mapRef.current || !selectedLat || !selectedLon) return
@@ -161,8 +175,8 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       .setLngLat([selectedLon, selectedLat])
       .addTo(map)
 
-    drawCellRadius(map, selectedLat, selectedLon)
-  }, [selectedLat, selectedLon])
+    drawCellRadius(map, selectedLat, selectedLon, cellRadius)
+  }, [selectedLat, selectedLon, cellRadius])
 
   // Load FS links on map ready
   useEffect(() => {
@@ -184,35 +198,76 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   return <div ref={containerRef} className="w-full h-full" />
 }
 
-function drawCellRadius(map: maplibregl.Map, lat: number, lon: number) {
+function drawCellRadius(map: maplibregl.Map, lat: number, lon: number, radiusM?: number) {
   const sid = LAYER_IDS.cellRadiusSource
   const fid = LAYER_IDS.cellRadiusFill
+  const oid = fid + '-outline'
 
+  if (map.getLayer(oid)) map.removeLayer(oid)
   if (map.getLayer(fid)) map.removeLayer(fid)
   if (map.getSource(sid)) map.removeSource(sid)
 
-  map.addSource(sid, {
-    type: 'geojson',
-    data: { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties: {} },
-  })
+  if (radiusM != null) {
+    // Use turf.js fixed-radius circle (real-world distance, not zoom-dependent)
+    try {
+      const circlePoly = circle([lon, lat], radiusM / 1000, {
+        steps: 64,
+        units: 'kilometers',
+      })
 
-  map.addLayer({
-    id: fid,
-    type: 'circle',
-    source: sid,
-    paint: {
-      'circle-radius': [
-        'interpolate', ['linear'], ['zoom'],
-        8, 20,
-        14, 200,
-      ],
-      'circle-opacity': 0.2,
-      'circle-color': '#C00000',
-      'circle-stroke-width': 2,
-      'circle-stroke-color': '#C00000',
-      'circle-stroke-opacity': 0.6,
-    },
-  })
+      map.addSource(sid, {
+        type: 'geojson',
+        data: circlePoly,
+      })
+
+      map.addLayer({
+        id: fid,
+        type: 'fill',
+        source: sid,
+        paint: {
+          'fill-color': '#C00000',
+          'fill-opacity': 0.15,
+        },
+      })
+
+      map.addLayer({
+        id: oid,
+        type: 'line',
+        source: sid,
+        paint: {
+          'line-color': '#C00000',
+          'line-width': 2,
+          'line-opacity': 0.6,
+        },
+      })
+    } catch (e) {
+      console.warn('Failed to draw turf cell radius:', e)
+    }
+  } else {
+    // Zoom-dependent circle (legacy behavior for full-map mode)
+    map.addSource(sid, {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties: {} },
+    })
+
+    map.addLayer({
+      id: fid,
+      type: 'circle',
+      source: sid,
+      paint: {
+        'circle-radius': [
+          'interpolate', ['linear'], ['zoom'],
+          8, 20,
+          14, 200,
+        ],
+        'circle-opacity': 0.2,
+        'circle-color': '#C00000',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#C00000',
+        'circle-stroke-opacity': 0.6,
+      },
+    })
+  }
 }
 
 // ─── FS Links ──────────────────────────────────────────────────────────────

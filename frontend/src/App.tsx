@@ -50,6 +50,7 @@ function AuthenticatedApp({
   const [model, setModel] = useState('free_space')
   const [mapStyle, setMapStyle] = useState('voyager')
   const [showDashboardWorkspace, setShowDashboardWorkspace] = useState(false)
+  const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
   const { fetchWithAuth } = useAuth()
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
@@ -246,12 +247,27 @@ function AuthenticatedApp({
                   selectedLon={selectedLon}
                   blocks={blocks}
                   mapStyle={mapStyle}
+                  cellRadius={workspaceCellRadius}
+                  centerLat={selectedLat}
+                  centerLon={selectedLon}
                 />
               </div>
 
-              {/* Right 70% — Workspace Panel */}
-              <div className="flex-1 overflow-hidden">
-                <IMTAddWorkspace onBack={handleCloseWorkspace} mode="panel" onMapClickLat={workspaceMapClickLat} onMapClickLon={workspaceMapClickLon} />
+              {/* Right 70% — Workspace Panel with slide-in animation */}
+              <div
+                className="flex-1 overflow-hidden transition-all duration-300 ease-in-out"
+                style={{
+                  transform: showDashboardWorkspace ? 'translateX(0)' : 'translateX(100%)',
+                  opacity: showDashboardWorkspace ? 1 : 0,
+                }}
+              >
+                <IMTAddWorkspace
+                  onBack={handleCloseWorkspace}
+                  mode="panel"
+                  onMapClickLat={workspaceMapClickLat}
+                  onMapClickLon={workspaceMapClickLon}
+                  onCellRadiusChange={setWorkspaceCellRadius}
+                />
               </div>
             </div>
           ) : (

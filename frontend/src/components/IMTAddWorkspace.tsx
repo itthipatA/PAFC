@@ -11,6 +11,7 @@ interface IMTAddWorkspaceProps {
   mode?: 'full' | 'panel'
   onMapClickLat?: number | null
   onMapClickLon?: number | null
+  onCellRadiusChange?: (r: number) => void
 }
 
 const LAYER_IDS = {
@@ -23,7 +24,7 @@ const LAYER_IDS = {
   miniIMTSource: 'mini-imt-source',
 }
 
-export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, onMapClickLon }: IMTAddWorkspaceProps) {
+export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, onMapClickLon, onCellRadiusChange }: IMTAddWorkspaceProps) {
   const { fetchWithAuth } = useAuth()
 
   // Form state
@@ -155,6 +156,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
       setMapClickActive(false)
     }
   }, [onMapClickLat, onMapClickLon, mapClickActive])
+
+  // Notify parent when cellRadius changes
+  useEffect(() => {
+    onCellRadiusChange?.(cellRadius)
+  }, [cellRadius, onCellRadiusChange])
 
   const handleCalculate = useCallback(async () => {
     setLoading(true)
@@ -443,6 +449,12 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
             </div>
           </section>
 
+          {/* ─── Gradient divider between Input and Calculate ─── */}
+          <div className="flex items-center gap-3 my-1">
+            <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, #D1D5DB)' }} />
+            <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, #D1D5DB)' }} />
+          </div>
+
           {/* SECTION 2: Calculate Button */}
           <section>
             <button
@@ -474,6 +486,14 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                 ))}
               </div>
             </section>
+          )}
+
+          {/* ─── Gradient divider between Log and Results (if both visible) ─── */}
+          {logLines.length > 0 && blocks.length > 0 && (
+            <div className="flex items-center gap-3 my-1">
+              <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, #D1D5DB)' }} />
+              <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, #D1D5DB)' }} />
+            </div>
           )}
 
           {/* SECTION 4: Spectrum Results */}
@@ -526,10 +546,21 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
                 ))}
               </div>
 
-              {/* X-axis labels */}
-              <div className="flex justify-between mb-4">
-                {[4800, 4820, 4840, 4860, 4880, 4900, 4920, 4940, 4960, 4980, 4990].map((f) => (
-                  <span key={f} className="text-xs text-gray-400 font-mono">{f}</span>
+              {/* X-axis labels — one per 20MHz, aligned to block boundaries */}
+              <div className="flex mb-4">
+                {sorted.map((b, i) => (
+                  <div key={i} className="flex-1" style={{ minWidth: `${Math.max(100 / sorted.length, 1)}%`, position: 'relative' }}>
+                    {b.freq_low % 20 === 0 && (
+                      <span className="absolute -left-2 top-0 text-xs text-gray-400 font-mono">
+                        {b.freq_low}
+                      </span>
+                    )}
+                    {i === sorted.length - 1 && (
+                      <span className="absolute -right-1 top-0 text-xs text-gray-400 font-mono">
+                        {b.freq_high}
+                      </span>
+                    )}
+                  </div>
                 ))}
               </div>
 
@@ -592,28 +623,35 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, 
 
           {/* SECTION 5: Save Button */}
           {blocks.length > 0 && (
-            <section>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
-              >
-                <Save className="w-4 h-4" />
-                {saving ? 'กำลังบันทึก...' : 'บันทึก IMT'}
-              </button>
+            <>
+              {/* ─── Gradient divider between Results and Save ─── */}
+              <div className="flex items-center gap-3 my-1">
+                <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, #D1D5DB)' }} />
+                <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, transparent, #D1D5DB)' }} />
+              </div>
+              <section>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="w-full bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <Save className="w-4 h-4" />
+                  {saving ? 'กำลังบันทึก...' : 'บันทึก IMT'}
+                </button>
 
-              {savedMessage && (
-                <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-                  {savedMessage}
-                </div>
-              )}
+                {savedMessage && (
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                    {savedMessage}
+                  </div>
+                )}
 
-              {saveError && (
-                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  {saveError}
-                </div>
-              )}
-            </section>
+                {saveError && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                    {saveError}
+                  </div>
+                )}
+              </section>
+            </>
           )}
         </div>
       </div>
