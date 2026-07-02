@@ -10,6 +10,8 @@ interface MapViewProps {
   selectedLon: number | null
   blocks: BlockResult[]
   mapStyle: string
+  onConfirmAdd?: () => void
+  showAddButton?: boolean
 }
 
 // Map styles
@@ -88,10 +90,11 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, onConfirmAdd, showAddButton }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
+  const addBtnMarkerRef = useRef<maplibregl.Marker | null>(null)
   const fsMarkersRef = useRef<maplibregl.Marker[]>([])
   const imtMarkersRef = useRef<maplibregl.Marker[]>([])
   const { fetchWithAuth } = useAuth()
@@ -130,6 +133,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
 
     return () => {
       // Clean up all markers
+      if (addBtnMarkerRef.current) { addBtnMarkerRef.current.remove(); addBtnMarkerRef.current = null }
       fsMarkersRef.current.forEach((m) => m.remove())
       fsMarkersRef.current = []
       imtMarkersRef.current.forEach((m) => m.remove())
@@ -156,13 +160,24 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
 
     const map = mapRef.current
     if (markerRef.current) markerRef.current.remove()
+    if (addBtnMarkerRef.current) { addBtnMarkerRef.current.remove(); addBtnMarkerRef.current = null }
 
     markerRef.current = new maplibregl.Marker({ color: '#C00000' })
       .setLngLat([selectedLon, selectedLat])
       .addTo(map)
 
     drawCellRadius(map, selectedLat, selectedLon)
-  }, [selectedLat, selectedLon])
+
+    if (onConfirmAdd && showAddButton) {
+      const btnEl = document.createElement('div')
+      btnEl.innerHTML = `<button style="background:#C00000;color:white;border:none;padding:4px 8px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3);font-family:Sarabun,sans-serif">➕ เพิ่มจุด IMT</button>`
+      btnEl.querySelector('button')!.onclick = (e) => { e.stopPropagation(); onConfirmAdd() }
+      const addBtnMarker = new maplibregl.Marker({ element: btnEl, offset: [0, -30] })
+        .setLngLat([selectedLon, selectedLat])
+        .addTo(map)
+      addBtnMarkerRef.current = addBtnMarker
+    }
+  }, [selectedLat, selectedLon, onConfirmAdd, showAddButton])
 
   // Load FS links on map ready
   useEffect(() => {

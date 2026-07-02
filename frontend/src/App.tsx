@@ -6,9 +6,9 @@ import {
   Shield,
   Radio,
   Search,
+  Globe,
 } from 'lucide-react'
 import MapView, { MAP_STYLES } from './components/MapView'
-import Header from './components/Header'
 import BlockPanel from './components/BlockPanel'
 import AllocationForm from './components/AllocationForm'
 import LoginPage from './components/LoginPage'
@@ -45,10 +45,13 @@ function AuthenticatedApp({
   const [loading, setLoading] = useState(false)
   const [model, setModel] = useState('free_space')
   const [mapStyle, setMapStyle] = useState('voyager')
+  const [showAddButton, setShowAddButton] = useState(false)
+  const { fetchWithAuth } = useAuth()
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
     setSelectedLon(lon)
+    setShowAddButton(true)
   }, [])
 
   const handleAnalyze = useCallback(
@@ -62,7 +65,7 @@ function AuthenticatedApp({
 
       setLoading(true)
       try {
-        const res = await fetch('/api/allocate/analyze', {
+        const res = await fetchWithAuth('/api/allocate/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -83,8 +86,12 @@ function AuthenticatedApp({
         setLoading(false)
       }
     },
-    [selectedLat, selectedLon, model],
+    [selectedLat, selectedLon, model, fetchWithAuth],
   )
+
+  const handleConfirmAdd = useCallback(() => {
+    setShowAddButton(false)
+  }, [])
 
   const handleCloseAllocation = useCallback(() => {
     setSelectedLat(null)
@@ -93,7 +100,6 @@ function AuthenticatedApp({
   }, [])
 
   const handleZoomTo = useCallback((lat: number, lon: number) => {
-    // Switch to dashboard tab and set the selected location
     setTab('dashboard')
     setSelectedLat(lat)
     setSelectedLon(lon)
@@ -170,6 +176,20 @@ function AuthenticatedApp({
             ค้นหา
           </button>
 
+          {/* Map Style Selector */}
+          <div className="flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1">
+            <Globe className="w-4 h-4 opacity-70" />
+            <select
+              value={mapStyle}
+              onChange={(e) => setMapStyle(e.target.value)}
+              className="bg-transparent text-white text-sm cursor-pointer border-none outline-none"
+            >
+              {Object.entries(MAP_STYLES).map(([key, s]) => (
+                <option key={key} value={key} className="text-gray-900">{s.label}</option>
+              ))}
+            </select>
+          </div>
+
           {/* User info + Logout */}
           <div className="ml-4 flex items-center gap-2 pl-4 border-l border-white/20">
             <span className="text-xs text-white/70">
@@ -190,14 +210,6 @@ function AuthenticatedApp({
       {/* Tab Content */}
       {tab === 'dashboard' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Sub-header with model/style controls */}
-          <Header
-            model={model}
-            onModelChange={setModel}
-            mapStyle={mapStyle}
-            onMapStyleChange={setMapStyle}
-          />
-
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 relative">
               <MapView
@@ -206,9 +218,11 @@ function AuthenticatedApp({
                 selectedLon={selectedLon}
                 blocks={blocks}
                 mapStyle={mapStyle}
+                onConfirmAdd={handleConfirmAdd}
+                showAddButton={showAddButton}
               />
 
-              {selectedLat && selectedLon && (
+              {selectedLat && selectedLon && !showAddButton && (
                 <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg p-4 w-80">
                   <AllocationForm
                     lat={selectedLat}
@@ -216,6 +230,8 @@ function AuthenticatedApp({
                     onAnalyze={handleAnalyze}
                     loading={loading}
                     onClose={handleCloseAllocation}
+                    model={model}
+                    onModelChange={setModel}
                   />
                 </div>
               )}

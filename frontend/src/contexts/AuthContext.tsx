@@ -1,5 +1,19 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { User } from '../types'
+
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    let payload = parts[1]
+    // Add padding
+    while (payload.length % 4 !== 0) payload += '='
+    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    return JSON.parse(decoded)
+  } catch {
+    return null
+  }
+}
 
 interface AuthState {
   token: string | null
@@ -16,6 +30,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
 
+  // Restore auth from localStorage on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem('pafc_token')
+    const savedUser = localStorage.getItem('pafc_user')
+    if (savedToken) {
+      const payload = decodeJwtPayload(savedToken)
+      if (payload && payload.exp && payload.exp * 1000 > Date.now()) {
+        setToken(savedToken)
+        try {
+          setUser(JSON.parse(savedUser || 'null'))
+        } catch {
+          localStorage.removeItem('pafc_token')
+          localStorage.removeItem('pafc_user')
+        }
+      } else {
+        localStorage.removeItem('pafc_token')
+        localStorage.removeItem('pafc_user')
+      }
+    }
+  }, [])
+
   const login = useCallback(async (username: string, password: string) => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
@@ -31,11 +66,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json()
     setToken(data.access_token)
     setUser({ username: data.username, role: data.role })
+    localStorage.setItem('pafc_token', data.access_token)
+    localStorage.setItem('pafc_user', JSON.stringify({ username: data.username, role: data.role }))
   }, [])
 
   const logout = useCallback(() => {
     setToken(null)
     setUser(null)
+    localStorage.removeItem('pafc_token')
+    localStorage.removeItem('pafc_user')
   }, [])
 
   const fetchWithAuth = useCallback(

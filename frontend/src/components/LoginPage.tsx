@@ -37,10 +37,10 @@ export default function LoginPage() {
             <Shield className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-[#1A1A2E] mb-1">
-            ระบบจัดสรรคลื่นความถี่
+            Private Network Automatic Frequency Coordination
           </h1>
           <h2 className="text-lg font-semibold text-[#C00000] mb-1">
-            IMT Private Network
+            ระบบ PAFC
           </h2>
           <p className="text-sm text-gray-500">4800-4990 MHz</p>
         </div>
@@ -50,7 +50,7 @@ export default function LoginPage() {
           <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-100">
             <LogIn className="w-5 h-5 text-[#C00000]" />
             <h3 className="text-lg font-bold text-[#1A1A2E]">
-              เข้าสู่ระบบสำหรับเจาหนาที่
+              เข้าสู่ระบบ
             </h3>
           </div>
 
@@ -109,7 +109,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          NBTC Office of National Broadcasting and Telecommunications Commission
+          สำนักงานคณะกรรมการกิจการกระจายเสียง กิจการโทรทัศน์ และกิจการโทรคมนาคมแห่งชาติ
         </p>
       </div>
     </div>

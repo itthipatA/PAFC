@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, MapPin, X } from 'lucide-react'
+import { Search, MapPin, X, Radio } from 'lucide-react'
 
 interface AllocationFormProps {
   lat: number
@@ -12,13 +12,16 @@ interface AllocationFormProps {
   }) => void
   loading: boolean
   onClose: () => void
+  model: string
+  onModelChange: (m: string) => void
 }
 
-export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose }: AllocationFormProps) {
+export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose, model, onModelChange }: AllocationFormProps) {
   const [cellRadius, setCellRadius] = useState(500)
   const [antennaHeight, setAntennaHeight] = useState(15)
   const [antennaGain, setAntennaGain] = useState(12)
   const [maxEirp, setMaxEirp] = useState(23)
+  const [logLines, setLogLines] = useState<string[]>([])
 
   // ESC key listener
   useEffect(() => {
@@ -28,6 +31,33 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [onClose])
+
+  // Calc log: add lines when loading, clear when not loading
+  useEffect(() => {
+    if (loading) {
+      setLogLines([])
+      const steps = [
+        'กำลังคำนวณ propagation loss...',
+        'กำลังตรวจสอบ FS links...',
+        'กำลังวิเคราะห์ guard band...',
+        'กำลังสรุปผล...',
+      ]
+      let i = 0
+      const timer = setInterval(() => {
+        setLogLines((prev) => {
+          if (i < steps.length) {
+            const next = prev.concat(steps[i])
+            i++
+            return next
+          }
+          return prev
+        })
+      }, 500)
+      return () => clearInterval(timer)
+    } else {
+      setLogLines([])
+    }
+  }, [loading])
 
   return (
     <div className="relative">
@@ -50,6 +80,18 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose }
       </div>
 
       <div className="space-y-2 mb-3">
+        <div>
+          <label className="text-xs text-gray-500 block mb-0.5">Propagation Model</label>
+          <select
+            value={model}
+            onChange={(e) => onModelChange(e.target.value)}
+            className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+          >
+            <option value="free_space">Free Space</option>
+            <option value="p452">ITU-R P.452</option>
+            <option value="hata">Hata</option>
+          </select>
+        </div>
         <div>
           <label className="text-xs text-gray-500 block mb-0.5">
             รัศมีเซลล์ (m)
@@ -121,6 +163,16 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose }
           ยกเลิก
         </button>
       </div>
+
+      {logLines.length > 0 && (
+        <div className="mt-3 p-2 bg-gray-50 rounded border border-gray-100 text-xs font-mono text-gray-600 max-h-24 overflow-y-auto">
+          {logLines.map((line, i) => (
+            <div key={i} className="py-0.5 transition-opacity duration-300" style={{ opacity: 1 }}>
+              [{i + 1}/4] {line}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

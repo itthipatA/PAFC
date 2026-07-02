@@ -1,4 +1,5 @@
-import { CheckCircle, Shield, XCircle } from 'lucide-react'
+import { useState } from 'react'
+import { CheckCircle, Shield, XCircle, Info } from 'lucide-react'
 import { BlockResult } from '../types'
 
 interface BlockPanelProps {
@@ -6,6 +7,8 @@ interface BlockPanelProps {
 }
 
 export default function BlockPanel({ blocks }: BlockPanelProps) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+
   const statusCounts = {
     available: blocks.filter((b) => b.status === 'green').length,
     guard: blocks.filter((b) => b.status === 'gray').length,
@@ -66,11 +69,12 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
           <div
             key={i}
             title={`${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${b.reason}`}
-            className={`flex-1 ${statusBg(b.status)}`}
+            className={`flex-1 ${statusBg(b.status)} cursor-pointer hover:brightness-110 relative`}
             style={{
               backgroundColor: statusColor(b.status),
               minWidth: `${Math.max(100 / sorted.length, 1)}%`,
             }}
+            onClick={() => setSelectedIndex(selectedIndex === i ? null : i)}
           />
         ))}
       </div>
@@ -105,6 +109,30 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
           ถูกจอง
         </div>
       </div>
+
+      {/* Selected block detail */}
+      {selectedIndex !== null && sorted[selectedIndex] && (
+        <div className="mb-3 p-3 bg-white rounded border border-gray-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-mono font-bold text-[#1A1A2E]">
+              {sorted[selectedIndex].freq_low.toFixed(0)}-{sorted[selectedIndex].freq_high.toFixed(0)} MHz
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+              sorted[selectedIndex].status === 'green' ? 'bg-green-100 text-green-700' :
+              sorted[selectedIndex].status === 'gray' ? 'bg-gray-100 text-gray-600' :
+              'bg-red-100 text-red-700'
+            }`}>
+              {sorted[selectedIndex].status === 'green' ? 'ว่าง' : sorted[selectedIndex].status === 'gray' ? 'Guard Band' : 'ถูกจอง'}
+            </span>
+          </div>
+          <p className="text-xs text-gray-600">
+            <Info className="w-3 h-3 inline mr-1" />
+            {sorted[selectedIndex].status === 'green' ? 'สามารถจัดสรรได้' :
+             sorted[selectedIndex].status === 'red' ? `ไม่สามารถจัดสรรได้ — ${sorted[selectedIndex].reason}` :
+             `Guard Band — ${sorted[selectedIndex].reason}`}
+          </p>
+        </div>
+      )}
 
       {/* Conflicts detail */}
       <div className="space-y-1.5 max-h-60 overflow-y-auto">
