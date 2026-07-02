@@ -592,13 +592,22 @@ function popupHTML(
   const roleText = role ? ` (${role})` : ''
   const midFreqMHz = ((freqLow + freqHigh) / 2).toFixed(1)
   return `
-    <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:260px">
+    <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:280px">
       <strong style="color:#1A1A2E">${escapeHTML(name)}${roleText}</strong><br/>
       <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(operator)}</span><br/>
-      <span style="color:#6C757D">ความถี่: ${freqLow}-${freqHigh} MHz</span><br/>
+      <span style="color:#6C757D">ความถี่: ${freqLow}-${freqHigh} MHz (Mid: ${midFreqMHz} MHz)</span><br/>
       <span style="color:#6C757D">ระยะทาง: ${distance} km</span><br/>
-      <span style="color:#3B82F6">Coordination Zone: ${coordRadiusTxKm} km (TX), ${coordRadiusRxKm} km (RX)</span><br/>
-      <span style="color:#6C757D">EIRP: ${eirp} dBm | Threshold: ${threshold} dBm</span>
+      <hr style="border:none;border-top:1px solid #E5E7EB;margin:6px 0"/>
+      <span style="color:#3B82F6;font-weight:600">Coordination Zone</span><br/>
+      <span style="color:#6C757D">
+        &nbsp;&nbsp;TX: ${coordRadiusTxKm} km | RX: ${coordRadiusRxKm} km | Corridor: 0.2 km
+      </span><br/>
+      <span style="color:#6C757D">EIRP: ${eirp} dBm | Threshold: ${threshold} dBm</span><br/>
+      <span style="color:#6C757D;font-size:11px;line-height:1.4">
+        &nbsp;&nbsp;&#x2022; Microwave protection corridor (200m min)<br/>
+        &nbsp;&nbsp;&#x2022; Accounts for Fresnel zone, beam spreading,<br/>
+        &nbsp;&nbsp;&nbsp;&nbsp;near-field effects &amp; diffraction
+      </span>
     </div>`
 }
 

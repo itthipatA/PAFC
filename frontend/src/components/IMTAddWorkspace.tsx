@@ -287,6 +287,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
           max_eirp: maxEirp,
           name: name.trim(),
           operator: operator.trim(),
+          status: 'active',
           blocks: blocks.map((b) => ({
             freq_low: b.freq_low,
             freq_high: b.freq_high,

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import React from 'react'
 import {
   Plus,
   Edit,
@@ -7,6 +8,11 @@ import {
   X,
   Radio,
   PlusCircle,
+  ChevronDown,
+  ChevronRight,
+  CheckCircle,
+  Shield,
+  XCircle,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import type { IMTAllocation, IMTAllocationCreate } from '../types'
@@ -24,6 +30,178 @@ const EMPTY_FORM: IMTAllocationCreate = {
   max_eirp: 23,
 }
 
+// ─── IMT Detail Panel (expandable row content) ────────────────────────────
+
+function IMTDetailPanel({ alloc }: { alloc: IMTAllocation }) {
+  const SPECTRUM_START = 4800
+  const SPECTRUM_END = 4990
+  const BLOCK_WIDTH = 10
+  const totalBlocks = (SPECTRUM_END - SPECTRUM_START) / BLOCK_WIDTH // 19
+
+  // Build a map of which 10-MHz slots are allocated
+  const slotMap: Record<number, { freq_low: number; freq_high: number; status: string }> = {}
+  if (alloc.blocks) {
+    alloc.blocks.forEach((b) => {
+      const slotIdx = (b.freq_low - SPECTRUM_START) / BLOCK_WIDTH
+      slotMap[slotIdx] = { freq_low: b.freq_low, freq_high: b.freq_high, status: b.status }
+    })
+  }
+
+  const allocatedBlocks = alloc.blocks || []
+  const allocatedMhz = allocatedBlocks.length * BLOCK_WIDTH
+  const guardMhz = allocatedBlocks.filter((b) => b.status === 'gray' || b.status === 'guard').length * BLOCK_WIDTH
+  const usableMhz = allocatedBlocks.filter((b) => b.status !== 'gray' && b.status !== 'guard').length * BLOCK_WIDTH
+
+  function slotColor(slotIdx: number): string {
+    const b = slotMap[slotIdx]
+    if (!b) return '#E5E7EB' // unallocated slot — light gray
+    switch (b.status) {
+      case 'green':
+      case 'allocated':
+        return '#16A34A'
+      case 'gray':
+      case 'guard':
+        return '#9CA3AF'
+      case 'red':
+      case 'blocked':
+        return '#DC2626'
+      default:
+        return '#E5E7EB'
+    }
+  }
+
+  function slotLabel(slotIdx: number): string {
+    const b = slotMap[slotIdx]
+    if (!b) return `${SPECTRUM_START + slotIdx * BLOCK_WIDTH}-${SPECTRUM_START + (slotIdx + 1) * BLOCK_WIDTH} MHz (ว่าง)`
+    const statusText =
+      b.status === 'green' || b.status === 'allocated' ? 'จัดสรร' :
+      b.status === 'gray' || b.status === 'guard' ? 'Guard Band' :
+      'Blocked'
+    return `${b.freq_low}-${b.freq_high} MHz (${statusText})`
+  }
+
+  const statusBadge = (status: string) => {
+    const s = status || 'active'
+    if (s === 'active') return { bg: 'bg-green-100', text: 'text-green-700', label: 'ใช้งาน' }
+    if (s === 'expired') return { bg: 'bg-red-100', text: 'text-red-700', label: 'หมดอายุ' }
+    if (s === 'pending') return { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'รอดำเนินการ' }
+    return { bg: 'bg-gray-100', text: 'text-gray-600', label: s }
+  }
+
+  const badge = statusBadge(alloc.status)
+
+  return (
+    <div className="space-y-3">
+      {/* Header row */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <span className="font-bold text-sm text-[#1A1A2E]">
+          IMT Detail: {alloc.name}
+        </span>
+        <span className="text-sm text-gray-600">
+          Operator: <strong>{alloc.operator}</strong>
+        </span>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.bg} ${badge.text}`}>
+          {badge.label}
+        </span>
+      </div>
+
+      {/* Parameters */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-gray-600">
+        <div>Cell Radius: <span className="font-mono text-gray-800">{alloc.cell_radius} m</span></div>
+        <div>Antenna: <span className="font-mono text-gray-800">{alloc.antenna_height} m AGL, {alloc.antenna_gain} dBi</span></div>
+        <div>EIRP: <span className="font-mono text-gray-800">{alloc.max_eirp} dBm</span></div>
+        <div>Position: <span className="font-mono text-gray-800">{alloc.center_lat.toFixed(4)}, {alloc.center_lon.toFixed(4)}</span></div>
+      </div>
+
+      {/* Spectrum Bar */}
+      <div>
+        <div className="text-xs font-semibold text-gray-600 mb-1">Spectrum Assignment (4800-4990 MHz)</div>
+        <div className="flex h-8 rounded overflow-hidden border border-gray-300">
+          {Array.from({ length: totalBlocks }, (_, i) => (
+            <div
+              key={i}
+              title={slotLabel(i)}
+              className="flex-1 relative"
+              style={{
+                backgroundColor: slotColor(i),
+                minWidth: `${Math.max(100 / totalBlocks, 1)}%`,
+                borderRight: i < totalBlocks - 1 ? '1px solid rgba(0,0,0,0.15)' : 'none',
+              }}
+            />
+          ))}
+        </div>
+        {/* X-axis labels */}
+        <div className="flex mt-0.5">
+          {Array.from({ length: totalBlocks }, (_, i) => (
+            <div key={i} className="flex-1 relative" style={{ minWidth: `${Math.max(100 / totalBlocks, 1)}%` }}>
+              {((SPECTRUM_START + i * BLOCK_WIDTH) % 20 === 0 || i === 0 || i === totalBlocks - 1) && (
+                <span className="absolute -left-2 text-[9px] text-gray-400 font-mono">
+                  {SPECTRUM_START + i * BLOCK_WIDTH}
+                </span>
+              )}
+              {i === totalBlocks - 1 && (
+                <span className="absolute -right-1 text-[9px] text-gray-400 font-mono">
+                  {SPECTRUM_END}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Block List */}
+      <div>
+        <div className="text-xs font-semibold text-gray-600 mb-1">
+          Allocated Blocks ({allocatedBlocks.length} blocks / {allocatedMhz} MHz)
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {allocatedBlocks.length === 0 ? (
+            <span className="text-xs text-gray-400">ไม่มีบล็อกที่จัดสรร</span>
+          ) : (
+            allocatedBlocks.map((b, i) => {
+              const isGuard = b.status === 'gray' || b.status === 'guard'
+              const isBlocked = b.status === 'red' || b.status === 'blocked'
+              return (
+                <span
+                  key={i}
+                  className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded border ${
+                    isBlocked
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : isGuard
+                      ? 'bg-gray-50 border-gray-200 text-gray-600'
+                      : 'bg-green-50 border-green-200 text-green-700'
+                  }`}
+                >
+                  {isGuard ? <Shield className="w-3 h-3" /> : isBlocked ? <XCircle className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
+                  {b.freq_low}-{b.freq_high}
+                  <span className="text-[10px] opacity-70">
+                    ({isGuard ? 'Guard' : isBlocked ? 'Blocked' : 'OK'})
+                  </span>
+                </span>
+              )
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div className="flex gap-4 text-xs text-gray-600">
+        <span>
+          <span className="font-semibold">Allocated:</span> {allocatedMhz} MHz
+        </span>
+        {guardMhz > 0 && (
+          <span>
+            <span className="font-semibold">Guard Band:</span> {guardMhz} MHz
+          </span>
+        )}
+        <span>
+          <span className="font-semibold">Usable:</span> {usableMhz} MHz
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export default function IMTManager() {
   const { fetchWithAuth } = useAuth()
 
@@ -37,12 +215,13 @@ export default function IMTManager() {
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const fetchAllocations = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetchWithAuth('/api/imt/?status=active')
+      const res = await fetchWithAuth('/api/imt/')
       if (!res.ok) throw new Error('ไม่สามารถโหลดรายการ IMT ได้')
       const data = await res.json()
       setAllocations(data.allocations || data || [])
@@ -225,54 +404,75 @@ export default function IMTManager() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayed.map((alloc) => (
-                  <tr key={alloc.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-[#1A1A2E]">{alloc.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{alloc.operator}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                      {alloc.center_lat.toFixed(4)}, {alloc.center_lon.toFixed(4)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {alloc.blocks && alloc.blocks.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {alloc.blocks.map((b, i) => (
-                            <span
-                              key={i}
-                              className="inline-block px-1.5 py-0.5 text-xs font-mono rounded bg-[#C00000]/10 text-[#C00000] border border-[#C00000]/20 whitespace-nowrap"
-                            >
-                              {b.freq_low}-{b.freq_high}
-                            </span>
-                          ))}
+                  <React.Fragment key={alloc.id}>
+                    <tr
+                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      onClick={() => setExpandedId(expandedId === alloc.id ? null : alloc.id)}
+                    >
+                      <td className="px-4 py-3 font-medium text-[#1A1A2E]">
+                        <span className="inline-flex items-center gap-1">
+                          {expandedId === alloc.id ? (
+                            <ChevronDown className="w-4 h-4 text-gray-400" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-gray-400" />
+                          )}
+                          {alloc.name}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{alloc.operator}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                        {alloc.center_lat.toFixed(4)}, {alloc.center_lon.toFixed(4)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {alloc.blocks && alloc.blocks.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {alloc.blocks.map((b, i) => (
+                              <span
+                                key={i}
+                                className="inline-block px-1.5 py-0.5 text-xs font-mono rounded bg-[#C00000]/10 text-[#C00000] border border-[#C00000]/20 whitespace-nowrap"
+                              >
+                                {b.freq_low}-{b.freq_high}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-600">{alloc.cell_radius}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-600">{alloc.antenna_height}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-600">{alloc.max_eirp}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {new Date(alloc.created_at).toLocaleDateString('th-TH')}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEdit(alloc) }}
+                            className="p-1.5 text-gray-400 hover:text-[#C00000] hover:bg-red-50 rounded transition-colors"
+                            title="แก้ไข"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDelete(alloc.id) }}
+                            disabled={deleting === alloc.id}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                            title="ลบ"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{alloc.cell_radius}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{alloc.antenna_height}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{alloc.max_eirp}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
-                      {new Date(alloc.created_at).toLocaleDateString('th-TH')}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openEdit(alloc)}
-                          className="p-1.5 text-gray-400 hover:text-[#C00000] hover:bg-red-50 rounded transition-colors"
-                          title="แก้ไข"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(alloc.id)}
-                          disabled={deleting === alloc.id}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                          title="ลบ"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>
+                    {expandedId === alloc.id && (
+                      <tr key={`${alloc.id}-detail`}>
+                        <td colSpan={9} className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                          <IMTDetailPanel alloc={alloc} />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

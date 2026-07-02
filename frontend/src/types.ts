@@ -76,6 +76,7 @@ export interface IMTAllocation {
   antenna_height: number
   antenna_gain: number
   max_eirp: number
+  status: string
   blocks: IMTBlock[]
   created_at: string
 }
