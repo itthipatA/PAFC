@@ -32,9 +32,9 @@ export default function LoginPage() {
     <div className="min-h-screen flex relative bg-[#F5F5F0]">
       {/* Left Panel — Diagonal Split with full-bleed cover image (hidden on mobile) */}
       <div
-        className="hidden lg:block relative w-[45%] min-h-screen overflow-hidden"
+        className="hidden lg:block relative w-[60%] min-h-screen overflow-hidden"
         style={{
-          clipPath: 'polygon(0 0, 100% 0, 82% 100%, 0 100%)',
+          clipPath: 'polygon(0 0, 78% 0, 100% 100%, 0 100%)',
           filter: 'drop-shadow(3px 0 6px rgba(0,0,0,0.12))',
         }}
       >
@@ -54,7 +54,7 @@ export default function LoginPage() {
 
       {/* Right Panel — Login Form */}
       <div className="flex-1 flex items-center justify-center bg-[#F5F5F0] px-4 sm:px-8 lg:px-12 min-h-screen">
-        <div className="w-full max-w-[420px]">
+        <div className="w-full max-w-[480px]">
           {/* Mobile-only branding */}
           <div className="lg:hidden text-center mb-8">
             <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-[#C00000] to-[#8B0000] rounded-xl mb-4 shadow-lg shadow-[#C00000]/25">
@@ -70,7 +70,7 @@ export default function LoginPage() {
           </div>
 
           {/* Login Card */}
-          <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8">
+          <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-10">
             {/* Header */}
             <div className="flex items-center gap-3 mb-7 pb-5 border-b border-gray-100">
               <div className="w-11 h-11 bg-gradient-to-br from-[#C00000]/10 to-[#C00000]/5 rounded-xl flex items-center justify-center">
