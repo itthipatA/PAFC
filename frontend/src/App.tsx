@@ -43,6 +43,8 @@ function AuthenticatedApp({
 
   const [selectedLat, setSelectedLat] = useState<number | null>(null)
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
+  const [workspaceMapClickLat, setWorkspaceMapClickLat] = useState<number | null>(null)
+  const [workspaceMapClickLon, setWorkspaceMapClickLon] = useState<number | null>(null)
   const [blocks, setBlocks] = useState<BlockResult[]>([])
   const [loading, setLoading] = useState(false)
   const [model, setModel] = useState('free_space')
@@ -53,7 +55,11 @@ function AuthenticatedApp({
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
     setSelectedLon(lon)
-  }, [])
+    if (showDashboardWorkspace) {
+      setWorkspaceMapClickLat(lat)
+      setWorkspaceMapClickLon(lon)
+    }
+  }, [showDashboardWorkspace])
 
   const handleAnalyze = useCallback(
     async (params: {
@@ -245,7 +251,7 @@ function AuthenticatedApp({
 
               {/* Right 70% — Workspace Panel */}
               <div className="flex-1 overflow-hidden">
-                <IMTAddWorkspace onBack={handleCloseWorkspace} mode="panel" />
+                <IMTAddWorkspace onBack={handleCloseWorkspace} mode="panel" onMapClickLat={workspaceMapClickLat} onMapClickLon={workspaceMapClickLon} />
               </div>
             </div>
           ) : (

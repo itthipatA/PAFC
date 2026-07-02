@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
-import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, Info } from 'lucide-react'
+import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, Info, MapPin } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
 import type { BlockResult } from '../types'
@@ -9,6 +9,8 @@ import type { BlockResult } from '../types'
 interface IMTAddWorkspaceProps {
   onBack: () => void
   mode?: 'full' | 'panel'
+  onMapClickLat?: number | null
+  onMapClickLon?: number | null
 }
 
 const LAYER_IDS = {
@@ -21,7 +23,7 @@ const LAYER_IDS = {
   miniIMTSource: 'mini-imt-source',
 }
 
-export default function IMTAddWorkspace({ onBack, mode = 'full' }: IMTAddWorkspaceProps) {
+export default function IMTAddWorkspace({ onBack, mode = 'full', onMapClickLat, onMapClickLon }: IMTAddWorkspaceProps) {
   const { fetchWithAuth } = useAuth()
 
   // Form state
@@ -34,6 +36,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full' }: IMTAddWorkspa
   const [propagationModel, setPropagationModel] = useState('free_space')
   const [name, setName] = useState('')
   const [operator, setOperator] = useState('')
+  const [mapClickActive, setMapClickActive] = useState(false)
 
   // Calculation state
   const [loading, setLoading] = useState(false)
@@ -50,6 +53,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full' }: IMTAddWorkspa
   const miniMapRef = useRef<maplibregl.Map | null>(null)
   const miniMarkerRef = useRef<maplibregl.Marker | null>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
+  const stepRef = useRef(0)
 
   // Init mini map
   useEffect(() => {
@@ -115,25 +119,25 @@ export default function IMTAddWorkspace({ onBack, mode = 'full' }: IMTAddWorkspa
   useEffect(() => {
     if (loading) {
       setLogLines([])
+      stepRef.current = 0
       const steps = [
         'กำลังคำนวณ propagation loss...',
         'กำลังตรวจสอบ FS links...',
         'กำลังวิเคราะห์ guard band...',
         'กำลังสรุปผล...',
       ]
-      let i = 0
       const timer = setInterval(() => {
-        setLogLines((prev) => {
-          if (i < steps.length) {
-            const next = prev.concat(steps[i])
-            i++
-            return next
+        if (stepRef.current < steps.length) {
+          setLogLines((prev) => prev.concat(steps[stepRef.current]))
+          stepRef.current++
+          if (stepRef.current >= steps.length) {
+            clearInterval(timer)
           }
-          return prev
-        })
+        }
       }, 500)
       return () => clearInterval(timer)
     }
+    // Keep logLines visible after loading completes; only clear on next calculate
   }, [loading])
 
   // Auto-scroll log
@@ -142,6 +146,15 @@ export default function IMTAddWorkspace({ onBack, mode = 'full' }: IMTAddWorkspa
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
     }
   }, [logLines])
+
+  // Sync map-click position to lat/lon inputs
+  useEffect(() => {
+    if (onMapClickLat != null && onMapClickLon != null && mapClickActive) {
+      setLat(onMapClickLat)
+      setLon(onMapClickLon)
+      setMapClickActive(false)
+    }
+  }, [onMapClickLat, onMapClickLon, mapClickActive])
 
   const handleCalculate = useCallback(async () => {
     setLoading(true)
@@ -252,7 +265,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full' }: IMTAddWorkspa
 
       {/* Workspace Content */}
       <div className={`${isPanel ? 'flex-1' : 'flex-1'} overflow-y-auto`}>
-        <div className="max-w-3xl mx-auto p-6 space-y-6">
+        <div className="w-full p-4 space-y-4">
           {/* Header: Back button (full) or Close X (panel) */}
           {isPanel ? (
             <div className="flex items-center justify-between">
@@ -279,277 +292,156 @@ export default function IMTAddWorkspace({ onBack, mode = 'full' }: IMTAddWorkspa
           )}
 
           {/* SECTION 1: Input Form */}
-          {!isPanel && (
-            <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-bold text-[#1A1A2E] mb-4 flex items-center gap-2">
-                <PlusCircle className="w-5 h-5 text-[#C00000]" />
-                เพิ่ม IMT ใหม่
-              </h2>
-
-              {/* Location */}
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  ตำแหน่ง
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Latitude</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      value={lat}
-                      onChange={(e) => setLat(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Longitude</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      value={lon}
-                      onChange={(e) => setLon(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
+          <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            {/* Location */}
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                ตำแหน่ง
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Latitude</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={lat}
+                    onChange={(e) => setLat(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Longitude</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={lon}
+                    onChange={(e) => setLon(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
                 </div>
               </div>
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setMapClickActive(true)}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                    mapClickActive
+                      ? 'bg-[#C00000] text-white border-[#C00000]'
+                      : 'bg-white text-[#C00000] border-[#C00000]/30 hover:bg-red-50'
+                  }`}
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  คลิกตำแหน่งจากแผนที่
+                </button>
+                {mapClickActive && (
+                  <p className="text-xs text-[#C00000] mt-1.5 flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    คลิกตำแหน่งบนแผนที่ด้านซ้าย...
+                  </p>
+                )}
+              </div>
+            </div>
 
-              {/* Radio params */}
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  พารามิเตอร์วิทยุ
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      รัศมีเซลล์ (m)
-                    </label>
-                    <input
-                      type="number"
-                      value={cellRadius}
-                      onChange={(e) => setCellRadius(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      ความสูงเสาอากาศ (m AGL)
-                    </label>
-                    <input
-                      type="number"
-                      value={antennaHeight}
-                      onChange={(e) => setAntennaHeight(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Antenna Gain (dBi)
-                    </label>
-                    <input
-                      type="number"
-                      value={antennaGain}
-                      onChange={(e) => setAntennaGain(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Max EIRP (dBm)
-                    </label>
-                    <input
-                      type="number"
-                      value={maxEirp}
-                      onChange={(e) => setMaxEirp(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                </div>
-                <div className="mt-3">
+            {/* Radio params */}
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                พารามิเตอร์วิทยุ
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Propagation Model
+                    รัศมีเซลล์ (m)
                   </label>
-                  <select
-                    value={propagationModel}
-                    onChange={(e) => setPropagationModel(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                  >
-                    <option value="free_space">Free Space</option>
-                    <option value="p452">ITU-R P.452</option>
-                    <option value="hata">Hata</option>
-                  </select>
+                  <input
+                    type="number"
+                    value={cellRadius}
+                    onChange={(e) => setCellRadius(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
                 </div>
-              </div>
-
-              {/* Station info */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  ข้อมูลสถานี
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      ชื่อสถานี *
-                    </label>
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="เช่น BKK-IMT-01"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      ผู้ให้บริการ *
-                    </label>
-                    <input
-                      type="text"
-                      value={operator}
-                      onChange={(e) => setOperator(e.target.value)}
-                      placeholder="เช่น NT, AIS, True"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {isPanel && (
-            /* Panel mode: inline form (same fields, no "section" heading) */
-            <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              {/* Location */}
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  ตำแหน่ง
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Latitude</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      value={lat}
-                      onChange={(e) => setLat(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Longitude</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      value={lon}
-                      onChange={(e) => setLon(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Radio params */}
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  พารามิเตอร์วิทยุ
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      รัศมีเซลล์ (m)
-                    </label>
-                    <input
-                      type="number"
-                      value={cellRadius}
-                      onChange={(e) => setCellRadius(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      ความสูงเสาอากาศ (m AGL)
-                    </label>
-                    <input
-                      type="number"
-                      value={antennaHeight}
-                      onChange={(e) => setAntennaHeight(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Antenna Gain (dBi)
-                    </label>
-                    <input
-                      type="number"
-                      value={antennaGain}
-                      onChange={(e) => setAntennaGain(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Max EIRP (dBm)
-                    </label>
-                    <input
-                      type="number"
-                      value={maxEirp}
-                      onChange={(e) => setMaxEirp(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                </div>
-                <div className="mt-3">
+                <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Propagation Model
+                    ความสูงเสาอากาศ (m AGL)
                   </label>
-                  <select
-                    value={propagationModel}
-                    onChange={(e) => setPropagationModel(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                  >
-                    <option value="free_space">Free Space</option>
-                    <option value="p452">ITU-R P.452</option>
-                    <option value="hata">Hata</option>
-                  </select>
+                  <input
+                    type="number"
+                    value={antennaHeight}
+                    onChange={(e) => setAntennaHeight(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Antenna Gain (dBi)
+                  </label>
+                  <input
+                    type="number"
+                    value={antennaGain}
+                    onChange={(e) => setAntennaGain(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Max EIRP (dBm)
+                  </label>
+                  <input
+                    type="number"
+                    value={maxEirp}
+                    onChange={(e) => setMaxEirp(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
                 </div>
               </div>
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Propagation Model
+                </label>
+                <select
+                  value={propagationModel}
+                  onChange={(e) => setPropagationModel(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                >
+                  <option value="free_space">Free Space</option>
+                  <option value="p452">ITU-R P.452</option>
+                  <option value="hata">Hata</option>
+                </select>
+              </div>
+            </div>
 
-              {/* Station info */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                  ข้อมูลสถานี
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      ชื่อสถานี *
-                    </label>
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="เช่น BKK-IMT-01"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      ผู้ให้บริการ *
-                    </label>
-                    <input
-                      type="text"
-                      value={operator}
-                      onChange={(e) => setOperator(e.target.value)}
-                      placeholder="เช่น NT, AIS, True"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                    />
-                  </div>
+            {/* Station info */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                ข้อมูลสถานี
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    ชื่อสถานี *
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="เช่น BKK-IMT-01"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    ผู้ให้บริการ *
+                  </label>
+                  <input
+                    type="text"
+                    value={operator}
+                    onChange={(e) => setOperator(e.target.value)}
+                    placeholder="เช่น NT, AIS, True"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
                 </div>
               </div>
-            </section>
-          )}
+            </div>
+          </section>
 
           {/* SECTION 2: Calculate Button */}
           <section>
