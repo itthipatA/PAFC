@@ -104,8 +104,9 @@ function destPoint(
 
 function txMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.innerHTML = `<div style="width:24px;height:32px">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="24" height="32">
+  el.style.width = '28px'
+  el.style.height = '36px'
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36">
       <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
         <line x1="50" y1="25" x2="25" y2="115" stroke-width="3.5" />
         <line x1="50" y1="25" x2="75" y2="115" stroke-width="3.5" />
@@ -134,15 +135,15 @@ function txMarkerEl(): HTMLDivElement {
         <line x1="66" y1="42" x2="55" y2="42" stroke-width="2" />
         <polygon points="55,40 51,42 55,44" fill="#2D3748" />
       </g>
-    </svg>
-  </div>`
+    </svg>`
   return el
 }
 
 function rxMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.innerHTML = `<div style="width:24px;height:32px">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="24" height="32">
+  el.style.width = '28px'
+  el.style.height = '36px'
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36">
       <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
         <line x1="50" y1="25" x2="25" y2="115" stroke-width="3.5" />
         <line x1="50" y1="25" x2="75" y2="115" stroke-width="3.5" />
@@ -171,15 +172,15 @@ function rxMarkerEl(): HTMLDivElement {
         <line x1="66" y1="42" x2="55" y2="42" stroke-width="2" />
         <polygon points="55,40 51,42 55,44" fill="#2D3748" />
       </g>
-    </svg>
-  </div>`
+    </svg>`
   return el
 }
 
 function imtMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.innerHTML = `<div style="width:24px;height:32px">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="24" height="32">
+  el.style.width = '28px'
+  el.style.height = '36px'
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36">
       <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
         <line x1="40" y1="38" x2="40" y2="112" stroke-width="3" />
         <line x1="50" y1="42" x2="50" y2="115" stroke-width="3" />
@@ -203,8 +204,7 @@ function imtMarkerEl(): HTMLDivElement {
         <polygon points="70,20 75,18 75,52 70,54" fill="#CBD5E1" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
       </g>
       <line x1="50" y1="28" x2="50" y2="10" stroke="#334155" stroke-width="2.5" stroke-linecap="round" />
-    </svg>
-  </div>`
+    </svg>`
   return el
 }
 
