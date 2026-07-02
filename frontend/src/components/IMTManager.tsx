@@ -42,7 +42,7 @@ export default function IMTManager() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetchWithAuth('/api/imt/')
+      const res = await fetchWithAuth('/api/imt/?status=active')
       if (!res.ok) throw new Error('ไม่สามารถโหลดรายการ IMT ได้')
       const data = await res.json()
       setAllocations(data.allocations || data || [])
@@ -215,6 +215,7 @@ export default function IMTManager() {
                   <th className="text-left px-4 py-3 font-semibold text-gray-600">ชื่อ</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-600">ผู้ให้บริการ</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-600">ตำแหน่ง</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">ช่วงคลื่น</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-600">รัศมี (m)</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-600">เสาอากาศ (m)</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-600">กำลังส่ง (dBm)</th>
@@ -229,6 +230,22 @@ export default function IMTManager() {
                     <td className="px-4 py-3 text-gray-600">{alloc.operator}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">
                       {alloc.center_lat.toFixed(4)}, {alloc.center_lon.toFixed(4)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {alloc.blocks && alloc.blocks.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {alloc.blocks.map((b, i) => (
+                            <span
+                              key={i}
+                              className="inline-block px-1.5 py-0.5 text-xs font-mono rounded bg-[#C00000]/10 text-[#C00000] border border-[#C00000]/20 whitespace-nowrap"
+                            >
+                              {b.freq_low}-{b.freq_high}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">{alloc.cell_radius}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">{alloc.antenna_height}</td>

@@ -202,6 +202,7 @@ function AuthenticatedApp({
                   cellRadius={workspaceCellRadius}
                   centerLat={selectedLat}
                   centerLon={selectedLon}
+                  clickMode="pan"
                 />
               </div>
 
@@ -231,6 +232,7 @@ function AuthenticatedApp({
                   selectedLon={selectedLon}
                   blocks={[]}
                   mapStyle={mapStyle}
+                  clickMode="pan"
                 />
               </div>
             </div>

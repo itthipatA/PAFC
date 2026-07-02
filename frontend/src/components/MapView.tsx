@@ -14,6 +14,7 @@ interface MapViewProps {
   cellRadius?: number
   centerLat?: number | null
   centerLon?: number | null
+  clickMode?: 'place' | 'pan'
 }
 
 // Map styles
@@ -95,7 +96,7 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place' }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
@@ -135,7 +136,9 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     map.on('dragend', () => { map.getCanvas().style.cursor = 'grab' })
 
     map.on('click', (e) => {
-      onMapClick(e.lngLat.lat, e.lngLat.lng)
+      if (clickMode === 'place') {
+        onMapClick(e.lngLat.lat, e.lngLat.lng)
+      }
     })
 
     mapRef.current = map
@@ -359,8 +362,7 @@ function drawFSFresnelZone(map: maplibregl.Map, links: any[]) {
     source: LAYER_IDS.fsFresnelSource,
     paint: {
       'line-color': '#60A5FA',
-      'line-width': 1.5,
-      'line-dasharray': [6, 3],
+      'line-width': 2,
       'line-opacity': 0.5,
     },
   })
