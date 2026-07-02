@@ -7,6 +7,7 @@ import {
   Radio,
   Search,
   Globe,
+  PlusCircle,
 } from 'lucide-react'
 import MapView, { MAP_STYLES } from './components/MapView'
 import BlockPanel from './components/BlockPanel'
@@ -14,6 +15,7 @@ import AllocationForm from './components/AllocationForm'
 import LoginPage from './components/LoginPage'
 import FSLinkManager from './components/FSLinkManager'
 import IMTManager from './components/IMTManager'
+import IMTAddWorkspace from './components/IMTAddWorkspace'
 import QueryPanel from './components/QueryPanel'
 import { useAuth } from './contexts/AuthContext'
 import type { BlockResult } from './types'
@@ -45,13 +47,12 @@ function AuthenticatedApp({
   const [loading, setLoading] = useState(false)
   const [model, setModel] = useState('free_space')
   const [mapStyle, setMapStyle] = useState('voyager')
-  const [showAddButton, setShowAddButton] = useState(false)
+  const [showIMTWorkspace, setShowIMTWorkspace] = useState(false)
   const { fetchWithAuth } = useAuth()
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
     setSelectedLon(lon)
-    setShowAddButton(true)
   }, [])
 
   const handleAnalyze = useCallback(
@@ -89,10 +90,6 @@ function AuthenticatedApp({
     [selectedLat, selectedLon, model, fetchWithAuth],
   )
 
-  const handleConfirmAdd = useCallback(() => {
-    setShowAddButton(false)
-  }, [])
-
   const handleCloseAllocation = useCallback(() => {
     setSelectedLat(null)
     setSelectedLon(null)
@@ -103,6 +100,14 @@ function AuthenticatedApp({
     setTab('dashboard')
     setSelectedLat(lat)
     setSelectedLon(lon)
+  }, [])
+
+  const handleOpenIMTWorkspace = useCallback(() => {
+    setShowIMTWorkspace(true)
+  }, [])
+
+  const handleCloseIMTWorkspace = useCallback(() => {
+    setShowIMTWorkspace(false)
   }, [])
 
   return (
@@ -218,11 +223,9 @@ function AuthenticatedApp({
                 selectedLon={selectedLon}
                 blocks={blocks}
                 mapStyle={mapStyle}
-                onConfirmAdd={handleConfirmAdd}
-                showAddButton={showAddButton}
               />
 
-              {selectedLat && selectedLon && !showAddButton && (
+              {selectedLat && selectedLon && (
                 <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg p-4 w-80">
                   <AllocationForm
                     lat={selectedLat}
@@ -250,7 +253,11 @@ function AuthenticatedApp({
         </div>
       ) : tab === 'imt' ? (
         <div className="flex-1 overflow-hidden">
-          <IMTManager />
+          {showIMTWorkspace ? (
+            <IMTAddWorkspace onBack={handleCloseIMTWorkspace} />
+          ) : (
+            <IMTManager onAddWorkspace={handleOpenIMTWorkspace} />
+          )}
         </div>
       ) : (
         <div className="flex-1 overflow-hidden">

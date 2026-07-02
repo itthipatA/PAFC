@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { LogIn, Shield } from 'lucide-react'
+import { LogIn, Shield, User, Key } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function LoginPage() {
@@ -29,88 +29,228 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F5F5F0] px-4">
-      <div className="w-full max-w-md">
-        {/* NBTC Branding */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#C00000] rounded-xl mb-4 shadow-lg">
-            <Shield className="w-8 h-8 text-white" />
+    <div className="min-h-screen flex relative bg-white">
+      {/* Left Panel — Diagonal Split (hidden on mobile) */}
+      <div
+        className="hidden lg:flex relative w-[45%] min-h-screen overflow-hidden"
+        style={{
+          backgroundColor: '#1A1A2E',
+          clipPath: 'polygon(0 0, 100% 0, 82% 100%, 0 100%)',
+          filter: 'drop-shadow(3px 0 6px rgba(0,0,0,0.12))',
+        }}
+      >
+        {/* Subtle background texture */}
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `
+              radial-gradient(ellipse at 30% 20%, rgba(192,0,0,0.15) 0%, transparent 60%),
+              radial-gradient(ellipse at 70% 80%, rgba(192,0,0,0.08) 0%, transparent 50%),
+              radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 70%)
+            `,
+          }}
+        />
+
+        {/* Content */}
+        <div className="relative z-10 flex flex-col items-center justify-center w-full px-10 xl:px-16">
+          {/* Image placeholder */}
+          <div className="w-60 xl:w-72 h-44 xl:h-52 bg-white/[0.06] rounded-2xl border-2 border-dashed border-white/15 flex items-center justify-center mb-8">
+            <div className="text-center">
+              <svg
+                className="w-14 h-14 mx-auto text-white/25 mb-3"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21zm15-10.5a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z"
+                />
+              </svg>
+              <span className="text-white/35 text-sm font-medium">
+                ภาพระบบ PAFC
+              </span>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-[#1A1A2E] mb-1">
-            Private Network Automatic Frequency Coordination
+
+          {/* Title */}
+          <h1 className="text-2xl xl:text-3xl font-bold text-white text-center leading-snug mb-4">
+            Private Network Automatic
+            <br />
+            Frequency Coordination
           </h1>
-          <h2 className="text-lg font-semibold text-[#C00000] mb-1">
-            ระบบ PAFC
-          </h2>
-          <p className="text-sm text-gray-500">4800-4990 MHz</p>
-        </div>
 
-        {/* Login Card */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-8">
-          <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-100">
-            <LogIn className="w-5 h-5 text-[#C00000]" />
-            <h3 className="text-lg font-bold text-[#1A1A2E]">
-              เข้าสู่ระบบ
-            </h3>
+          {/* Subtitle */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-px w-8 bg-[#C00000]/60" />
+            <h2 className="text-xl xl:text-2xl font-bold text-[#C00000]">
+              ระบบ PAFC
+            </h2>
+            <div className="h-px w-8 bg-[#C00000]/60" />
           </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="username"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                ชื่อผู้ใช้
-              </label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="กรอกชื่อผู้ใช้"
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none transition-colors"
-                autoComplete="username"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                รหัสผ่าน
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="กรอกรหัสผ่าน"
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none transition-colors"
-                autoComplete="current-password"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-semibold py-2.5 rounded-lg text-sm transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-md shadow-[#C00000]/20"
-            >
-              <LogIn className="w-4 h-4" />
-              {loading ? 'กำลังเขาสูระบบ...' : 'เขาสูระบบ'}
-            </button>
-          </form>
+          {/* Tagline */}
+          <p className="text-white/50 text-sm tracking-wide">
+            4800-4990 MHz | สำนักงาน กสทช.
+          </p>
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
-          สำนักงานคณะกรรมการกิจการกระจายเสียง กิจการโทรทัศน์ และกิจการโทรคมนาคมแห่งชาติ
-        </p>
+        {/* Bottom accent bar */}
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#C00000]/50 to-transparent" />
+      </div>
+
+      {/* Right Panel — Login Form */}
+      <div className="flex-1 flex items-center justify-center bg-[#F5F5F0] px-4 sm:px-8 lg:px-12 min-h-screen">
+        <div className="w-full max-w-[420px]">
+          {/* Mobile-only branding */}
+          <div className="lg:hidden text-center mb-8">
+            <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-[#C00000] to-[#8B0000] rounded-xl mb-4 shadow-lg shadow-[#C00000]/25">
+              <Shield className="w-7 h-7 text-white" />
+            </div>
+            <h2 className="text-lg font-bold text-[#1A1A2E] mb-1">
+              Private Network AFC
+            </h2>
+            <p className="text-sm font-semibold text-[#C00000] mb-0.5">
+              ระบบ PAFC
+            </p>
+            <p className="text-xs text-gray-400">4800-4990 MHz</p>
+          </div>
+
+          {/* Login Card */}
+          <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-7 pb-5 border-b border-gray-100">
+              <div className="w-11 h-11 bg-gradient-to-br from-[#C00000]/10 to-[#C00000]/5 rounded-xl flex items-center justify-center">
+                <Shield className="w-5 h-5 text-[#C00000]" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-[#1A1A2E] leading-tight">
+                  เข้าสู่ระบบ
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  ระบบบริหารจัดการคลื่นความถี่
+                </p>
+              </div>
+            </div>
+
+            {/* Error message */}
+            {error && (
+              <div className="mb-5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-start gap-2.5">
+                <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center shrink-0 mt-px">
+                  <svg
+                    className="w-3 h-3 text-red-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </div>
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Username */}
+              <div>
+                <label
+                  htmlFor="username"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
+                  ชื่อผู้ใช้
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <User className="w-4 h-4 text-gray-400" />
+                  </div>
+                  <input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="กรอกชื่อผู้ใช้"
+                    className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none transition-all bg-gray-50 hover:bg-white"
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
+                  รหัสผ่าน
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <Key className="w-4 h-4 text-gray-400" />
+                  </div>
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="กรอกรหัสผ่าน"
+                    className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none transition-all bg-gray-50 hover:bg-white"
+                    autoComplete="current-password"
+                  />
+                </div>
+              </div>
+
+              {/* Submit button */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-[#C00000] to-[#D42020] hover:from-[#A00000] hover:to-[#B01010] text-white font-semibold py-3 rounded-xl text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#C00000]/20 hover:shadow-xl hover:shadow-[#C00000]/30 hover:-translate-y-0.5 active:translate-y-0"
+              >
+                <LogIn className="w-4 h-4" />
+                {loading ? (
+                  <>
+                    <svg
+                      className="animate-spin w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    กำลังเข้าสู่ระบบ...
+                  </>
+                ) : (
+                  'เข้าสู่ระบบ'
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* Footer */}
+          <p className="text-center text-xs text-gray-400 mt-6 leading-relaxed">
+            สำนักงานคณะกรรมการกิจการกระจายเสียง
+            <br className="sm:hidden" />
+            กิจการโทรทัศน์ และกิจการโทรคมนาคมแห่งชาติ
+          </p>
+        </div>
       </div>
     </div>
   )

@@ -73,6 +73,7 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
             style={{
               backgroundColor: statusColor(b.status),
               minWidth: `${Math.max(100 / sorted.length, 1)}%`,
+              border: '1px solid #000',
             }}
             onClick={() => setSelectedIndex(selectedIndex === i ? null : i)}
           />

@@ -6,6 +6,7 @@ import {
   RefreshCw,
   X,
   Radio,
+  PlusCircle,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import type { IMTAllocation, IMTAllocationCreate } from '../types'
@@ -23,7 +24,7 @@ const EMPTY_FORM: IMTAllocationCreate = {
   max_eirp: 23,
 }
 
-export default function IMTManager() {
+export default function IMTManager({ onAddWorkspace }: { onAddWorkspace: () => void }) {
   const { fetchWithAuth } = useAuth()
 
   const [allocations, setAllocations] = useState<IMTAllocation[]>([])
@@ -169,10 +170,10 @@ export default function IMTManager() {
             รีเฟรช
           </button>
           <button
-            onClick={openCreate}
+            onClick={onAddWorkspace}
             className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
           >
-            <Plus className="w-4 h-4" />
+            <PlusCircle className="w-4 h-4" />
             เพิ่ม IMT
           </button>
         </div>
