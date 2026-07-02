@@ -126,7 +126,6 @@ const LAYER_IDS = {
   fsTxMarkers: 'fs-tx-markers',
   fsRxMarkers: 'fs-rx-markers',
   fsCoordFill: 'fs-coord-fill',
-  fsCoordOutline: 'fs-coord-outline',
   fsCoordSource: 'fs-coord-source',
   fsCoordMidFill: 'fs-coord-mid-fill',
   fsCoordMidSource: 'fs-coord-mid-source',
@@ -332,7 +331,7 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
   // Remove GeoJSON layers
   const ids = [
     LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers,
-    LAYER_IDS.fsCoordFill, LAYER_IDS.fsCoordOutline,
+    LAYER_IDS.fsCoordFill,
     LAYER_IDS.fsCoordMidFill, LAYER_IDS.fsCoordInnerFill,
   ]
   ids.forEach((id) => {
@@ -484,16 +483,6 @@ function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
       paint: {
         'fill-color': '#60A5FA',
         'fill-opacity': 0.06,
-      },
-    })
-
-    map.addLayer({
-      id: LAYER_IDS.fsCoordOutline,
-      type: 'line',
-      source: LAYER_IDS.fsCoordSource,
-      paint: {
-        'line-color': '#3B82F6',
-        'line-width': 1.5,
       },
     })
   }
