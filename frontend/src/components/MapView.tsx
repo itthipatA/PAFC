@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
-import { circle, lineString } from '@turf/turf'
-import buffer from '@turf/buffer'
+import { circle } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
 import type { BlockResult, IMTAllocation } from '../types'
 
@@ -87,8 +86,12 @@ const LAYER_IDS = {
   fsCoordFill: 'fs-coord-fill',
   fsCoordOutline: 'fs-coord-outline',
   fsCoordSource: 'fs-coord-source',
-  fsCoordLineBufSource: 'fs-coord-linebuf-source',
-  fsCoordLineBufFill: 'fs-coord-linebuf-fill',
+  fsGradientOuterFill: 'fs-gradient-outer-fill',
+  fsGradientMiddleFill: 'fs-gradient-middle-fill',
+  fsGradientInnerFill: 'fs-gradient-inner-fill',
+  fsGradientOuterSource: 'fs-gradient-outer-source',
+  fsGradientMiddleSource: 'fs-gradient-middle-source',
+  fsGradientInnerSource: 'fs-gradient-inner-source',
   imtCoverageFill: 'imt-coverage-fill',
   imtCoverageOutline: 'imt-coverage-outline',
   imtCoverageSource: 'imt-coverage-source',
@@ -289,19 +292,69 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
   // Remove GeoJSON layers
   const ids = [
     LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers,
-    LAYER_IDS.fsCoordFill, LAYER_IDS.fsCoordOutline, LAYER_IDS.fsCoordLineBufFill,
+    LAYER_IDS.fsCoordFill, LAYER_IDS.fsCoordOutline,
+    LAYER_IDS.fsGradientOuterFill, LAYER_IDS.fsGradientMiddleFill, LAYER_IDS.fsGradientInnerFill,
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
-  const sources = [LAYER_IDS.fsLinksSource, LAYER_IDS.fsCoordSource, LAYER_IDS.fsCoordLineBufSource]
+  const sources = [
+    LAYER_IDS.fsLinksSource, LAYER_IDS.fsCoordSource,
+    LAYER_IDS.fsGradientOuterSource, LAYER_IDS.fsGradientMiddleSource, LAYER_IDS.fsGradientInnerSource,
+  ]
   sources.forEach((sid) => {
     if (map.getSource(sid)) map.removeSource(sid)
   })
 }
 
-// ─── Coordination Zone Drawing (dog-bone shape) ────────────────────────────
+// ─── Tapered Coordination Zone (Engineering Precision) ──────────────────────
 
+/**
+ * Compute the coordination radius at a specific point along a microwave link,
+ * using Free Space Path Loss physics. The radius varies from wide at the
+ * endpoints (where the IMT transmitter has line-of-sight proximity) to
+ * narrow in the middle (where the slant range to either endpoint is larger).
+ *
+ * Derivation:
+ *   I_target = EIRP - FSPL(sqrt(r² + d²), f)
+ *   FSPL = 32.4 + 20*log10(sqrt(r²+d²)_km) + 20*log10(f_MHz)
+ *   Solving: r = sqrt(max(0, L * 1e6 - d²))
+ *   where L = 10^((EIRP - threshold - 32.4 - 20*log10(f)) / 10)
+ *
+ * For each sample point we consider interference to BOTH the TX and RX ends
+ * and take the tighter (more restrictive) radius.
+ */
+function taperedCoordinationRadius(
+  eirp_dbm: number,
+  freq_mhz: number,
+  distance_along_link_m: number,
+  total_distance_m: number,
+  threshold_dbm: number = -114,
+): number {
+  // Compute the L constant: the squared slant range (in km²) at threshold
+  const L = Math.pow(10, (eirp_dbm - threshold_dbm - 32.4 - 20 * Math.log10(freq_mhz)) / 10)
+  const L_m2 = L * 1e6  // convert from km² to m²
+
+  // Interference path to TX
+  const d_tx = distance_along_link_m
+  const r_tx_sq = L_m2 - d_tx * d_tx
+
+  // Interference path to RX
+  const d_rx = total_distance_m - distance_along_link_m
+  const r_rx_sq = L_m2 - d_rx * d_rx
+
+  // Take the tighter (smaller) of the two constraints
+  const r_sq = Math.max(0, Math.min(r_tx_sq, r_rx_sq))
+  const radius = Math.sqrt(r_sq)
+
+  // Clamp: minimum 50m for visibility, maximum 2000m
+  return Math.max(50, Math.min(2000, radius))
+}
+
+/**
+ * Legacy single-endpoint coordination radius for popup display.
+ * Returns the radius at the endpoint (distance_along = 0).
+ */
 function calcCoordinationRadius(
   eirp_dbm: number,
   freq_mhz: number,
@@ -312,13 +365,18 @@ function calcCoordinationRadius(
   const exponent = (eirp_dbm - threshold_dbm - 32.4 - 20 * Math.log10(freq_mhz)) / 20
   const d_km = Math.pow(10, exponent)
   const radius_m = d_km * 1000
-  // Clamp between 300m - 2000m for map visibility
-  return Math.max(300, Math.min(2000, radius_m))
+  // Clamp between 50m - 2000m for map visibility
+  return Math.max(50, Math.min(2000, radius_m))
 }
 
+/**
+ * Draw the tapered FS coordination zone by sampling N points along each link,
+ * computing the physically-derived coordination radius at each point, and
+ * rendering overlapping turf circles that naturally merge into a tapered
+ * polygon — wide at endpoints, narrow in mid-path.
+ */
 function drawFSCoordinationZone(map: maplibregl.Map, links: any[]) {
-  const coordFeatures: any[] = []
-  const lineBufFeatures: any[] = []
+  const allCircles: any[] = []
 
   links.forEach((link: any) => {
     const txLat = link.tx?.lat ?? link.tx_lat
@@ -333,69 +391,44 @@ function drawFSCoordinationZone(map: maplibregl.Map, links: any[]) {
     const midFreqMHz = (freqLow + freqHigh) / 2
     const eirp = txPower + txAntennaGain
     const threshold = -114
+    const totalDistM = haversineKm(txLat, txLon, rxLat, rxLon) * 1000
 
-    // Calculate coordination radii for TX and RX ends
-    const coordRadiusTxM = calcCoordinationRadius(eirp, midFreqMHz, threshold)
-    const coordRadiusRxM = calcCoordinationRadius(eirp, midFreqMHz, threshold)
+    const N = 20  // number of sample points along the link
+    for (let i = 0; i <= N; i++) {
+      const frac = i / N
+      const dAlongM = frac * totalDistM
 
-    const coordRadiusTxKm = coordRadiusTxM / 1000
-    const coordRadiusRxKm = coordRadiusRxM / 1000
+      // Interpolate geographic position along the great-circle path
+      const lat = txLat + frac * (rxLat - txLat)
+      const lon = txLon + frac * (rxLon - txLon)
 
-    try {
-      // TX circle
-      const txCircle = circle([txLon, txLat], coordRadiusTxKm, {
-        steps: 32,
-        units: 'kilometers',
-      })
-      txCircle.properties = {
-        name: link.name,
-        coordRadiusTxM: coordRadiusTxM.toFixed(0),
-        coordRadiusRxM: coordRadiusRxM.toFixed(0),
-        eirp,
-        threshold,
-        midFreqMHz: midFreqMHz.toFixed(1),
-      }
-      coordFeatures.push(txCircle)
+      const rM = taperedCoordinationRadius(eirp, midFreqMHz, dAlongM, totalDistM, threshold)
 
-      // RX circle
-      const rxCircle = circle([rxLon, rxLat], coordRadiusRxKm, {
-        steps: 32,
-        units: 'kilometers',
-      })
-      rxCircle.properties = {
-        name: link.name,
-        coordRadiusTxM: coordRadiusTxM.toFixed(0),
-        coordRadiusRxM: coordRadiusRxM.toFixed(0),
-        eirp,
-        threshold,
-        midFreqMHz: midFreqMHz.toFixed(1),
-      }
-      coordFeatures.push(rxCircle)
-
-      // Line buffer (200m minimum corridor)
-      const linkLine = lineString([[txLon, txLat], [rxLon, rxLat]])
-      const lineBuf = buffer(linkLine, 0.2, { units: 'kilometers', steps: 16 })
-      if (lineBuf && lineBuf.geometry) {
-        lineBuf.properties = {
+      try {
+        const c = circle([lon, lat], rM / 1000, {
+          steps: 32,
+          units: 'kilometers',
+        })
+        c.properties = {
           name: link.name,
-          coordRadiusTxM: coordRadiusTxM.toFixed(0),
-          coordRadiusRxM: coordRadiusRxM.toFixed(0),
+          radiusM: rM.toFixed(0),
+          pointIndex: i,
           eirp,
           threshold,
           midFreqMHz: midFreqMHz.toFixed(1),
         }
-        lineBufFeatures.push(lineBuf)
+        allCircles.push(c)
+      } catch (e) {
+        console.warn('Failed to create tapered circle at point', i, 'for:', link.name, e)
       }
-    } catch (e) {
-      console.warn('Failed to draw coordination zone for:', link.name, e)
     }
   })
 
-  // Render TX/RX circles — fill + outline
-  if (coordFeatures.length > 0) {
+  // Render all circles as a single fill + outline source (they visually merge)
+  if (allCircles.length > 0) {
     map.addSource(LAYER_IDS.fsCoordSource, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: coordFeatures },
+      data: { type: 'FeatureCollection', features: allCircles },
     })
 
     map.addLayer({
@@ -414,29 +447,89 @@ function drawFSCoordinationZone(map: maplibregl.Map, links: any[]) {
       source: LAYER_IDS.fsCoordSource,
       paint: {
         'line-color': '#3B82F6',
-        'line-width': 2,
+        'line-width': 1.5,
       },
     })
   }
+}
 
-  // Render line buffer — fill only (matched color so it visually merges)
-  if (lineBufFeatures.length > 0) {
-    map.addSource(LAYER_IDS.fsCoordLineBufSource, {
+// ─── Signal Strength Gradient Rings ─────────────────────────────────────────
+
+/** Steps definition: outer→inner so layers stack correctly */
+const GRADIENT_STEPS = [
+  { frac: 1.0, color: '#3B82F6', opacity: 0.06, sourceId: 'fsGradientOuterSource', fillId: 'fsGradientOuterFill' },   // outer
+  { frac: 0.6, color: '#F59E0B', opacity: 0.12, sourceId: 'fsGradientMiddleSource', fillId: 'fsGradientMiddleFill' }, // middle
+  { frac: 0.3, color: '#EF4444', opacity: 0.20, sourceId: 'fsGradientInnerSource', fillId: 'fsGradientInnerFill' },   // inner
+] as const
+
+function drawGradientRings(map: maplibregl.Map, links: any[]) {
+  // Build feature collections for each gradient step
+  const stepFeatures: { outer: any[]; middle: any[]; inner: any[] } = {
+    outer: [],
+    middle: [],
+    inner: [],
+  }
+
+  links.forEach((link: any) => {
+    const txLat = link.tx?.lat ?? link.tx_lat
+    const txLon = link.tx?.lon ?? link.tx_lon
+    const rxLat = link.rx?.lat ?? link.rx_lat
+    const rxLon = link.rx?.lon ?? link.rx_lon
+    const freqLow = link.frequency?.low ?? link.freq_low
+    const freqHigh = link.frequency?.high ?? link.freq_high
+    const txPower = link.rf?.tx_power ?? link.tx_power ?? 20
+    const txAntennaGain = link.rf?.tx_antenna_gain ?? link.tx_antenna_gain ?? 30
+
+    const midFreqMHz = (freqLow + freqHigh) / 2
+    const eirp = txPower + txAntennaGain
+    const threshold = -114
+    const maxRadiusKm = calcCoordinationRadius(eirp, midFreqMHz, threshold) / 1000
+
+    // Draw gradients for both TX and RX
+    for (const [lon, lat] of [[txLon, txLat], [rxLon, rxLat]]) {
+      GRADIENT_STEPS.forEach((step, si) => {
+        const rKm = maxRadiusKm * step.frac
+        if (rKm < 0.05) return // skip tiny circles
+        try {
+          const c = circle([lon, lat], rKm, { steps: 48, units: 'kilometers' })
+          c.properties = { name: link.name, step: si, radiusKm: rKm.toFixed(3) }
+          const key = si === 0 ? 'outer' : si === 1 ? 'middle' : 'inner'
+          stepFeatures[key].push(c)
+        } catch (e) {
+          console.warn('Failed gradient ring for:', link.name, e)
+        }
+      })
+    }
+  })
+
+  // Add/update sources and layers (outer → middle → inner for proper stacking)
+  GRADIENT_STEPS.forEach((step, si) => {
+    const key = si === 0 ? 'outer' : si === 1 ? 'middle' : 'inner'
+    const features = stepFeatures[key]
+    if (features.length === 0) return
+
+    const srcId = LAYER_IDS[step.sourceId as keyof typeof LAYER_IDS]
+    const fillId = LAYER_IDS[step.fillId as keyof typeof LAYER_IDS]
+
+    // Remove old layer/source if exists
+    if (map.getLayer(fillId)) map.removeLayer(fillId)
+    if (map.getSource(srcId)) map.removeSource(srcId)
+
+    map.addSource(srcId, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: lineBufFeatures },
+      data: { type: 'FeatureCollection', features },
     })
 
     map.addLayer({
-      id: LAYER_IDS.fsCoordLineBufFill,
+      id: fillId,
       type: 'fill',
-      source: LAYER_IDS.fsCoordLineBufSource,
+      source: srcId,
       paint: {
-        'fill-color': '#60A5FA',
-        'fill-opacity': 0.12,
+        'fill-color': step.color,
+        'fill-opacity': step.opacity,
       },
-      // Place below the circle outlines so circles render on top
     })
-  }
+  })
 }
 
 async function loadFSLinks(
@@ -570,8 +663,11 @@ async function loadFSLinks(
     map.on('mouseenter', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = '' })
 
-    // Draw Coordination Zone (dog-bone shape)
+    // Draw Coordination Zone (tapered, FSLP-derived)
     drawFSCoordinationZone(map, links)
+
+    // Draw signal strength gradient rings around endpoints
+    drawGradientRings(map, links)
   } catch (err) {
     console.warn('FS links not available:', err)
   }
@@ -600,13 +696,13 @@ function popupHTML(
       <hr style="border:none;border-top:1px solid #E5E7EB;margin:6px 0"/>
       <span style="color:#3B82F6;font-weight:600">Coordination Zone</span><br/>
       <span style="color:#6C757D">
-        &nbsp;&nbsp;TX: ${coordRadiusTxKm} km | RX: ${coordRadiusRxKm} km | Corridor: 0.2 km
+        &nbsp;&nbsp;TX: ${coordRadiusTxKm} km | RX: ${coordRadiusRxKm} km | Tapered
       </span><br/>
       <span style="color:#6C757D">EIRP: ${eirp} dBm | Threshold: ${threshold} dBm</span><br/>
       <span style="color:#6C757D;font-size:11px;line-height:1.4">
-        &nbsp;&nbsp;&#x2022; Microwave protection corridor (200m min)<br/>
-        &nbsp;&nbsp;&#x2022; Accounts for Fresnel zone, beam spreading,<br/>
-        &nbsp;&nbsp;&nbsp;&nbsp;near-field effects &amp; diffraction
+        &nbsp;&nbsp;&#x2022; Tapered coordination zone (FSLP-derived)<br/>
+        &nbsp;&nbsp;&#x2022; Accounts for slant-range geometry,<br/>
+        &nbsp;&nbsp;&nbsp;&nbsp;beam spreading &amp; diffraction
       </span>
     </div>`
 }

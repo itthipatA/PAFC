@@ -74,6 +74,64 @@ function parseReason(reason: string): ParsedReason {
   return { conflictType: 'UNKNOWN', raw }
 }
 
+// ─── Result Verification Engine ─────────────────────────────────────────────
+
+interface VerificationResult {
+  passed: boolean
+  warnings: string[]
+  errors: string[]
+}
+
+function verifyResults(blocks: BlockResult[]): VerificationResult {
+  const warnings: string[] = []
+  const errors: string[] = []
+
+  const greenBlocks = blocks.filter(b => b.status === 'green')
+  const redBlocks = blocks.filter(b => b.status === 'red')
+  const grayBlocks = blocks.filter(b => b.status === 'gray')
+
+  // Check 1: Total block count (4800-4990 MHz = 190 MHz / 10 MHz = 19 blocks)
+  if (blocks.length !== 19) {
+    errors.push(`Expected 19 blocks (4800-4990 MHz), got ${blocks.length}`)
+  }
+
+  // Check 2: Frequency continuity (each block should be 10 MHz, sequential)
+  for (let i = 0; i < blocks.length; i++) {
+    if (Math.abs(blocks[i].freq_low - (4800 + i * 10)) > 0.1) {
+      errors.push(`Block ${i}: expected freq_low=${4800 + i * 10}, got ${blocks[i].freq_low}`)
+    }
+  }
+
+  // Check 3: Guard band adjacency — green blocks should not be adjacent to red without gray
+  for (let i = 1; i < blocks.length; i++) {
+    if (blocks[i - 1].status === 'green' && blocks[i].status === 'red') {
+      warnings.push(`Green block ${blocks[i - 1].freq_low}-${blocks[i - 1].freq_high} adjacent to red without guard. Possible missed guard band.`)
+    }
+    if (blocks[i - 1].status === 'red' && blocks[i].status === 'green') {
+      warnings.push(`Red block ${blocks[i - 1].freq_low}-${blocks[i - 1].freq_high} adjacent to green without guard. Possible missed guard band.`)
+    }
+  }
+
+  // Check 4: Total MHz consistency
+  const totalMHz = greenBlocks.length * 10 + redBlocks.length * 10 + grayBlocks.length * 10
+  if (totalMHz !== 190) {
+    errors.push(`Total MHz mismatch: ${totalMHz} != 190`)
+  }
+
+  // Check 5: Guard band reason should mention adjacent conflict
+  for (const b of grayBlocks) {
+    if (!b.reason.toLowerCase().includes('adjacent') && !b.reason.toLowerCase().includes('guard')) {
+      warnings.push(`Gray block ${b.freq_low}-${b.freq_high}: reason doesn't mention adjacency/guard`)
+    }
+  }
+
+  return {
+    passed: errors.length === 0,
+    warnings,
+    errors,
+  }
+}
+
 const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: string }> = {
   free_space: {
     label: 'Free Space',
@@ -624,6 +682,42 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   <div className="mt-3 py-2 px-3 bg-gray-50 rounded text-sm font-mono text-gray-900">
                     SUMMARY: {availableMhz}/{totalMhz} MHz available ({pct}%)
                   </div>
+
+                  {/* ─── Verification ─── */}
+                  {(() => {
+                    const vr = verifyResults(blocks)
+                    return (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Verification</h4>
+                        {vr.passed && vr.warnings.length === 0 ? (
+                          <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+                            <CheckCircle className="w-4 h-4" />
+                            Verification: All checks passed
+                          </div>
+                        ) : vr.errors.length > 0 ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+                              <XCircle className="w-4 h-4" />
+                              Verification failed: {vr.errors.length} error{vr.errors.length > 1 ? 's' : ''}
+                            </div>
+                            {vr.errors.map((e, i) => (
+                              <div key={i} className="text-xs text-red-700 bg-red-50/60 border border-red-100 rounded px-3 py-1.5">{e}</div>
+                            ))}
+                          </div>
+                        ) : vr.errors.length === 0 && vr.warnings.length > 0 ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                              <Shield className="w-4 h-4" />
+                              Warnings: {vr.warnings.length} issue{vr.warnings.length > 1 ? 's' : ''} (non-critical)
+                            </div>
+                            {vr.warnings.map((w, i) => (
+                              <div key={i} className="text-xs text-amber-700 bg-amber-50/60 border border-amber-100 rounded px-3 py-1.5">{w}</div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })()}
                 </div>
               </section>
             )
