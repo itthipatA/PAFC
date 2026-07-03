@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   Map as MapIcon,
   Layout,
@@ -37,6 +37,7 @@ function AuthenticatedApp({
   onLogout: () => void
 }) {
   const [tab, setTab] = useState<Tab>('dashboard')
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0)
 
   const [selectedLat, setSelectedLat] = useState<number | null>(null)
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
@@ -68,6 +69,13 @@ function AuthenticatedApp({
     setSelectedLon(lon)
     setWorkspaceCellRadius(cellRadius)
   }, [])
+
+  // Trigger MapView re-fetch when switching to dashboard tab
+  useEffect(() => {
+    if (tab === 'dashboard') {
+      setDashboardRefreshKey(k => k + 1)
+    }
+  }, [tab])
 
   return (
     <div className="h-screen flex flex-col">
@@ -194,6 +202,7 @@ function AuthenticatedApp({
               {/* Left 40% — Compact Map */}
               <div className="w-[40%] min-w-[280px] relative border-r border-gray-300">
                 <MapView
+                  key={dashboardRefreshKey}
                   onMapClick={handleMapClick}
                   selectedLat={selectedLat}
                   selectedLon={selectedLon}
