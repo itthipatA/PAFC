@@ -12,6 +12,7 @@ from app.models.imt import IMTAllocation, SpectrumBlock
 from app.services.interference import (
     InterferenceEngine, FSLinkData, IMTNeighborData,
 )
+from app.services.coverage import CoverageEngine
 
 router = APIRouter()
 
@@ -41,8 +42,27 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     cell_radius = float(data["cell_radius"])
     antenna_height = float(data["antenna_height"])
     antenna_gain = float(data.get("antenna_gain", 0))
-    max_eirp = float(data["max_eirp"])
     model_name = data.get("model", "free_space")
+    
+    # ── Coverage: auto-calculate EIRP if requested ──
+    auto_eirp = data.get("auto_eirp", False)
+    coverage_result = None
+    
+    if auto_eirp:
+        # Use coverage engine to compute required EIRP from cell_radius
+        cov_engine = CoverageEngine(propagation_model=model_name)
+        coverage_result = cov_engine.calculate_required_eirp(
+            cell_radius_m=cell_radius,
+            bs_antenna_height_m=antenna_height,
+            bs_antenna_gain_dbi=antenna_gain,
+            target_rss_dbm=data.get("target_rss"),
+            shadow_margin_db=data.get("shadow_margin"),
+            building_loss_db=data.get("building_loss"),
+            ue_antenna_gain_dbi=data.get("ue_antenna_gain"),
+        )
+        max_eirp = coverage_result.required_eirp_dbm
+    else:
+        max_eirp = float(data["max_eirp"])
 
     # Query active FS links
     fs_query = select(FSLink).where(FSLink.status == "active")
@@ -185,6 +205,15 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         "model_used": model_name,
         "neighbor_imts_checked": len(neighbor_imts),
         "fs_links_checked": len(fs_links),
+        "coverage": ({
+            "auto_eirp": auto_eirp,
+            "used_eirp_dbm": round(max_eirp, 1) if max_eirp else None,
+            "cell_edge_rss_dbm": round(coverage_result.cell_edge_rss_dbm, 1) if coverage_result else None,
+            "required_eirp_dbm": round(coverage_result.required_eirp_dbm, 1) if coverage_result else None,
+            "coverage_classification": coverage_result.coverage_classification if coverage_result else None,
+            "target_rss_dbm": coverage_result.target_rss_dbm if coverage_result else None,
+            "shadow_margin_db": coverage_result.shadow_margin_db if coverage_result else None,
+        } if auto_eirp else None),
     }
 
 
