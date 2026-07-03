@@ -221,12 +221,14 @@ export default function IMTManager() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{id: string; name: string} | null>(null)
 
   const fetchAllocations = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetchWithAuth('/api/imt/')
+      // Only show active IMTs (hide expired/soft-deleted)
+      const res = await fetchWithAuth('/api/imt/?status=active')
       if (!res.ok) throw new Error('ไม่สามารถโหลดรายการ IMT ได้')
       const data = await res.json()
       setAllocations(data.allocations || data || [])
@@ -318,10 +320,16 @@ export default function IMTManager() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('คุณแน่ใจต้องการลบ IMT Allocation รายการนี้หรือไม่')) return
+  const confirmDelete = (alloc: IMTAllocation) => {
+    setDeleteTarget({ id: alloc.id, name: alloc.name })
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
 
     setDeleting(id)
+    setDeleteTarget(null)
     try {
       const res = await fetchWithAuth(`/api/imt/${id}`, { method: 'DELETE' })
       if (!res.ok) {
@@ -465,7 +473,7 @@ export default function IMTManager() {
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(alloc.id) }}
+                            onClick={(e) => { e.stopPropagation(); confirmDelete(alloc) }}
                             disabled={deleting === alloc.id}
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                             title="ลบ"
@@ -764,6 +772,44 @@ export default function IMTManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Confirmation Modal ─── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 p-6 animate-fade-in-up">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#1A1A2E]">ยืนยันการลบ</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  แน่ใจใช่ไหมที่จะลบ <span className="font-semibold text-[#C00000]">{deleteTarget.name}</span>?
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  ข้อมูลการจัดสรรคลื่นความถี่ที่เกี่ยวข้องจะหายไป ไม่สามารถกู้คืนได้
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting === deleteTarget.id}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {deleting === deleteTarget.id ? 'กำลังลบ...' : 'ลบ'}
+              </button>
+            </div>
           </div>
         </div>
       )}
