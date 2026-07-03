@@ -794,11 +794,17 @@ function cleanupIMTLayers(map: maplibregl.Map, imtMarkersRef: React.MutableRefOb
   imtMarkersRef.current.forEach((m) => m.remove())
   imtMarkersRef.current = []
 
-  const ids = [LAYER_IDS.imtCoverageFill, LAYER_IDS.imtCoverageOutline, LAYER_IDS.imtCenters]
+  const ids = [
+    LAYER_IDS.imtCoverageFill, LAYER_IDS.imtCoverageFill + '-mid', LAYER_IDS.imtCoverageFill + '-inner',
+    LAYER_IDS.imtCenters
+  ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
-  if (map.getSource(LAYER_IDS.imtCoverageSource)) map.removeSource(LAYER_IDS.imtCoverageSource)
+  const srcIds = [LAYER_IDS.imtCoverageSource, LAYER_IDS.imtCoverageSource + '-mid', LAYER_IDS.imtCoverageSource + '-inner']
+  srcIds.forEach((id) => {
+    if (map.getSource(id)) map.removeSource(id)
+  })
 }
 
 async function loadIMTAllocations(
@@ -817,29 +823,40 @@ async function loadIMTAllocations(
 
     cleanupIMTLayers(map, imtMarkersRef)
 
-    // Build coverage polygons using turf circle()
-    const coverageFeatures: any[] = []
+    // Build coverage polygons — 3-layer gradient (100/60/30% radii) like FS zone
+    const outerFeatures: any[] = []   // 100% — cell edge
+    const midFeatures: any[] = []     // 60% — medium signal
+    const innerFeatures: any[] = []   // 30% — strong signal near center
     const markers: maplibregl.Marker[] = []
 
     allocations.forEach((alloc) => {
       const lat = alloc.center_lat
       const lon = alloc.center_lon
 
-      // Turf circle creates a GeoJSON polygon in km units
+      // Turf circle — 3 gradient layers (radius from cell_radius parameter)
       try {
-        const coveragePoly = circle([lon, lat], alloc.cell_radius / 1000, {
-          steps: 64,
-          units: 'kilometers',
-        })
-        coveragePoly.properties = {
-          id: alloc.id,
-          name: alloc.name,
-          operator: alloc.operator,
-          cell_radius: alloc.cell_radius,
-          blocks: alloc.blocks,
-          created_at: alloc.created_at,
+        const r = alloc.cell_radius  // actual cell_radius from IMTAllocation
+        // Outer layer: 100% = cell edge
+        const c1 = circle([lon, lat], r / 1000, { steps: 64, units: 'kilometers' })
+        c1.properties = { id: alloc.id, name: alloc.name, operator: alloc.operator,
+                          cell_radius: r, blocks: alloc.blocks, created_at: alloc.created_at, layer: 'outer' }
+        outerFeatures.push(c1)
+
+        // Mid layer: 60% of cell radius
+        const r2 = r * 0.6
+        if (r2 > 10) {
+          const c2 = circle([lon, lat], r2 / 1000, { steps: 64, units: 'kilometers' })
+          c2.properties = { layer: 'mid' }
+          midFeatures.push(c2)
         }
-        coverageFeatures.push(coveragePoly)
+
+        // Inner layer: 30% of cell radius — strongest signal
+        const r3 = r * 0.3
+        if (r3 > 10) {
+          const c3 = circle([lon, lat], r3 / 1000, { steps: 64, units: 'kilometers' })
+          c3.properties = { layer: 'inner' }
+          innerFeatures.push(c3)
+        }
       } catch (e) {
         console.warn('Failed to create circle for IMT:', alloc.name, e)
       }
@@ -908,33 +925,43 @@ async function loadIMTAllocations(
 
     imtMarkersRef.current = markers
 
-    if (coverageFeatures.length === 0) return
+    if (outerFeatures.length === 0) return
 
-    // Add coverage GeoJSON source + fill + outline layers
+    // 3-layer gradient fill (like FS coordination zone) — NO outline
+    // Outer layer: cell edge — faint signal
     map.addSource(LAYER_IDS.imtCoverageSource, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: coverageFeatures },
+      data: { type: 'FeatureCollection', features: outerFeatures },
     })
-
     map.addLayer({
       id: LAYER_IDS.imtCoverageFill,
       type: 'fill',
       source: LAYER_IDS.imtCoverageSource,
-      paint: {
-        'fill-color': '#16A34A',
-        'fill-opacity': 0.15,
-      },
+      paint: { 'fill-color': '#16A34A', 'fill-opacity': 0.08 },
     })
-
+    // Mid layer: 60% radius — medium signal
+    const midSourceId = LAYER_IDS.imtCoverageSource + '-mid'
+    map.addSource(midSourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: midFeatures },
+    })
     map.addLayer({
-      id: LAYER_IDS.imtCoverageOutline,
-      type: 'line',
-      source: LAYER_IDS.imtCoverageSource,
-      paint: {
-        'line-color': '#16A34A',
-        'line-width': 1,
-        'line-opacity': 0.6,
-      },
+      id: LAYER_IDS.imtCoverageFill + '-mid',
+      type: 'fill',
+      source: midSourceId,
+      paint: { 'fill-color': '#16A34A', 'fill-opacity': 0.14 },
+    })
+    // Inner layer: 30% radius — strong signal near center
+    const innerSourceId = LAYER_IDS.imtCoverageSource + '-inner'
+    map.addSource(innerSourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: innerFeatures },
+    })
+    map.addLayer({
+      id: LAYER_IDS.imtCoverageFill + '-inner',
+      type: 'fill',
+      source: innerSourceId,
+      paint: { 'fill-color': '#16A34A', 'fill-opacity': 0.20 },
     })
 
     // Click on coverage
