@@ -927,9 +927,9 @@ async function loadIMTAllocations(
 
     if (outerFeatures.length === 0) return
 
-    // 3-layer gradient fill — signal strength: strong (inner) → weak (outer)
-    // Cyan palette: distinct from green (available blocks), red (blocked), FS zone (blue/amber/red)
-    // Outer layer: cell edge — weak signal (light cyan)
+    // 3-layer gradient fill — 3 distinct color families (like FS zone blue/amber/red)
+    // Teal (strong) → Violet (medium) → Pink (weak) — distinct from all other system colors
+    // Outer layer: cell edge — weak signal (pink)
     map.addSource(LAYER_IDS.imtCoverageSource, {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: outerFeatures },
@@ -938,9 +938,9 @@ async function loadIMTAllocations(
       id: LAYER_IDS.imtCoverageFill,
       type: 'fill',
       source: LAYER_IDS.imtCoverageSource,
-      paint: { 'fill-color': '#A5F3FC', 'fill-opacity': 0.18 },
+      paint: { 'fill-color': '#F472B6', 'fill-opacity': 0.18 },
     })
-    // Mid layer: 60% radius — medium signal
+    // Mid layer: 60% radius — medium signal (violet)
     const midSourceId = LAYER_IDS.imtCoverageSource + '-mid'
     map.addSource(midSourceId, {
       type: 'geojson',
@@ -950,9 +950,9 @@ async function loadIMTAllocations(
       id: LAYER_IDS.imtCoverageFill + '-mid',
       type: 'fill',
       source: midSourceId,
-      paint: { 'fill-color': '#22D3EE', 'fill-opacity': 0.22 },
+      paint: { 'fill-color': '#8B5CF6', 'fill-opacity': 0.22 },
     })
-    // Inner layer: 30% radius — strong signal near center (teal/cyan)
+    // Inner layer: 30% radius — strong signal near center (teal)
     const innerSourceId = LAYER_IDS.imtCoverageSource + '-inner'
     map.addSource(innerSourceId, {
       type: 'geojson',
@@ -962,7 +962,7 @@ async function loadIMTAllocations(
       id: LAYER_IDS.imtCoverageFill + '-inner',
       type: 'fill',
       source: innerSourceId,
-      paint: { 'fill-color': '#0891B2', 'fill-opacity': 0.28 },
+      paint: { 'fill-color': '#0D9488', 'fill-opacity': 0.28 },
     })
 
     // Click on coverage
