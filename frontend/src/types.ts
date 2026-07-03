@@ -134,6 +134,18 @@ export interface BackendVerification {
   all_pass: boolean
 }
 
+// ─── Coverage Engine (Phase 15) ─────────────────────────────────────────────
+
+export interface CoverageInfo {
+  auto_eirp: boolean
+  used_eirp_dbm: number
+  cell_edge_rss_dbm: number
+  required_eirp_dbm: number
+  coverage_classification: 'OUTDOOR_GOOD' | 'OUTDOOR_BASIC' | 'MARGINAL' | 'INADEQUATE'
+  target_rss_dbm: number
+  shadow_margin_db: number
+}
+
 // ─── Full Analyze Response ──────────────────────────────────────────────────
 
 export interface AnalyzeSummary {
@@ -152,5 +164,6 @@ export interface AnalyzeResponse {
   pairs?: Pair[]
   pair_results?: PairResult[]
   verification?: BackendVerification
+  coverage?: CoverageInfo
   computation_time_ms?: number
 }

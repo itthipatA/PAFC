@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
-import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight } from 'lucide-react'
+import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
-import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification } from '../types'
+import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo } from '../types'
 
 interface IMTAddWorkspaceProps {
   onBack: () => void
@@ -147,6 +147,42 @@ const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: strin
   },
 }
 
+// ─── Coverage Engine helpers (Phase 15) ──────────────────────────────────
+
+function coverageClassificationThai(cls: string): string {
+  const labels: Record<string, string> = {
+    OUTDOOR_GOOD: 'ครอบคลุมดีเยี่ยม',
+    OUTDOOR_BASIC: 'ครอบคลุมพื้นฐาน',
+    MARGINAL: 'สัญญาณก้ำกึ่ง',
+    INADEQUATE: 'สัญญาณไม่เพียงพอ',
+  }
+  return labels[cls] || cls
+}
+
+function coverageStatusColor(cls: string): string {
+  const colors: Record<string, string> = {
+    OUTDOOR_GOOD: '#16A34A',
+    OUTDOOR_BASIC: '#16A34A',
+    MARGINAL: '#F59E0B',
+    INADEQUATE: '#DC2626',
+  }
+  return colors[cls] || '#9CA3AF'
+}
+
+/** Local EIRP estimate using FSPL link budget (same formula as backend).
+ *  FSPL = 32.4 + 20*log10(d_km) + 20*log10(f_MHz)
+ *  EIRP = target_RSS + FSPL - G_UE + shadow_margin
+ *  default: target_RSS=-95 dBm, G_UE=0 dBi, shadow_margin=8 dB, f=4900 MHz */
+function estimateEirp(cellRadiusM: number): number {
+  const dKm = cellRadiusM / 1000
+  if (dKm <= 0) return 0
+  const fspl = 32.4 + 20 * Math.log10(dKm) + 20 * Math.log10(4900)
+  const targetRss = -95
+  const gUe = 0
+  const shadowMargin = 8
+  return targetRss + fspl - gUe + shadowMargin
+}
+
 // ─── Narrative ASCII Log Generator ────────────────────────────────────────
 
 function directionLabelForLog(direction: string): string {
@@ -166,6 +202,7 @@ function generateNarrativeLog(
   pairs: Pair[],
   pairResults: PairResultType[],
   backendVerification: BackendVerification | null,
+  coverage: CoverageInfo | null,
 ): string[] {
   const lines: string[] = []
   const blocks = response.blocks || []
@@ -185,9 +222,13 @@ function generateNarrativeLog(
   lines.push(`   Cell Radius     : ${params.cellRadius} m`)
   lines.push(`   Antenna Height  : ${params.antH} m AGL`)
   lines.push(`   Antenna Gain    : ${params.antG} dBi`)
-  lines.push(`   Max EIRP        : ${params.eirp} dBm`)
+  if (coverage?.auto_eirp) {
+    lines.push(`   Max EIRP        : ${coverage.used_eirp_dbm.toFixed(1)} dBm (auto-calculated)`)
+  } else {
+    lines.push(`   Max EIRP        : ${params.eirp} dBm`)
+  }
   lines.push(`   Propagation     : ${modelLabel}`)
-  lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks × 10 MHz)`)
+  lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks x 10 MHz)`)
   lines.push('')
 
   // Section 1.5: Phase 0 — Victim/Interferer Identification
@@ -215,6 +256,37 @@ function generateNarrativeLog(
         lines.push(`   ${i + 1}. ${dirLabel}: ${p.interferer_name} → ${p.victim_name}`)
       })
     }
+    lines.push('')
+  }
+
+  // Section 1.5: LINK BUDGET CALCULATION (Coverage Engine)
+  if (coverage?.auto_eirp) {
+    const dKm = params.cellRadius / 1000
+    const fsplEdge = 32.4 + 20 * Math.log10(dKm || 0.001) + 20 * Math.log10(4900)
+    const gUe = 0
+    const thaiClass = coverageClassificationThai(coverage.coverage_classification)
+    lines.push('─── 1.5 LINK BUDGET CALCULATION ────────────────────────────────')
+    lines.push('   Coverage Engine : Phase 15 (Auto EIRP)')
+    lines.push('')
+    lines.push('   Input Parameters:')
+    lines.push(`     Cell Radius        : ${params.cellRadius} m (${dKm.toFixed(2)} km)`)
+    lines.push(`     Target RSS         : ${coverage.target_rss_dbm} dBm`)
+    lines.push(`     Shadow Margin      : ${coverage.shadow_margin_db} dB`)
+    lines.push(`     UE Antenna Gain    : ${gUe} dBi`)
+    lines.push('')
+    lines.push('   Formula:')
+    lines.push('     EIRP_req = RSS_target + FSPL(d, f) - G_UE + Margin')
+    lines.push('')
+    lines.push('   Calculation:')
+    lines.push(`     FSPL at cell edge  = 32.4 + 20*log10(${dKm.toFixed(2)}) + 20*log10(4900)`)
+    lines.push(`                        = ${fsplEdge.toFixed(1)} dB`)
+    lines.push(`     Required EIRP      = ${coverage.target_rss_dbm} + ${fsplEdge.toFixed(1)} - ${gUe} + ${coverage.shadow_margin_db}`)
+    lines.push(`                        = ${coverage.required_eirp_dbm.toFixed(1)} dBm`)
+    lines.push(`     Used EIRP          = ${coverage.used_eirp_dbm.toFixed(1)} dBm`)
+    lines.push(`     Cell Edge RSS      = ${coverage.cell_edge_rss_dbm.toFixed(1)} dBm`)
+    lines.push('')
+    lines.push(`   Coverage Classification: ${coverage.coverage_classification}`)
+    lines.push(`   (${thaiClass})`)
     lines.push('')
   }
 
@@ -344,6 +416,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [antennaHeight, setAntennaHeight] = useState(15)
   const [antennaGain, setAntennaGain] = useState(12)
   const [maxEirp, setMaxEirp] = useState(23)
+  const [autoEirp, setAutoEirp] = useState(false)
+  const [coverageInfo, setCoverageInfo] = useState<CoverageInfo | null>(null)
   const [propagationModel, setPropagationModel] = useState('free_space')
   const [name, setName] = useState('')
   const [operator, setOperator] = useState('')
@@ -462,24 +536,30 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     setBlocks([])
     setSavedMessage('')
     setSaveError('')
+    setCoverageInfo(null)
     setLogLines([
       '═══════════════════════════════════════════════',
       '  Sending analysis request to backend...',
       '═══════════════════════════════════════════════',
     ])
     try {
+      const body: Record<string, unknown> = {
+        center_lat: lat,
+        center_lon: lon,
+        cell_radius: cellRadius,
+        antenna_height: antennaHeight,
+        antenna_gain: antennaGain,
+        model: propagationModel,
+      }
+      if (autoEirp) {
+        body.auto_eirp = true
+      } else {
+        body.max_eirp = maxEirp
+      }
       const res = await fetchWithAuth('/api/allocate/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          center_lat: lat,
-          center_lon: lon,
-          cell_radius: cellRadius,
-          antenna_height: antennaHeight,
-          antenna_gain: antennaGain,
-          max_eirp: maxEirp,
-          model: propagationModel,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       const elapsedMs = Math.round(performance.now() - startTime)
@@ -488,13 +568,19 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       setPairResults(data.pair_results || [])
       setAnalysisSummary(data.summary || null)
       setBackendVerification(data.verification || null)
+      if (data.coverage) {
+        setCoverageInfo(data.coverage)
+      }
+      // Use backend-provided EIRP if autoEIRP was used
+      const effectiveEirp = data.coverage?.used_eirp_dbm ?? maxEirp
       setLogLines(generateNarrativeLog(
-        { lat, lon, cellRadius, antH: antennaHeight, antG: antennaGain, eirp: maxEirp, model: propagationModel },
+        { lat, lon, cellRadius, antH: antennaHeight, antG: antennaGain, eirp: effectiveEirp, model: propagationModel },
         data,
         elapsedMs,
         data.pairs || [],
         data.pair_results || [],
         data.verification || null,
+        data.coverage || null,
       ))
     } catch (err) {
       console.error('Analysis failed:', err)
@@ -503,7 +589,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     } finally {
       setLoading(false)
     }
-  }, [lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, propagationModel, fetchWithAuth])
+  }, [lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, autoEirp, propagationModel, fetchWithAuth])
 
   const handleSave = useCallback(async () => {
     if (!name.trim() || !operator.trim()) {
@@ -696,12 +782,44 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     Max EIRP (dBm)
                   </label>
-                  <input
-                    type="number"
-                    value={maxEirp}
-                    onChange={(e) => setMaxEirp(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                  />
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={autoEirp ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius)).toFixed(1) : maxEirp}
+                      onChange={(e) => setMaxEirp(Number(e.target.value))}
+                      disabled={autoEirp}
+                      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none ${
+                        autoEirp ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
+                      }`}
+                    />
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAutoEirp(!autoEirp)
+                        setCoverageInfo(null)
+                      }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        autoEirp
+                          ? 'bg-[#C00000]/10 text-[#C00000] border border-[#C00000]/30'
+                          : 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200'
+                      }`}
+                    >
+                      {autoEirp ? (
+                        <ToggleRight className="w-4 h-4" />
+                      ) : (
+                        <ToggleLeft className="w-4 h-4" />
+                      )}
+                      คำนวณกำลังส่งอัตโนมัติ
+                    </button>
+                    {autoEirp && (
+                      <span className="text-xs text-[#C00000] font-medium flex items-center gap-1">
+                        <Radio className="w-3 h-3" />
+                        Auto EIRP
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="mt-3">
@@ -1031,7 +1149,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     <div>cell_radius  = {cellRadius.toLocaleString()} m</div>
                     <div>ant_height   = {antennaHeight} m AGL</div>
                     <div>ant_gain     = {antennaGain} dBi</div>
-                    <div>max_eirp     = {maxEirp} dBm</div>
+                    <div>max_eirp     = {coverageInfo?.used_eirp_dbm ? `${coverageInfo.used_eirp_dbm.toFixed(1)} dBm (auto)` : `${maxEirp} dBm`}</div>
                     <div>name         = {name || '-'}</div>
                     <div>operator     = {operator || '-'}</div>
                   </div>
@@ -1048,6 +1166,89 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 </div>
 
                 <hr className="my-3 border-gray-200" />
+
+                {/* Coverage Engine Card (Phase 15) */}
+                {coverageInfo && (
+                  <>
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                        Coverage Engine
+                      </h4>
+                      <div
+                        className="p-3 rounded-lg border"
+                        style={{
+                          borderLeftWidth: '4px',
+                          borderLeftColor: coverageStatusColor(coverageInfo.coverage_classification),
+                          backgroundColor:
+                            coverageInfo.coverage_classification === 'OUTDOOR_GOOD' || coverageInfo.coverage_classification === 'OUTDOOR_BASIC'
+                              ? '#F0FDF4'
+                              : coverageInfo.coverage_classification === 'MARGINAL'
+                              ? '#FFFBEB'
+                              : '#FEF2F2',
+                          borderColor:
+                            coverageInfo.coverage_classification === 'OUTDOOR_GOOD' || coverageInfo.coverage_classification === 'OUTDOOR_BASIC'
+                              ? '#BBF7D0'
+                              : coverageInfo.coverage_classification === 'MARGINAL'
+                              ? '#FDE68A'
+                              : '#FECACA',
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <Signal className="w-4 h-4" style={{ color: coverageStatusColor(coverageInfo.coverage_classification) }} />
+                          <span className="text-sm font-semibold text-[#1A1A2E]">
+                            การคำนวณกำลังส่งอัตโนมัติ (Auto EIRP)
+                          </span>
+                          <span
+                            className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                            style={{ backgroundColor: coverageStatusColor(coverageInfo.coverage_classification) }}
+                          >
+                            {coverageClassificationThai(coverageInfo.coverage_classification)}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                          <div>
+                            <span className="text-gray-400">EIRP ที่ใช้:</span>{' '}
+                            <span className="font-mono font-bold text-gray-800">
+                              {coverageInfo.used_eirp_dbm.toFixed(1)} dBm
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">EIRP ที่ต้องการ:</span>{' '}
+                            <span className="font-mono font-bold text-gray-800">
+                              {coverageInfo.required_eirp_dbm.toFixed(1)} dBm
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">RSS ขอบเซลล์:</span>{' '}
+                            <span className="font-mono font-bold text-gray-800">
+                              {coverageInfo.cell_edge_rss_dbm.toFixed(1)} dBm
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Target RSS:</span>{' '}
+                            <span className="font-mono text-gray-800">
+                              {coverageInfo.target_rss_dbm} dBm
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Shadow Margin:</span>{' '}
+                            <span className="font-mono text-gray-800">
+                              {coverageInfo.shadow_margin_db} dB
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">สถานะ:</span>{' '}
+                            <span className="font-semibold" style={{ color: coverageStatusColor(coverageInfo.coverage_classification) }}>
+                              {coverageClassificationThai(coverageInfo.coverage_classification)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <hr className="my-3 border-gray-200" />
+                  </>
+                )}
 
                 <div className="mb-4">
                   <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Guard Band Analysis</h4>
