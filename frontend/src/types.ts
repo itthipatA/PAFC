@@ -202,4 +202,5 @@ export interface AssumptionItem {
   impact: string
   impact_en?: string
   limitations?: string[]
+  reality_check?: string
 }

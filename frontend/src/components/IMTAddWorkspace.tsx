@@ -262,307 +262,436 @@ function generateNarrativeLog(
   const red = blocks.filter((b: any) => b.status === 'red')
   const gray = blocks.filter((b: any) => b.status === 'gray')
 
-  lines.push('═══════════════════════════════════════════════')
-  lines.push('  PAFC INTERFERENCE ANALYSIS — DETAILED REPORT')
-  lines.push('═══════════════════════════════════════════════')
+  // ═══════════════════════════════════════════════════════════
+  // HEADER — Frame the tutorial
+  // ═══════════════════════════════════════════════════════════
+  lines.push('+===========================================================+')
+  lines.push('|  PAFC INTERFERENCE ANALYSIS — ENGINEERING TUTORIAL       |')
+  lines.push('|                                                           |')
+  lines.push('|  This report teaches how spectrum coordination works.     |')
+  lines.push('|  Each step explains WHAT we do, WHY we do it, and HOW    |')
+  lines.push('|  the calculation works — like teaching a junior engineer. |')
+  lines.push('+===========================================================+')
   lines.push('')
 
-  // Section 1: Input Parameters
-  lines.push('─── 1. INPUT PARAMETERS ────────────────────────────────────────')
-  lines.push(`   Location        : (${params.lat.toFixed(4)}, ${params.lon.toFixed(4)})`)
-  lines.push(`   Cell Radius     : ${params.cellRadius} m`)
-  lines.push(`   Antenna Height  : ${params.antH} m AGL`)
-  lines.push(`   Antenna Gain    : ${params.antG} dBi`)
+  // ═══════════════════════════════════════════════════════════
+  // STEP 1: INPUT PARAMETERS — "Know your system"
+  // ═══════════════════════════════════════════════════════════
+  lines.push('STEP 1: KNOW YOUR SYSTEM')
+  lines.push('────────────────────────────────────────────────────────')
+  lines.push('')
+  lines.push('  Before we can analyze interference, we need to know:')
+  lines.push('  1. WHERE is the new station? (location)')
+  lines.push('  2. HOW BIG is its coverage? (cell radius)')
+  lines.push('  3. HOW MUCH power does it transmit? (EIRP)')
+  lines.push('  4. HOW does the signal propagate? (model + frequency)')
+  lines.push('')
+  lines.push('  New IMT Station Parameters:')
+  lines.push(`    Location        : (${params.lat.toFixed(4)}, ${params.lon.toFixed(4)})`)
+  lines.push(`    Cell Radius     : ${params.cellRadius} m`)
+  lines.push(`    Antenna Height  : ${params.antH} m AGL`)
+  lines.push(`    Antenna Gain    : ${params.antG} dBi`)
   if (coverage?.auto_eirp) {
-    lines.push(`   Max EIRP        : ${coverage.used_eirp_dbm.toFixed(1)} dBm (auto-calculated)`)
+    lines.push(`    Max EIRP        : ${coverage.used_eirp_dbm.toFixed(1)} dBm (auto-calculated)`)
   } else {
-    lines.push(`   Max EIRP        : ${params.eirp} dBm`)
+    lines.push(`    Max EIRP        : ${params.eirp} dBm`)
   }
-  lines.push(`   Propagation     : ${modelLabel}`)
-  lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks x 10 MHz)`)
+  lines.push(`    Propagation     : ${modelLabel}`)
+  lines.push(`    Frequency Band  : 4800 - 4990 MHz (19 blocks x 10 MHz)`)
+  lines.push('')
+  lines.push('  [ASCII: Spectrum Band Diagram]')
+  lines.push('   4800                                                4990 MHz')
+  lines.push('   |---||---||---||---||---||---||---||---||---||---|')
+  lines.push('   Each |---| = 10 MHz block (19 blocks = 190 MHz total)')
   lines.push('')
 
-  // Section 1.2: Engineering Assumptions (สมมุติฐาน)
+  // ═══════════════════════════════════════════════════════════
+  // STEP 2: ENGINEERING ASSUMPTIONS — "What we assume about physics"
+  // ═══════════════════════════════════════════════════════════
   if (assumptions && Object.keys(assumptions).length > 0) {
-    lines.push('─── 1.2 KEY ENGINEERING ASSUMPTIONS (สมมุติฐาน) ──────────────────')
-    lines.push('   These assumptions govern every calculation result.')
+    lines.push('STEP 2: ENGINEERING ASSUMPTIONS')
+    lines.push('────────────────────────────────────────────────────────')
     lines.push('')
-    const order = ['interference_threshold', 'cochannel_protection', 'adjacent_protection',
-                   'fs_beamwidth', 'fs_sidelobe', 'spatial_filter',
-                   'propagation', 'imt_antenna', 'risk_classification']
-    for (const key of order) {
-      const a = assumptions[key]
+    lines.push('  Every engineering calculation rests on assumptions.')
+    lines.push('  These are the "rules of the game" — if they change,')
+    lines.push('  the results change. A good engineer knows their assumptions.')
+    lines.push('')
+    lines.push('  KEY ASSUMPTIONS:')
+    const key = ['interference_threshold', 'cochannel_protection', 'adjacent_protection',
+                 'fs_beamwidth', 'propagation']
+    for (const k of key) {
+      const a = assumptions[k]
       if (!a) continue
-      lines.push(`   ${a.label}:`)
-      lines.push(`     Value      : ${a.value}`)
-      lines.push(`     อธิบาย      : ${a.description}`)
-      lines.push(`     Reference  : ${a.reference}`)
-      lines.push(`     Impact     : ${a.impact}`)
-      if (a.limitations && a.limitations.length > 0) {
-        lines.push(`     ข้อจำกัด   :`)
-        a.limitations.forEach((lim: string) => lines.push(`       • ${lim}`))
-      }
+      lines.push(`  ${a.label}: ${a.value}`)
+      lines.push(`    ${a.description}`)
+      lines.push(`    Reality check: ${a.reality_check || 'N/A'}`)
       lines.push('')
     }
+    lines.push('  [ASCII: Interference Threshold Concept]')
+    lines.push('')
+    lines.push('   IMT EIRP -----> FSPL(distance) -----> FS Receiver')
+    lines.push('   35 dBm          100 dB loss          I = -65 dBm')
+    lines.push('                                         |')
+    lines.push('                                    threshold = -114 dBm')
+    lines.push('                                         |')
+    lines.push('                                    -65 > -114? YES --> CONFLICT!')
+    lines.push('')
   }
 
-  // Section 1.5: Phase 0 — Victim/Interferer Identification
+  // ═══════════════════════════════════════════════════════════
+  // STEP 3: VICTIM/INTERFERER IDENTIFICATION — "Who could interfere?"
+  // ═══════════════════════════════════════════════════════════
   if (pairs.length > 0) {
     const filterKm = response.spatial_filter_km || '5.0'
-    lines.push('─── 1.3 VICTIM/INTERFERER IDENTIFICATION ───────────────────────')
-    lines.push(`   Search radius   : ${filterKm} km (max IMT radius + max FS coord + 1 km margin)`)
-    lines.push('   เกณฑ์: คำนวณจาก FSPL — adapts to max FS EIRP in system')
-    lines.push(`   Systems checked : ${(response.fs_links_checked || 0)} FS links + ${(response.neighbor_imts_checked || 0)} IMT blocks`)
-    lines.push(`   Pairs identified : ${pairs.length} total`)
     const highRisk = pairs.filter(p => p.preliminary_risk === 'HIGH')
     const medRisk = pairs.filter(p => p.preliminary_risk === 'MEDIUM')
     const lowRisk = pairs.filter(p => p.preliminary_risk === 'LOW')
-    lines.push(`   Risk distribution: ${highRisk.length} HIGH, ${medRisk.length} MEDIUM, ${lowRisk.length} LOW`)
-    lines.push('   (เกณฑ์: margin > +20 dB = HIGH, > −10 dB = MEDIUM)')
+
+    lines.push('STEP 3: VICTIM/INTERFERER IDENTIFICATION (Phase 0 Pre-Screen)')
+    lines.push('────────────────────────────────────────────────────────')
     lines.push('')
+    lines.push('  PURPOSE: Before calculating exact interference levels,')
+    lines.push('  we do a fast pre-scan to identify WHICH systems could')
+    lines.push('  potentially interfere — saving computation time.')
+    lines.push('')
+    lines.push('  HOW IT WORKS:')
+    lines.push(`  1. Spatial filter: search radius = ${filterKm} km around new IMT`)
+    lines.push('     (max IMT radius + max FS coordination distance + margin)')
+    lines.push('  2. Frequency filter: only systems whose bands overlap with 4800-4990')
+    lines.push('  3. Generate pairs in 4 directions:')
+    lines.push('     - IMT -> FS receiver        (IMT interferes with fixed link)')
+    lines.push('     - FS transmitter -> IMT     (fixed link interferes with IMT)')
+    lines.push('     - IMT <-> IMT co-channel    (same frequency, different location)')
+    lines.push('     - IMT <-> IMT adjacent      (nearby frequencies)')
+    lines.push('')
+    lines.push(`  Systems checked: ${(response.fs_links_checked || 0)} FS links + ${(response.neighbor_imts_checked || 0)} IMT blocks`)
+    lines.push(`  Pairs identified: ${pairs.length} total`)
+    lines.push('')
+    lines.push('  [ASCII: Interference Topology]')
+    lines.push('')
+    lines.push('            FS Link (incumbent)')
+    lines.push('          Tx ----------------> Rx')
+    lines.push('           |                    ^')
+    lines.push('           | FS-->IMT           | IMT-->FS')
+    lines.push('           v                    |')
+    lines.push('         [New IMT] <----------> [Existing IMT]')
+    lines.push('                    co-channel')
+    lines.push('')
+    lines.push(`  Risk distribution: ${highRisk.length} HIGH, ${medRisk.length} MEDIUM, ${lowRisk.length} LOW`)
+    lines.push('  (Criteria: margin > +20 dB = HIGH, margin > -10 dB = MEDIUM)')
+    lines.push('')
+
     if (highRisk.length > 0) {
-      lines.push('   === HIGH RISK PAIRS ===')
+      lines.push('  HIGH RISK PAIRS (will be analyzed in detail):')
       highRisk.forEach((p, i) => {
         const dirLabel = directionLabelForLog(p.direction)
-        lines.push(`   ${i + 1}. ${dirLabel}: ${p.interferer_name} → ${p.victim_name}`)
         const freqStr = p.freq_overlap_low && p.freq_overlap_high
           ? `${p.freq_overlap_low.toFixed(0)}-${p.freq_overlap_high.toFixed(0)} MHz`
           : 'N/A'
-        lines.push(`      Freq: ${freqStr} | Dist: ${(p.distance_m / 1000).toFixed(1)} km | I≈${p.estimated_i_dbm.toFixed(1)} dBm`)
+        lines.push(`  ${i + 1}. ${dirLabel}`)
+        lines.push(`     ${p.interferer_name} ----interferes----> ${p.victim_name}`)
+        lines.push(`     Freq: ${freqStr} | Dist: ${(p.distance_m / 1000).toFixed(2)} km | Est.I: ${p.estimated_i_dbm.toFixed(1)} dBm`)
         if (p.direction === 'FS→IMT' && p.within_beam !== null) {
-          lines.push(`      FS beam: ${p.within_beam ? 'IMT IN main beam' : 'IMT outside beam (-25 dB)'}`)
+          lines.push(`     FS beam: ${p.within_beam ? 'IMT IS IN the main beam (worst case!)' : 'IMT is outside main beam (-25 dB side-lobe)'}`)
         }
       })
     }
-    if (medRisk.length > 0) {
-      lines.push('')
-      lines.push('   === MEDIUM RISK PAIRS ===')
-      medRisk.forEach((p, i) => {
-        const dirLabel = directionLabelForLog(p.direction)
-        lines.push(`   ${i + 1}. ${dirLabel}: ${p.interferer_name} → ${p.victim_name}`)
-      })
-    }
     lines.push('')
   }
 
-  // Section 1.5: LINK BUDGET CALCULATION (Coverage Engine)
+  // ═══════════════════════════════════════════════════════════
+  // STEP 4: LINK BUDGET — "How much power do we need?"
+  // ═══════════════════════════════════════════════════════════
   if (coverage?.auto_eirp) {
     const dKm = params.cellRadius / 1000
     const fsplEdge = 32.4 + 20 * Math.log10(dKm || 0.001) + 20 * Math.log10(4900)
-    const gUe = 0
     const thaiClass = coverageClassificationThai(coverage.coverage_classification)
-    lines.push('─── 1.4 LINK BUDGET CALCULATION ────────────────────────────────')
-    lines.push('   Coverage Engine : Phase 15 (Auto EIRP)')
+
+    lines.push('STEP 4: LINK BUDGET (Coverage Engine)')
+    lines.push('────────────────────────────────────────────────────────')
     lines.push('')
-    lines.push('   Input Parameters:')
-    lines.push(`     Cell Radius        : ${params.cellRadius} m (${dKm.toFixed(2)} km)`)
-    lines.push(`     Target RSS         : ${coverage.target_rss_dbm} dBm`)
-    lines.push(`     Shadow Margin      : ${coverage.shadow_margin_db} dB`)
-    lines.push(`     UE Antenna Gain    : ${gUe} dBi`)
+    lines.push('  PURPOSE: Before analyzing interference, we need to know')
+    lines.push('  HOW MUCH POWER the new IMT actually needs. The coverage')
+    lines.push('  engine calculates this from the desired cell radius.')
     lines.push('')
-    lines.push('   Formula:')
-    lines.push('     EIRP_req = RSS_target + FSPL(d, f) - G_UE + Margin')
+    lines.push('  THE PHYSICS: Signal gets weaker with distance (Free Space Path Loss).')
+    lines.push('  At the cell edge, the received signal must be above the')
+    lines.push('  receiver sensitivity (target RSS). This determines the')
+    lines.push('  minimum transmitter power (EIRP) we need.')
     lines.push('')
-    lines.push('   Calculation:')
-    lines.push(`     FSPL at cell edge  = 32.4 + 20*log10(${dKm.toFixed(2)}) + 20*log10(4900)`)
-    lines.push(`                        = ${fsplEdge.toFixed(1)} dB`)
-    lines.push(`     Required EIRP      = ${coverage.target_rss_dbm} + ${fsplEdge.toFixed(1)} - ${gUe} + ${coverage.shadow_margin_db}`)
-    lines.push(`                        = ${coverage.required_eirp_dbm.toFixed(1)} dBm`)
-    lines.push(`     Used EIRP          = ${coverage.used_eirp_dbm.toFixed(1)} dBm`)
-    lines.push(`     Cell Edge RSS      = ${coverage.cell_edge_rss_dbm.toFixed(1)} dBm`)
+    lines.push('  [ASCII: Signal Strength vs Distance]')
     lines.push('')
-    lines.push(`   Coverage Classification: ${coverage.coverage_classification}`)
-    lines.push(`   (${thaiClass})`)
+    lines.push('  TX Power (EIRP)')
+    lines.push('       |')
+    lines.push('       |\\')
+    lines.push('       | \\         <-- FSPL loss = 32.4 + 20log(d) + 20log(f)')
+    lines.push('       |  \\')
+    lines.push('       |   \\___ Target RSS = -95 dBm @ cell edge')
+    lines.push('       |        \\')
+    lines.push('       +---------+---------+---------> Distance')
+    lines.push('       0       250m      500m     ')
+    lines.push('')
+    lines.push('  Input Parameters:')
+    lines.push(`    Cell Radius        : ${params.cellRadius} m (${dKm.toFixed(2)} km)`)
+    lines.push(`    Target RSS         : ${coverage.target_rss_dbm} dBm`)
+    lines.push(`    Shadow Margin      : ${coverage.shadow_margin_db} dB`)
+    lines.push(`    UE Antenna Gain    : 0 dBi (mobile terminal)`)
+    lines.push('')
+    lines.push('  Formula:')
+    lines.push('    EIRP_req = RSS_target + FSPL(d, f) - G_UE + Shadow_Margin')
+    lines.push('')
+    lines.push('  Calculation (worked example):')
+    lines.push(`    FSPL at ${dKm.toFixed(2)} km: 32.4 + 20*log10(${dKm.toFixed(2)}) + 20*log10(4900)`)
+    lines.push(`                              = 32.4 + ${(20 * Math.log10(dKm || 0.001)).toFixed(1)} + 73.8`)
+    lines.push(`                              = ${fsplEdge.toFixed(1)} dB`)
+    lines.push(`    Required EIRP = ${coverage.target_rss_dbm} + ${fsplEdge.toFixed(1)} - 0 + ${coverage.shadow_margin_db}`)
+    lines.push(`                  = ${coverage.required_eirp_dbm?.toFixed(1)} dBm`)
+    lines.push(`    Used EIRP     = ${coverage.used_eirp_dbm?.toFixed(1)} dBm`)
+    lines.push(`    Cell Edge RSS = ${coverage.cell_edge_rss_dbm?.toFixed(1)} dBm`)
+    lines.push('')
+    lines.push(`  Coverage Classification: ${coverage.coverage_classification} (${thaiClass})`)
     lines.push('')
   }
 
-  // Section 2: Propagation Model
-  lines.push('─── 2. PROPAGATION MODEL ───────────────────────────────────────')
+  // ═══════════════════════════════════════════════════════════
+  // STEP 5: PROPAGATION MODEL — "How does the signal travel?"
+  // ═══════════════════════════════════════════════════════════
+  lines.push('STEP 5: PROPAGATION MODEL')
+  lines.push('────────────────────────────────────────────────────────')
+  lines.push('')
+  lines.push('  PURPOSE: The path loss model determines how much the')
+  lines.push('  signal weakens over distance. This directly affects')
+  lines.push('  whether interference reaches harmful levels.')
+  lines.push('')
   if (params.model === 'free_space') {
     const fspl1km = 32.4 + 20 * Math.log10(1) + 20 * Math.log10(4900)
-    lines.push('   Model           : Free Space Path Loss (FSPL)')
-    lines.push('   Formula         : FSPL(dB) = 32.4 + 20·log10(d_km) + 20·log10(f_MHz)')
-    lines.push('   Description     : คำนวณการสูญเสียในพื้นที่ว่าง ไม่มีสิ่งกีดขวาง')
+    lines.push('  Model: Free Space Path Loss (ITU-R P.525)')
     lines.push('')
-    lines.push(`   Example: ที่ระยะ 1 km, ความถี่ 4900 MHz:`)
-    lines.push(`     FSPL = 32.4 + 20·log10(1) + 20·log10(4900)`)
-    lines.push(`          = 32.4 + 0 + 73.8`)
-    lines.push(`          = ${fspl1km.toFixed(1)} dB`)
-  } else if (params.model === 'p452') {
-    lines.push('   Model           : ITU-R P.452')
-    lines.push('   Description     : คำนึงถึงสภาพอากาศ ภูมิประเทศ และการกระเจิง')
+    lines.push('  FSPL is the SIMPLEST model — assumes NO obstacles')
+    lines.push('  between transmitter and receiver. This gives the')
+    lines.push('  LOWEST path loss → HIGHEST interference → MOST conservative.')
+    lines.push('')
+    lines.push('  [ASCII: FSPL Curve]')
+    lines.push('')
+    lines.push('  Path Loss (dB)')
+    lines.push('  140 |                              *')
+    lines.push('      |                          *')
+    lines.push('  120 |                      *')
+    lines.push('      |                  *')
+    lines.push('  100 |              *    <-- at 1 km: ~106 dB')
+    lines.push('      |          *')
+    lines.push('   80 |      *')
+    lines.push('      +---------------------------------> Distance (km)')
+    lines.push('      0.1   0.5    1     2     5    10')
+    lines.push('')
+    lines.push('  Formula: FSPL(dB) = 32.4 + 20*log10(d_km) + 20*log10(f_MHz)')
+    lines.push(`  At 1 km, 4900 MHz: FSPL = 32.4 + 0 + 73.8 = ${fspl1km.toFixed(1)} dB`)
+    lines.push('')
+    lines.push('  LIMITATIONS: No clutter, terrain, or atmospheric effects.')
+    lines.push('  Real-world path loss is typically 10-30 dB HIGHER.')
+    lines.push('  This model is CONSERVATIVE — it will find MORE interference')
+    lines.push('  than actually occurs (safer for protection, may block more).')
   } else {
-    lines.push('   Model           : Hata (Okumura-Hata)')
-    lines.push('   Description     : สำหรับพื้นที่เมือง')
+    lines.push(`  Model: ${modelLabel}`)
+    lines.push(`  ${PROPAGATION_MODEL_INFO[params.model]?.description || ''}`)
   }
   lines.push('')
-  lines.push('   IMT Parameters   : cell_radius, antenna_height, antenna_gain, max_eirp')
-  lines.push('   Standard         : ITU-R SM.1047 — sufficient for spectrum coordination')
-  lines.push('                      at 4.8–5.0 GHz (omni-pattern assumed, conservative)')
-  lines.push('')
 
-  // Section 3: FS Link Conflict
+  // ═══════════════════════════════════════════════════════════
+  // STEP 6: CONFLICT ANALYSIS — Per-Pair Calculation Results
+  // ═══════════════════════════════════════════════════════════
+  lines.push('STEP 6: INTERFERENCE CALCULATION (Phase 1 Results)')
+  lines.push('────────────────────────────────────────────────────────')
+  lines.push('')
+  lines.push('  PURPOSE: For each pair identified in Step 3, we now')
+  lines.push('  calculate the EXACT interference power at the victim.')
+  lines.push('')
+  lines.push('  HOW IT WORKS (for each pair):')
+  lines.push('  1. Calculate path loss between interferer and victim')
+  lines.push('  2. Compute interference: I = EIRP - PathLoss + G_victim')
+  lines.push('  3. Compare I vs threshold → CONFLICT or CLEAR')
+  lines.push('')
+  lines.push('  [ASCII: Interference Calculation Diagram]')
+  lines.push('')
+  lines.push('  Interferer                        Victim')
+  lines.push('  [TX]--EIRP--> (FSPL loss) -->[RX]')
+  lines.push('   |                             |')
+  lines.push('   +-- I = EIRP - PL + G_RX ----+')
+  lines.push('   |                             |')
+  lines.push('   If I > threshold (-114 dBm): CONFLICT')
+  lines.push('   If I < threshold: CLEAR')
+  lines.push('')
+  
+  // FS Link conflicts
   const fsConflicts = red.filter((b: any) => b.reason?.includes('FS conflict'))
-  lines.push('─── 3. FS LINK CONFLICT ANALYSIS ────────────────────────────────')
-  lines.push(`   Conflicts found : ${fsConflicts.length} block(s)`)
   if (fsConflicts.length > 0) {
-    lines.push('   Details:')
+    lines.push(`  FS Link Conflicts: ${fsConflicts.length} block(s) affected`)
+    lines.push('')
+    lines.push('  WHY: FS links are high-power microwave connections')
+    lines.push('  (EIRP up to 65 dBm). They are VERY sensitive receivers')
+    lines.push('  (threshold -114 dBm). If an IMT is nearby, its signal')
+    lines.push('  can overwhelm the FS receiver.')
+    lines.push('')
     fsConflicts.forEach((b: any) => {
-      const m = b.reason.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm\)/)
+      const m = b.reason.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm/)
       if (m) {
         const exceed = (parseFloat(m[2]) - parseFloat(m[3])).toFixed(1)
-        lines.push(`     ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : ${m[1].trim()}`)
-        lines.push(`       I = ${m[2]} dBm > threshold ${m[3]} dBm (exceed by ${exceed} dB)`)
-        lines.push(`       I = EIRP_IMT − FSPL(d, f) + G_RX_FS`)
-      } else {
-        lines.push(`     ${b.reason}`)
+        lines.push(`  ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${m[1].trim()}`)
+        lines.push(`    I = ${m[2]} dBm  >  threshold = ${m[3]} dBm  (exceeds by ${exceed} dB)`)
+        lines.push(`    --> CONFLICT — this block CANNOT be used`)
       }
     })
   } else {
-    lines.push('   No FS link conflicts detected.')
+    lines.push('  FS Link Conflicts: None — all FS links are far enough')
   }
-  lines.push('')
 
-  // Section 4: IMT Co-Channel
+  // IMT co-channel
   const imtConflicts = red.filter((b: any) => b.reason?.includes('IMT co-channel'))
-  const neighborsChecked = response.neighbor_imts_checked || 0
-  lines.push('─── 4. IMT CO-CHANNEL ANALYSIS ──────────────────────────────────')
-  lines.push(`   Neighbors       : ${neighborsChecked} block(s) from nearby IMT stations`)
-  lines.push(`   Co-channel hits : ${imtConflicts.length} block(s)`)
   if (imtConflicts.length > 0) {
+    lines.push('')
+    lines.push(`  IMT Co-Channel Conflicts: ${imtConflicts.length} block(s)`)
+    lines.push('')
+    lines.push('  WHY: Two IMTs using the SAME frequency block')
+    lines.push('  interfere if they are too close. Co-channel has')
+    lines.push('  NO frequency separation — only distance helps.')
+    lines.push('')
     imtConflicts.forEach((b: any) => {
-      const m = b.reason.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
-      if (m) {
-        lines.push(`   ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : ${m[1].trim()} at ${m[2]} km (need ${m[3]} km)`)
-      } else {
-        lines.push(`   ${b.reason}`)
-      }
+      lines.push(`  ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${b.reason}`)
     })
-  } else {
-    lines.push('   No co-channel conflicts.')
   }
   lines.push('')
 
-  // Section 4.5: Adjacent Channel Analysis
+  // Adjacent channel
   const adjPairs = pairResults.filter(pr => pr.direction === 'IMT↔IMT_ADJACENT')
   if (adjPairs.length > 0) {
-    lines.push('─── 4.5 ADJACENT CHANNEL ANALYSIS ───────────────────────────────')
-    lines.push(`   Adjacent pairs  : ${adjPairs.length} IMT(s) on adjacent channels`)
+    lines.push('STEP 6.5: ADJACENT CHANNEL ANALYSIS')
+    lines.push('────────────────────────────────────────────────────────')
     lines.push('')
-    lines.push('   Adjacent = 0 MHz guard — isolation from ACS (33 dB) only')
-    lines.push('   Wider guard → Section 5 (Guard Band Analysis)')
+    lines.push('  PURPOSE: Adjacent channels are like neighbors sharing')
+    lines.push('  a wall — close but not the same room. ACS (Adjacent')
+    lines.push('  Channel Selectivity) provides 33 dB of "soundproofing".')
     lines.push('')
+    lines.push('  [ASCII: Adjacent vs Co-Channel Concept]')
+    lines.push('')
+    lines.push('  Co-channel:           Adjacent channel:')
+    lines.push('  [====IMT A====]       [====IMT A====]')
+    lines.push('  [====IMT B====]         [====IMT B====]')
+    lines.push('      ^                        ^')
+    lines.push('  Full interference     ACS 33 dB isolation')
+    lines.push('  2000m separation      134m separation')
+    lines.push('')
+    lines.push(`  Adjacent pairs: ${adjPairs.length} found`)
     adjPairs.forEach((pr, i) => {
-      const d = pr.detail || ''
-      lines.push(`   ${i+1}. ${pr.interferer} → ${pr.victim}`)
-      lines.push(`      ${d}`)
-      lines.push('')
+      lines.push(`  ${i+1}. ${pr.interferer} -> ${pr.victim}: ${pr.detail}`)
     })
-    const clearAdj = adjPairs.filter(pr => pr.verdict === 'CLEAR')
-    const guardAdj = adjPairs.filter(pr => pr.verdict === 'GUARD_BAND')
-    lines.push(`   Result: ${clearAdj.length} CLEAR, ${guardAdj.length} GUARD_BAND`)
     lines.push('')
   }
 
-  // Section 5: Guard Band
+  // Guard Band
   const guardBlocks = gray.filter((b: any) => b.reason?.includes('Guard band'))
-  // Find GUARD_BAND pair_results for detailed calculation display
-  const guardPairs = pairResults.filter(pr => pr.verdict === 'GUARD_BAND')
-  lines.push('─── 5. GUARD BAND ANALYSIS ──────────────────────────────────────')
-  lines.push(`   Guard bands     : ${guardBlocks.length} block(s), ${guardPairs.length} pair(s)`)
   if (guardBlocks.length > 0) {
+    lines.push('STEP 7: GUARD BAND ANALYSIS')
+    lines.push('────────────────────────────────────────────────────────')
+    lines.push('')
+    lines.push('  PURPOSE: Guard bands are "buffer zones" in frequency.')
+    lines.push('  By leaving blocks empty between allocations, we add')
+    lines.push('  extra frequency separation = extra electrical isolation.')
+    lines.push('')
+    lines.push('  [ASCII: Guard Band Isolation Model]')
+    lines.push('')
+    lines.push('  Guard Width | Isolation  | Required Distance')
+    lines.push('  ------------|-----------|-------------------')
+    lines.push('  0 MHz (adj) |   33 dB   | ~134 m')
+    lines.push('  10 MHz      |   45 dB   | ~ 30 m')
+    lines.push('  20 MHz      |   61 dB   | ~  4 m')
+    lines.push('  40+ MHz     |   88+ dB  | < 0.1 m (co-locate!)')
+    lines.push('')
+    lines.push('  KEY INSIGHT: More guard band = LESS physical distance')
+    lines.push('  needed. At 40 MHz guard, you can co-locate (same tower).')
+    lines.push('')
     guardBlocks.forEach((b: any) => {
-      const m = b.reason.match(/Guard band:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
-      if (m) {
-        const name = m[1].trim().replace('adjacent to ', '')
-        lines.push(`   ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : adjacent to ${name} (${m[2]} km < ${m[3]} km)`)
-      } else {
-        lines.push(`   ${b.reason}`)
-      }
+      lines.push(`  ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${b.reason}`)
     })
     lines.push('')
-    lines.push('   Guard bands (ย่านป้องกัน) ป้องกันการรบกวนระหว่างช่องความถี่ข้างเคียง')
-    lines.push('   ระบบใช้ guard_band_isolation_db(width) — isolation เพิ่มตามความกว้าง')
-    lines.push('')
-    lines.push('   === ISOLATION vs GUARD BAND WIDTH ===')
-    lines.push('   Guard Band  | Isolation | Required Sep | Co-location?')
-    lines.push('   0 MHz (adj) |   33 dB   |   ~134 m     | No')
-    lines.push('   10 MHz      |   45 dB   |   ~ 30 m     | No')
-    lines.push('   20 MHz      |   61 dB   |   ~  4 m     | No')
-    lines.push('   30 MHz      |   76 dB   |   ~  0.3 m   | Near')
-    lines.push('   40+ MHz     |   88+ dB  |   < 0.1 m    | Yes — co-locate')
-    lines.push('')
-    lines.push('   หลักการ: isolation(dB) = ACS 33 + filter_roll_off(guard_width)')
-    lines.push('   distance = co-channel / 10^(isolation/20)')
-    lines.push('   อ้างอิง: 3GPP TS 38.104 NR base station ACLR/ACS requirements')
-    lines.push('')
-    // Show per-pair calculation detail
-    if (guardPairs.length > 0) {
-      lines.push('   === GUARD BAND PAIR DETAILS ===')
-      guardPairs.forEach((pr, i) => {
-        const d = pr.detail || ''
-        lines.push(`   ${i+1}. ${pr.interferer} → ${pr.victim}`)
-        lines.push(`      ${d}`)
-        lines.push('')
-      })
-    }
-  } else {
-    lines.push('   No guard bands required.')
-  }
-  lines.push('')
-
-  // Section 5.5: Trade-off Results (when EIRP reduction applied)
-  if (response.tradeoff) {
-    const t = response.tradeoff
-    lines.push('─── 5.5 TRADE-OFF ANALYSIS ─────────────────────────────────────')
-    lines.push(`   Resolution type : ${t.resolution_type}`)
-    if (t.resolution_type !== 'relocation_required') {
-      lines.push(`   EIRP            : ${t.original_eirp_dbm} → ${t.suggested_eirp_dbm} dBm`)
-      lines.push(`   รัศมี           : ${t.original_radius_m}m → ${t.suggested_radius_m}m (${t.radius_reduction_pct > 0 ? '-' : ''}${t.radius_reduction_pct}%)`)
-      if (t.conflicting_systems?.length) {
-        lines.push(`   ระบบที่ขัดแย้ง   : ${t.conflicting_systems.join(', ')}`)
-      }
-    }
-    lines.push(`   ${t.message}`)
-    lines.push('')
   }
 
-  // Section 6: Final Results with ASCII bar
-  lines.push('─── 6. FINAL BLOCK ALLOCATION ──────────────────────────────────')
-  lines.push(`   Total    : ${blocks.length} blocks (190 MHz)`)
-  lines.push(`   Available: ${green.length} (${green.length * 10} MHz)  █`)
-  lines.push(`   Blocked  : ${red.length} (${red.length * 10} MHz)  ▓`)
-  lines.push(`   Guard    : ${gray.length} (${gray.length * 10} MHz)  ░`)
+  // ═══════════════════════════════════════════════════════════
+  // FINAL STEP: RESULTS — "The Verdict"
+  // ═══════════════════════════════════════════════════════════
+  lines.push('FINAL STEP: SPECTRUM ALLOCATION RESULTS')
+  lines.push('────────────────────────────────────────────────────────')
   lines.push('')
-  let barLine = '   ['
+  lines.push('  [ASCII: Frequency Spectrum Bar]')
+  let barLine = '  ['
   blocks.forEach((b: any) => {
     barLine += b.status === 'green' ? '#' : b.status === 'red' ? 'X' : '-'
   })
   barLine += ']'
   lines.push(barLine)
-  // Align labels: 19 blocks, markers every ~5 blocks
-  lines.push('    4800    4850    4900    4950    4990 MHz')
+  lines.push('   4800    4850    4900    4950    4990 MHz')
   lines.push('   # = Available   X = Blocked   - = Guard Band')
   lines.push('')
+  lines.push(`  Total    : ${blocks.length} blocks (190 MHz)`)
+  lines.push(`  Available: ${green.length} (${green.length * 10} MHz) = ${((green.length * 10 / 190) * 100).toFixed(1)}% of band`)
+  lines.push(`  Blocked  : ${red.length} (${red.length * 10} MHz)`)
+  lines.push(`  Guard    : ${gray.length} (${gray.length * 10} MHz)`)
+  lines.push('')
 
-  // Aggregate interference summary (Phase 17)
+  // Aggregate interference
   const blocksWithI = blocks.filter((b: any) => b.i_total_dbm != null && b.i_total_dbm > -200)
   if (blocksWithI.length > 0) {
-    lines.push('   Aggregate Interference (I_total = 10*log(sum of all interferers)):')
+    lines.push('  Aggregate Interference Note:')
+    lines.push('  I_total = 10*log10( sum of all interferers in linear domain )')
+    lines.push('  This accounts for MULTIPLE interferers hitting the')
+    lines.push('  same receiver simultaneously — more realistic than')
+    lines.push('  checking only the worst single pair.')
     const worst = blocksWithI.reduce((a: any, b: any) => (b.i_total_dbm || -200) > (a.i_total_dbm || -200) ? b : a, blocksWithI[0])
-    lines.push(`   Worst block: ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz | I_total=${worst.i_total_dbm?.toFixed(1)} dBm`)
+    lines.push(`  Worst block: ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz | I_total = ${worst.i_total_dbm?.toFixed(1)} dBm`)
     lines.push('')
   }
 
-  const availMHz = green.length * 10
-  const pct = ((availMHz / 190) * 100).toFixed(1)
-  lines.push(`   RESULT: ${availMHz} / 190 MHz available (${pct}%)`)
-  lines.push(`   Response time: ${elapsedMs} ms`)
+  // Trade-off
+  if (response.tradeoff) {
+    const t = response.tradeoff
+    lines.push('  TRADE-OFF SUGGESTION:')
+    lines.push(`  ${t.message}`)
+    if (t.resolution_type !== 'relocation_required') {
+      lines.push(`  EIRP: ${t.original_eirp_dbm} -> ${t.suggested_eirp_dbm} dBm`)
+      lines.push(`  Radius: ${t.original_radius_m}m -> ${t.suggested_radius_m}m (${t.radius_reduction_pct > 0 ? '-' : ''}${t.radius_reduction_pct}%)`)
+    }
+    lines.push('')
+  }
+
+  // Verification
+  if (backendVerification) {
+    lines.push('  VERIFICATION (sanity checks):')
+    const allPass = backendVerification.all_pass
+    lines.push(`  Status: ${allPass ? 'ALL CHECKS PASSED' : 'SOME CHECKS NEED REVIEW'}`)
+    if (!allPass) {
+      for (const [k, v] of Object.entries(backendVerification)) {
+        if (k === 'all_pass') continue
+        const check = v as any
+        if (!check.pass) {
+          lines.push(`  ! ${k}: ${check.reason || 'failed'}`)
+        }
+      }
+    }
+    lines.push('')
+  }
+
+  lines.push(`  Response time: ${elapsedMs} ms`)
   lines.push('')
-  lines.push('═══════════════════════════════════════════════')
+  lines.push('+===========================================================+')
+  lines.push('|  END OF TUTORIAL                                         |')
+  lines.push('|  Key principle: Spectrum coordination balances            |')
+  lines.push('|  PHYSICAL DISTANCE and FREQUENCY SEPARATION              |')
+  lines.push('|  Trade one for the other — that is engineering.          |')
+  lines.push('+===========================================================+')
 
   return lines
 }
+
+
 
 export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusChange, onConfirmLocation }: IMTAddWorkspaceProps) {
   const { fetchWithAuth } = useAuth()
