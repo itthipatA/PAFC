@@ -1,0 +1,59 @@
+{
+  "batchIndex": 5,
+  "nodes": [
+    {
+      "id": ".hermes/plans/phase1-backend.md",
+      "type": "documentation",
+      "name": "phase1-backend",
+      "filePath": ".hermes/plans/phase1-backend.md",
+      "summary": "แผน Phase 1 — Backend Infrastructure: ตั้งค่า FastAPI, SQLAlchemy models, database connection, migration",
+      "tags": ["docs", "plan", "phase1", "backend", "fastapi", "sqlalchemy"]
+    },
+    {
+      "id": ".hermes/plans/phase4-auth-dashboard.md",
+      "type": "documentation",
+      "name": "phase4-auth-dashboard",
+      "filePath": ".hermes/plans/phase4-auth-dashboard.md",
+      "summary": "แผน Phase 4 — Authentication & Dashboard: ตั้งค่าระบบ JWT login, protected routes, frontend dashboard พื้นฐาน",
+      "tags": ["docs", "plan", "phase4", "auth", "jwt", "dashboard"]
+    },
+    {
+      "id": ".hermes/plans/phase5-map-spectrum.md",
+      "type": "documentation",
+      "name": "phase5-map-spectrum",
+      "filePath": ".hermes/plans/phase5-map-spectrum.md",
+      "summary": "แผน Phase 5 — Map & Spectrum Visualization: MapLibre GL integration, spectrum block display, FS link markers บนแผนที่",
+      "tags": ["docs", "plan", "phase5", "map", "maplibre", "spectrum"]
+    },
+    {
+      "id": ".hermes/plans/phase7-imt-workspace-login.md",
+      "type": "documentation",
+      "name": "phase7-imt-workspace-login",
+      "filePath": ".hermes/plans/phase7-imt-workspace-login.md",
+      "summary": "แผน Phase 7 — IMT Workspace & Login: พัฒนา IMT allocation workspace พร้อม login/logout, JWT token management, role-based access",
+      "tags": ["docs", "plan", "phase7", "imt", "workspace", "login"]
+    },
+    {
+      "id": ".hermes/plans/ui-ux-overhaul.md",
+      "type": "documentation",
+      "name": "ui-ux-overhaul",
+      "filePath": ".hermes/plans/ui-ux-overhaul.md",
+      "summary": "แผน UI/UX Overhaul — ปรับปรุงดีไซน์ด้วย NBTC theme, DM Serif Display typography, dark luxury palette, ปรับ layout และ navigation",
+      "tags": ["docs", "plan", "ui", "ux", "nbtc-theme", "design"]
+    },
+    {
+      "id": ".hermes/plans/narrative-log-patch.txt",
+      "type": "documentation",
+      "name": "narrative-log-patch",
+      "filePath": ".hermes/plans/narrative-log-patch.txt",
+      "summary": "บันทึก narrative log ของการพัฒนา PAFC — patch notes และการตัดสินใจด้านเทคนิคระหว่าง phases",
+      "tags": ["docs", "log", "narrative", "development"]
+    }
+  ],
+  "edges": [
+    {"source": ".hermes/plans/phase1-backend.md", "target": "backend/app/main.py", "type": "documents"},
+    {"source": ".hermes/plans/phase4-auth-dashboard.md", "target": "backend/app/core/auth.py", "type": "documents"},
+    {"source": ".hermes/plans/phase5-map-spectrum.md", "target": "frontend/src/components/MapView.tsx", "type": "documents"},
+    {"source": ".hermes/plans/phase7-imt-workspace-login.md", "target": "frontend/src/components/IMTAddWorkspace.tsx", "type": "documents"}
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "projectName": "PAFC — Private Automated Frequency Coordinator",
+  "gitCommitHash": "fe5c4aa3ffdf331b50917838c9505222f8325609",
+  "generatedAt": "2026-07-03T00:00:00Z",
+  "nodeCount": 46,
+  "edgeCount": 83,
+  "nodeTypes": {
+    "component": 10,
+    "documentation": 8,
+    "config": 7,
+    "route": 6,
+    "service": 4,
+    "entry": 2,
+    "infrastructure": 2,
+    "model": 2,
+    "provider": 1,
+    "types": 1,
+    "module": 1,
+    "migration": 1,
+    "style": 1
+  },
+  "edgeTypes": {
+    "imports": 46,
+    "api_calls": 7,
+    "data_flow": 7,
+    "registers_router": 6,
+    "documents": 6,
+    "configures": 3,
+    "schema_dependency": 2,
+    "schema_source": 2,
+    "defines_entry": 1,
+    "declares": 1,
+    "proxies": 1,
+    "imported_by": 1
+  },
+  "language": "th",
+  "description": "ความรู้ของระบบ PAFC (Private Automated Frequency Coordinator) — ระบบจัดสรรคลื่นความถี่ IMT Private Network 4800-4990 MHz"
+}

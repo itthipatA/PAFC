@@ -1,0 +1,106 @@
+{
+  "batchIndex": 2,
+  "nodes": [
+    {
+      "id": "backend/app/api/__init__.py",
+      "type": "module",
+      "name": "api/__init__",
+      "filePath": "backend/app/api/__init__.py",
+      "summary": "โมดูลรวม API routes — ทำให้ backend/app/api เป็น package ที่ import ได้",
+      "tags": ["python", "package", "init"]
+    },
+    {
+      "id": "backend/app/api/auth.py",
+      "type": "route",
+      "name": "auth.router",
+      "filePath": "backend/app/api/auth.py",
+      "summary": "API Authentication — POST /api/auth/login (เข้าสู่ระบบด้วย username/password, คืน JWT token), GET /api/auth/me (ตรวจสอบสถานะการยืนยันตัวตน) — ใช้ Pydantic models (LoginRequest, LoginResponse) และฟังก์ชัน verify_password/create_access_token จาก core/auth",
+      "tags": ["fastapi", "router", "auth", "jwt", "login", "pydantic"]
+    },
+    {
+      "id": "backend/app/api/coverage.py",
+      "type": "route",
+      "name": "coverage.router",
+      "filePath": "backend/app/api/coverage.py",
+      "summary": "Coverage API — POST /api/coverage/calculate คำนวณ link budget แบบสองทิศทาง (forward: cell_radius→required EIRP, reverse: EIRP→achievable radius) ใช้ CoverageEngine จาก services/coverage",
+      "tags": ["fastapi", "router", "coverage", "link-budget", "eirp", "cell-radius"]
+    },
+    {
+      "id": "backend/app/api/propagation.py",
+      "type": "route",
+      "name": "propagation.router",
+      "filePath": "backend/app/api/propagation.py",
+      "summary": "Propagation API — GET /api/propagation/models แสดงรายการ propagation models ที่ลงทะเบียนไว้ใน PropagationRegistry (free_space, p452, hata)",
+      "tags": ["fastapi", "router", "propagation", "models", "registry"]
+    },
+    {
+      "id": "backend/app/core/config.py",
+      "type": "config",
+      "name": "Settings",
+      "filePath": "backend/app/core/config.py",
+      "summary": "การตั้งค่าหลักของ PAFC — ใช้ pydantic-settings BaseSettings รองรับ environment variables ผ่าน prefix PAFC_ กำหนดค่า database_url, JWT (secret/algorithm/expiry), band parameters (4800-4990 MHz, 10 MHz blocks), propagation defaults (free_space), interference threshold (-114 dBm), protection ratio (20 dB), CORS origins",
+      "tags": ["python", "config", "pydantic-settings", "jwt", "database", "band", "cors"]
+    },
+    {
+      "id": "backend/app/core/auth.py",
+      "type": "service",
+      "name": "core/auth",
+      "filePath": "backend/app/core/auth.py",
+      "summary": "ระบบ JWT Authentication — จัดการ verify_password (bcrypt), create_access_token (jose JWT), decode_access_token, get_current_user (FastAPI dependency ดึง JWT จาก HTTPBearer header) — ผู้ใช้แบบ hardcoded สำหรับ Phase 4 (admin/admin123)",
+      "tags": ["python", "auth", "jwt", "bcrypt", "passlib", "jose", "dependency"]
+    },
+    {
+      "id": "backend/app/main.py",
+      "type": "entry",
+      "name": "main",
+      "filePath": "backend/app/main.py",
+      "summary": "จุดเริ่มต้น FastAPI — สร้าง app instance (title: PAFC), ตั้งค่า CORS middleware, ลงทะเบียน routers แยกเป็น public (/api/auth, /api/propagation) และ protected ด้วย JWT (/api/fs-links, /api/imt, /api/allocate, /api/coverage), health check endpoint GET /api/health",
+      "tags": ["fastapi", "entrypoint", "cors", "routers", "health-check", "middleware"]
+    },
+    {
+      "id": "backend/app/services/propagation.py",
+      "type": "service",
+      "name": "PropagationRegistry",
+      "filePath": "backend/app/services/propagation.py",
+      "summary": "Propagation Model Registry — คลาสฐาน PropagationModel (ABC) พร้อม abstract method path_loss_db() — รองรับ 3 โมเดล: FreeSpaceModel (ITU-R P.525), ITURP452Model (ITU-R P.452 placeholder ตกไปใช้ free space + 10 dB margin), HataModel (COST-231 extension สำหรับ urban/suburban) — PropagationRegistry ใช้ pattern registry แบบ pluggable",
+      "tags": ["python", "propagation", "free-space", "p452", "hata", "cost-231", "abc", "registry-pattern"]
+    },
+    {
+      "id": "backend/app/services/coverage.py",
+      "type": "service",
+      "name": "CoverageEngine",
+      "filePath": "backend/app/services/coverage.py",
+      "summary": "Coverage Engine — Link Budget Calculator สำหรับ 5G NR Private Network (n79 band 4800-4990 MHz) — dataclasses: LinkBudgetResult (คำนวณ EIRP ที่ต้องการจาก cell_radius), CoverageTradeOff (เสนอ EIRP ลดลงเมื่อมี interference) — methods: calculate_required_eirp(), calculate_achievable_radius(), find_tradeoff() — ใช้ propagation model จาก PropagationRegistry อ้างอิง 3GPP TS 38.104",
+      "tags": ["python", "coverage", "link-budget", "5g-nr", "eirp", "3gpp", "dataclass"]
+    },
+    {
+      "id": "backend/app/services/interference.py",
+      "type": "service",
+      "name": "InterferenceEngine",
+      "filePath": "backend/app/services/interference.py",
+      "summary": "Interference Engine v2 — การวิเคราะห์การรบกวนแบบ 3 เฟส: Phase 0 (Pre-screen: ระบุคู่ victim/interferer แบบสองทิศทาง IMT↔FS, FS↔IMT, IMT↔IMT), Phase 1 (Calculate: คำนวณ I[dBm] ละเอียดต่อคู่), Phase 2 (Aggregate: รวมผลลัพธ์เป็นสถานะบล็อก 10 MHz — เขียว/เทา/แดง) — dataclasses: FSLinkData, IMTNeighborData, InterferencePair, PairResult, BlockResult, InterferenceResult — geometry helpers: haversine_m, bearing_deg, dist_to_path_m, freq_overlap, is_imt_in_fs_beam",
+      "tags": ["python", "interference", "three-phase", "victim", "interferer", "spectrum-blocks", "haversine", "beam-analysis", "dataclass"]
+    }
+  ],
+  "edges": [
+    {"source": "backend/app/main.py", "target": "backend/app/core/config.py", "type": "imports"},
+    {"source": "backend/app/main.py", "target": "backend/app/api/__init__.py", "type": "imports"},
+    {"source": "backend/app/main.py", "target": "backend/app/api/auth.py", "type": "registers_router", "label": "include_router /api/auth"},
+    {"source": "backend/app/main.py", "target": "backend/app/api/propagation.py", "type": "registers_router", "label": "include_router /api/propagation"},
+    {"source": "backend/app/main.py", "target": "backend/app/api/coverage.py", "type": "registers_router", "label": "include_router /api/coverage (JWT)"},
+    {"source": "backend/app/main.py", "target": "backend/app/core/auth.py", "type": "imports"},
+    {"source": "backend/app/main.py", "target": "backend/app/api/allocation.py", "type": "registers_router", "label": "include_router /api/allocate (JWT)"},
+    {"source": "backend/app/main.py", "target": "backend/app/api/fs_links.py", "type": "registers_router", "label": "include_router /api/fs-links (JWT)"},
+    {"source": "backend/app/main.py", "target": "backend/app/api/imt.py", "type": "registers_router", "label": "include_router /api/imt (JWT)"},
+    {"source": "backend/app/api/auth.py", "target": "backend/app/core/auth.py", "type": "imports"},
+    {"source": "backend/app/api/coverage.py", "target": "backend/app/services/coverage.py", "type": "imports"},
+    {"source": "backend/app/api/propagation.py", "target": "backend/app/services/propagation.py", "type": "imports"},
+    {"source": "backend/app/core/auth.py", "target": "backend/app/core/config.py", "type": "imports"},
+    {"source": "backend/app/services/coverage.py", "target": "backend/app/services/propagation.py", "type": "imports"},
+    {"source": "backend/app/services/interference.py", "target": "backend/app/core/config.py", "type": "imports"},
+    {"source": "backend/app/services/interference.py", "target": "backend/app/services/propagation.py", "type": "imports"},
+    {"source": "backend/app/services/coverage.py", "target": "backend/app/api/coverage.py", "type": "data_flow", "label": "CoverageEngine → Coverage API"},
+    {"source": "backend/app/services/propagation.py", "target": "backend/app/services/coverage.py", "type": "data_flow", "label": "PropagationRegistry → CoverageEngine"},
+    {"source": "backend/app/services/propagation.py", "target": "backend/app/services/interference.py", "type": "data_flow", "label": "PropagationRegistry → InterferenceEngine"}
+  ]
+}

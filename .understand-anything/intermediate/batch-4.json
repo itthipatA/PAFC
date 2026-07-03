@@ -1,0 +1,17 @@
+{
+  "batchIndex": 4,
+  "nodes": [
+    {
+      "id": "backend/migrations/001_init.sql",
+      "type": "migration",
+      "name": "001_init.sql",
+      "filePath": "backend/migrations/001_init.sql",
+      "summary": "SQL migration ตั้งต้นสำหรับ PAFC — สร้างตาราง fs_links, imt_allocations, spectrum_blocks, users พร้อม indexes และ constraints สำหรับ PostgreSQL",
+      "tags": ["sql", "migration", "ddl", "postgresql", "schema"]
+    }
+  ],
+  "edges": [
+    {"source": "backend/migrations/001_init.sql", "target": "backend/app/models/fs_link.py", "type": "schema_source", "label": "DDL → fs_links table"},
+    {"source": "backend/migrations/001_init.sql", "target": "backend/app/models/imt.py", "type": "schema_source", "label": "DDL → imt_allocations + spectrum_blocks tables"}
+  ]
+}

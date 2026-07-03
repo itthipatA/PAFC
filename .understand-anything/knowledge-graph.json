@@ -1,0 +1,1264 @@
+{
+  "nodes": [
+    {
+      "id": "file:frontend/src/main.tsx",
+      "type": "entry",
+      "name": "main.tsx",
+      "filePath": "frontend/src/main.tsx",
+      "summary": "จุดเริ่มต้นของแอปพลิเคชัน React — สร้าง root element และห่อ App ด้วย AuthProvider เพื่อเปิดใช้งานระบบ authentication ทั่วทั้งแอป",
+      "tags": [
+        "react",
+        "entrypoint",
+        "vite",
+        "typescript",
+        "auth-provider"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/App.tsx",
+      "type": "component",
+      "name": "App",
+      "filePath": "frontend/src/App.tsx",
+      "summary": "คอมโพเนนต์หลักของ PAFC Dashboard — จัดการการนำทางด้วยแท็บ (Dashboard/FS Links/IMT/Search), การยืนยันตัวตนผ่าน AuthContext, และส่งต่อเหตุการณ์การคลิกแผนที่ไปยัง MapView เพื่อใช้ในการวิเคราะห์การจัดสรรคลื่นความถี่",
+      "tags": [
+        "react",
+        "component",
+        "navigation",
+        "dashboard",
+        "tabs",
+        "auth-gate",
+        "nbtc-theme"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/MapView.tsx",
+      "type": "component",
+      "name": "MapView",
+      "filePath": "frontend/src/components/MapView.tsx",
+      "summary": "แผนที่แบบโต้ตอบด้วย MapLibre GL — แสดงผล FS links, IMT allocations, spectrum blocks โดยใช้ GeoJSON layers รองรับหลาย map styles (Voyager, Positron, Dark Matter, Satellite, OSM Basic) คำนวณระยะทางด้วย haversine และแสดงวงกลมครอบคลุมรอบจุดที่เลือก",
+      "tags": [
+        "react",
+        "component",
+        "maplibre-gl",
+        "map",
+        "geojson",
+        "haversine",
+        "carto",
+        "esri",
+        "osm",
+        "spectrum-blocks"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/LoginPage.tsx",
+      "type": "component",
+      "name": "LoginPage",
+      "filePath": "frontend/src/components/LoginPage.tsx",
+      "summary": "หน้าเข้าสู่ระบบสำหรับ PAFC — ใช้ AuthContext.login() ส่ง username/password ไปยัง POST /api/auth/login แสดงข้อผิดพลาดเมื่อเข้าสู่ระบบไม่สำเร็จ สไตล์ NBTC theme",
+      "tags": [
+        "react",
+        "component",
+        "auth",
+        "login",
+        "nbtc-theme"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/FSLinkManager.tsx",
+      "type": "component",
+      "name": "FSLinkManager",
+      "filePath": "frontend/src/components/FSLinkManager.tsx",
+      "summary": "ตัวจัดการ Fixed Service (FS) Links — แสดงตาราง FS links จาก GET /api/fs-links/ รองรับการสร้าง/แก้ไข/ลบ ผ่าน CRUD API และการนำเข้าจากไฟล์ CSV แสดงลิงก์บนแผนที่ด้วยสีตามสถานะ",
+      "tags": [
+        "react",
+        "component",
+        "fs-links",
+        "crud",
+        "csv-import",
+        "table",
+        "fixed-service"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/IMTManager.tsx",
+      "type": "component",
+      "name": "IMTManager",
+      "filePath": "frontend/src/components/IMTManager.tsx",
+      "summary": "ตัวจัดการ IMT Allocations — แสดงรายการ IMT allocations จาก GET /api/imt/ รองรับการสร้าง แก้ไข ลบ พร้อมจัดการ spectrum blocks ภายในแต่ละ allocation ทำงานร่วมกับ IMTAddWorkspace สำหรับการวิเคราะห์การรบกวน",
+      "tags": [
+        "react",
+        "component",
+        "imt",
+        "crud",
+        "spectrum-blocks",
+        "allocation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/IMTAddWorkspace.tsx",
+      "type": "component",
+      "name": "IMTAddWorkspace",
+      "filePath": "frontend/src/components/IMTAddWorkspace.tsx",
+      "summary": "พื้นที่ทำงานสำหรับสร้าง IMT allocation พร้อมการวิเคราะห์แบบครบวงจร — เลือกจุดบนแผนที่, กำหนด cell radius, antenna parameters, รันการวิเคราะห์แบบ 3-phase ผ่าน POST /api/allocate/analyze และ /api/coverage/calculate แสดงผล spectrum blocks (เขียว/เทา/แดง), trade-off suggestions, และ coverage classification",
+      "tags": [
+        "react",
+        "component",
+        "imt",
+        "workspace",
+        "allocation",
+        "analysis",
+        "interference",
+        "coverage",
+        "tradeoff"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/QueryPanel.tsx",
+      "type": "component",
+      "name": "QueryPanel",
+      "filePath": "frontend/src/components/QueryPanel.tsx",
+      "summary": "แผงค้นหาสำหรับ PAFC — รองรับการค้นหา FS links และ IMT allocations ตามพิกัด, ชื่อ, operator, หรือช่วงความถี่ ส่งคำขอไปยัง GET /api/fs-links/ และ GET /api/imt/",
+      "tags": [
+        "react",
+        "component",
+        "search",
+        "query",
+        "fs-links",
+        "imt"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/BlockPanel.tsx",
+      "type": "component",
+      "name": "BlockPanel",
+      "filePath": "frontend/src/components/BlockPanel.tsx",
+      "summary": "แผงแสดง spectrum blocks — แสดงผลการวิเคราะห์ spectrum allocation ด้วยแถบสีเขียว/เทา/แดง แสดงสถานะแต่ละบล็อก 10 MHz ในย่าน 4800-4990 MHz",
+      "tags": [
+        "react",
+        "component",
+        "spectrum-blocks",
+        "visualization",
+        "green-gray-red"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/AllocationForm.tsx",
+      "type": "component",
+      "name": "AllocationForm",
+      "filePath": "frontend/src/components/AllocationForm.tsx",
+      "summary": "ฟอร์มสำหรับสร้าง/แก้ไข IMT allocation — จัดการข้อมูล RF parameters, spectrum blocks, และ coverage parameters ก่อนส่งไปยัง backend API",
+      "tags": [
+        "react",
+        "component",
+        "form",
+        "allocation",
+        "rf-parameters"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/PublicDashboard.tsx",
+      "type": "component",
+      "name": "PublicDashboard",
+      "filePath": "frontend/src/components/PublicDashboard.tsx",
+      "summary": "Dashboard สาธารณะ — แสดงภาพรวมการจัดสรรคลื่นความถี่บนแผนที่โดยไม่ต้องล็อกอิน ใช้เรียกดู FS links และ IMT allocations",
+      "tags": [
+        "react",
+        "component",
+        "public",
+        "dashboard",
+        "readonly"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "provider",
+      "name": "AuthProvider",
+      "filePath": "frontend/src/contexts/AuthContext.tsx",
+      "summary": "React Context สำหรับจัดการสถานะ authentication — เก็บ JWT token ใน localStorage, decode JWT payload เพื่อตรวจสอบ expiry, จัดเตรียม login/logout/fetchWithAuth ให้ทุกคอมโพเนนต์ลูก",
+      "tags": [
+        "react",
+        "context",
+        "auth",
+        "jwt",
+        "localstorage",
+        "token-management"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/types.ts",
+      "type": "types",
+      "name": "types.ts",
+      "filePath": "frontend/src/types.ts",
+      "summary": "นิยาม TypeScript type/interface ทั้งหมดของ frontend — FSLink, IMTAllocation, BlockResult, Pair, PairResult, CoverageInfo, TradeOff, AnalyzeResponse, BackendVerification, User, LoginRequest/Response, IMTAllocationCreate, FSLinkCreate",
+      "tags": [
+        "typescript",
+        "types",
+        "interfaces",
+        "data-models",
+        "api-response"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "module:backend/app/api/__init__.py",
+      "type": "module",
+      "name": "api/__init__",
+      "filePath": "backend/app/api/__init__.py",
+      "summary": "โมดูลรวม API routes — ทำให้ backend/app/api เป็น package ที่ import ได้",
+      "tags": [
+        "python",
+        "package",
+        "init"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/auth.py",
+      "type": "route",
+      "name": "auth.router",
+      "filePath": "backend/app/api/auth.py",
+      "summary": "API Authentication — POST /api/auth/login (เข้าสู่ระบบด้วย username/password, คืน JWT token), GET /api/auth/me (ตรวจสอบสถานะการยืนยันตัวตน) — ใช้ Pydantic models (LoginRequest, LoginResponse) และฟังก์ชัน verify_password/create_access_token จาก core/auth",
+      "tags": [
+        "fastapi",
+        "router",
+        "auth",
+        "jwt",
+        "login",
+        "pydantic"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/coverage.py",
+      "type": "route",
+      "name": "coverage.router",
+      "filePath": "backend/app/api/coverage.py",
+      "summary": "Coverage API — POST /api/coverage/calculate คำนวณ link budget แบบสองทิศทาง (forward: cell_radius→required EIRP, reverse: EIRP→achievable radius) ใช้ CoverageEngine จาก services/coverage",
+      "tags": [
+        "fastapi",
+        "router",
+        "coverage",
+        "link-budget",
+        "eirp",
+        "cell-radius"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/propagation.py",
+      "type": "route",
+      "name": "propagation.router",
+      "filePath": "backend/app/api/propagation.py",
+      "summary": "Propagation API — GET /api/propagation/models แสดงรายการ propagation models ที่ลงทะเบียนไว้ใน PropagationRegistry (free_space, p452, hata)",
+      "tags": [
+        "fastapi",
+        "router",
+        "propagation",
+        "models",
+        "registry"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:backend/app/core/config.py",
+      "type": "config",
+      "name": "Settings",
+      "filePath": "backend/app/core/config.py",
+      "summary": "การตั้งค่าหลักของ PAFC — ใช้ pydantic-settings BaseSettings รองรับ environment variables ผ่าน prefix PAFC_ กำหนดค่า database_url, JWT (secret/algorithm/expiry), band parameters (4800-4990 MHz, 10 MHz blocks), propagation defaults (free_space), interference threshold (-114 dBm), protection ratio (20 dB), CORS origins",
+      "tags": [
+        "python",
+        "config",
+        "pydantic-settings",
+        "jwt",
+        "database",
+        "band",
+        "cors"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "service:backend/app/core/auth.py",
+      "type": "service",
+      "name": "core/auth",
+      "filePath": "backend/app/core/auth.py",
+      "summary": "ระบบ JWT Authentication — จัดการ verify_password (bcrypt), create_access_token (jose JWT), decode_access_token, get_current_user (FastAPI dependency ดึง JWT จาก HTTPBearer header) — ผู้ใช้แบบ hardcoded สำหรับ Phase 4 (admin/admin123)",
+      "tags": [
+        "python",
+        "auth",
+        "jwt",
+        "bcrypt",
+        "passlib",
+        "jose",
+        "dependency"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/main.py",
+      "type": "entry",
+      "name": "main",
+      "filePath": "backend/app/main.py",
+      "summary": "จุดเริ่มต้น FastAPI — สร้าง app instance (title: PAFC), ตั้งค่า CORS middleware, ลงทะเบียน routers แยกเป็น public (/api/auth, /api/propagation) และ protected ด้วย JWT (/api/fs-links, /api/imt, /api/allocate, /api/coverage), health check endpoint GET /api/health",
+      "tags": [
+        "fastapi",
+        "entrypoint",
+        "cors",
+        "routers",
+        "health-check",
+        "middleware"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "service:backend/app/services/propagation.py",
+      "type": "service",
+      "name": "PropagationRegistry",
+      "filePath": "backend/app/services/propagation.py",
+      "summary": "Propagation Model Registry — คลาสฐาน PropagationModel (ABC) พร้อม abstract method path_loss_db() — รองรับ 3 โมเดล: FreeSpaceModel (ITU-R P.525), ITURP452Model (ITU-R P.452 placeholder ตกไปใช้ free space + 10 dB margin), HataModel (COST-231 extension สำหรับ urban/suburban) — PropagationRegistry ใช้ pattern registry แบบ pluggable",
+      "tags": [
+        "python",
+        "propagation",
+        "free-space",
+        "p452",
+        "hata",
+        "cost-231",
+        "abc",
+        "registry-pattern"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "service:backend/app/services/coverage.py",
+      "type": "service",
+      "name": "CoverageEngine",
+      "filePath": "backend/app/services/coverage.py",
+      "summary": "Coverage Engine — Link Budget Calculator สำหรับ 5G NR Private Network (n79 band 4800-4990 MHz) — dataclasses: LinkBudgetResult (คำนวณ EIRP ที่ต้องการจาก cell_radius), CoverageTradeOff (เสนอ EIRP ลดลงเมื่อมี interference) — methods: calculate_required_eirp(), calculate_achievable_radius(), find_tradeoff() — ใช้ propagation model จาก PropagationRegistry อ้างอิง 3GPP TS 38.104",
+      "tags": [
+        "python",
+        "coverage",
+        "link-budget",
+        "5g-nr",
+        "eirp",
+        "3gpp",
+        "dataclass"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "service:backend/app/services/interference.py",
+      "type": "service",
+      "name": "InterferenceEngine",
+      "filePath": "backend/app/services/interference.py",
+      "summary": "Interference Engine v2 — การวิเคราะห์การรบกวนแบบ 3 เฟส: Phase 0 (Pre-screen: ระบุคู่ victim/interferer แบบสองทิศทาง IMT↔FS, FS↔IMT, IMT↔IMT), Phase 1 (Calculate: คำนวณ I[dBm] ละเอียดต่อคู่), Phase 2 (Aggregate: รวมผลลัพธ์เป็นสถานะบล็อก 10 MHz — เขียว/เทา/แดง) — dataclasses: FSLinkData, IMTNeighborData, InterferencePair, PairResult, BlockResult, InterferenceResult — geometry helpers: haversine_m, bearing_deg, dist_to_path_m, freq_overlap, is_imt_in_fs_beam",
+      "tags": [
+        "python",
+        "interference",
+        "three-phase",
+        "victim",
+        "interferer",
+        "spectrum-blocks",
+        "haversine",
+        "beam-analysis",
+        "dataclass"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/allocation.py",
+      "type": "route",
+      "name": "allocation.router",
+      "filePath": "backend/app/api/allocation.py",
+      "summary": "Spectrum Allocation Engine API — POST /api/allocate/analyze (วิเคราะห์การรบกวนแบบ 3 เฟสเต็มรูปแบบ: Phase 0 → Phase 1 → Phase 2 โดยดึง FS links และ IMT allocations จาก DB, แปลงเป็น FSLinkData/IMTNeighborData, รัน InterferenceEngine.analyze(), และเสนอ trade-off EIRP reduction เมื่อมี conflicts), POST /api/allocate/pre-screen (Phase 0 only — ระบุ victim/interferer pairs โดยไม่คำนวณละเอียด), helper _parse_wkt_center() และ _compute_tradeoff()",
+      "tags": [
+        "fastapi",
+        "router",
+        "allocation",
+        "interference-engine",
+        "pre-screen",
+        "tradeoff",
+        "wkt-parser",
+        "jwt-protected"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/fs_links.py",
+      "type": "route",
+      "name": "fs_links.router",
+      "filePath": "backend/app/api/fs_links.py",
+      "summary": "FS Links CRUD API — GET / (list พร้อม filter สถานะและช่วงความถี่), GET /:id, POST / (สร้าง), PUT /:id (แก้ไข), DELETE /:id (soft-delete → inactive), POST /import/csv (นำเข้าจากไฟล์ CSV) — helper _fs_to_dict() แปลง FSLink เป็น dict ที่มีโครงสร้าง tx/rx/frequency/rf",
+      "tags": [
+        "fastapi",
+        "router",
+        "crud",
+        "fs-links",
+        "csv-import",
+        "fixed-service",
+        "jwt-protected"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/imt.py",
+      "type": "route",
+      "name": "imt.router",
+      "filePath": "backend/app/api/imt.py",
+      "summary": "IMT Allocations CRUD API — GET / (list เรียงตามวันที่สร้าง), GET /:id (รวม spectrum blocks), POST / (สร้าง allocation + blocks, แปลง center_lat/lon เป็น WKT polygon), PUT /:id (แก้ไข), DELETE /:id (soft-delete → expired) — helpers: _imt_to_dict(), _block_to_dict(), _extract_center_from_wkt()",
+      "tags": [
+        "fastapi",
+        "router",
+        "crud",
+        "imt",
+        "spectrum-blocks",
+        "wkt",
+        "jwt-protected"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/db/database.py",
+      "type": "infrastructure",
+      "name": "database",
+      "filePath": "backend/app/db/database.py",
+      "summary": "Database connection — SQLAlchemy async engine (postgresql+asyncpg) สร้างจาก settings.database_url, async_sessionmaker, Base class (DeclarativeBase), dependency get_db() สำหรับ FastAPI ให้ async session แบบ context manager",
+      "tags": [
+        "python",
+        "sqlalchemy",
+        "async",
+        "postgresql",
+        "asyncpg",
+        "dependency"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/models/fs_link.py",
+      "type": "model",
+      "name": "FSLink",
+      "filePath": "backend/app/models/fs_link.py",
+      "summary": "SQLAlchemy Model สำหรับ Fixed Service Link — เก็บข้อมูลตำแหน่ง transmitter/receiver (lat/lon/altitude), ความถี่ (freq_low, freq_high, bandwidth), RF parameters (tx_power, tx_antenna_gain, rx_antenna_gain, beamwidth, azimuth, polarization), channel_plan, modulation, status — table: fs_links",
+      "tags": [
+        "python",
+        "sqlalchemy",
+        "model",
+        "fs-link",
+        "microwave",
+        "incumbent",
+        "orm"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/models/imt.py",
+      "type": "model",
+      "name": "IMTAllocation+SpectrumBlock",
+      "filePath": "backend/app/models/imt.py",
+      "summary": "SQLAlchemy Models สำหรับ IMT Private Network — IMTAllocation: เก็บข้อมูลพื้นที่ (area_wkt WKT polygon, cell_radius), RF parameters (antenna_height, max_eirp, antenna_gain), coverage params (target_rss, shadow_margin, building_loss, propagation_model, coverage_classification), status, validity dates — SpectrumBlock: บล็อกคลื่นความถี่ 10 MHz (freq_low, freq_high) ผูกกับ allocation_id — tables: imt_allocations, spectrum_blocks",
+      "tags": [
+        "python",
+        "sqlalchemy",
+        "model",
+        "imt",
+        "spectrum-blocks",
+        "wkt",
+        "5g-nr",
+        "orm"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/migrations/001_init.sql",
+      "type": "migration",
+      "name": "001_init.sql",
+      "filePath": "backend/migrations/001_init.sql",
+      "summary": "SQL migration ตั้งต้นสำหรับ PAFC — สร้างตาราง fs_links, imt_allocations, spectrum_blocks, users พร้อม indexes และ constraints สำหรับ PostgreSQL",
+      "tags": [
+        "sql",
+        "migration",
+        "ddl",
+        "postgresql",
+        "schema"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.hermes/plans/phase1-backend.md",
+      "type": "documentation",
+      "name": "phase1-backend",
+      "filePath": ".hermes/plans/phase1-backend.md",
+      "summary": "แผน Phase 1 — Backend Infrastructure: ตั้งค่า FastAPI, SQLAlchemy models, database connection, migration",
+      "tags": [
+        "docs",
+        "plan",
+        "phase1",
+        "backend",
+        "fastapi",
+        "sqlalchemy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.hermes/plans/phase4-auth-dashboard.md",
+      "type": "documentation",
+      "name": "phase4-auth-dashboard",
+      "filePath": ".hermes/plans/phase4-auth-dashboard.md",
+      "summary": "แผน Phase 4 — Authentication & Dashboard: ตั้งค่าระบบ JWT login, protected routes, frontend dashboard พื้นฐาน",
+      "tags": [
+        "docs",
+        "plan",
+        "phase4",
+        "auth",
+        "jwt",
+        "dashboard"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.hermes/plans/phase5-map-spectrum.md",
+      "type": "documentation",
+      "name": "phase5-map-spectrum",
+      "filePath": ".hermes/plans/phase5-map-spectrum.md",
+      "summary": "แผน Phase 5 — Map & Spectrum Visualization: MapLibre GL integration, spectrum block display, FS link markers บนแผนที่",
+      "tags": [
+        "docs",
+        "plan",
+        "phase5",
+        "map",
+        "maplibre",
+        "spectrum"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.hermes/plans/phase7-imt-workspace-login.md",
+      "type": "documentation",
+      "name": "phase7-imt-workspace-login",
+      "filePath": ".hermes/plans/phase7-imt-workspace-login.md",
+      "summary": "แผน Phase 7 — IMT Workspace & Login: พัฒนา IMT allocation workspace พร้อม login/logout, JWT token management, role-based access",
+      "tags": [
+        "docs",
+        "plan",
+        "phase7",
+        "imt",
+        "workspace",
+        "login"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.hermes/plans/ui-ux-overhaul.md",
+      "type": "documentation",
+      "name": "ui-ux-overhaul",
+      "filePath": ".hermes/plans/ui-ux-overhaul.md",
+      "summary": "แผน UI/UX Overhaul — ปรับปรุงดีไซน์ด้วย NBTC theme, DM Serif Display typography, dark luxury palette, ปรับ layout และ navigation",
+      "tags": [
+        "docs",
+        "plan",
+        "ui",
+        "ux",
+        "nbtc-theme",
+        "design"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.hermes/plans/narrative-log-patch.txt",
+      "type": "documentation",
+      "name": "narrative-log-patch",
+      "filePath": ".hermes/plans/narrative-log-patch.txt",
+      "summary": "บันทึก narrative log ของการพัฒนา PAFC — patch notes และการตัดสินใจด้านเทคนิคระหว่าง phases",
+      "tags": [
+        "docs",
+        "log",
+        "narrative",
+        "development"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:frontend/index.html",
+      "type": "config",
+      "name": "index.html",
+      "filePath": "frontend/index.html",
+      "summary": "HTML template หลักของ Vite — กำหนด root div สำหรับ React app, meta viewport, Google Fonts (DM Serif Display + Noto Sans Thai)",
+      "tags": [
+        "html",
+        "vite",
+        "template",
+        "fonts"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:frontend/package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "frontend/package.json",
+      "summary": "Frontend package manifest — React 18, Vite 6, TypeScript, MapLibre GL, Turf.js, TailwindCSS v4, Lucide React icons",
+      "tags": [
+        "npm",
+        "config",
+        "dependencies",
+        "react",
+        "vite",
+        "maplibre"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:frontend/tsconfig.json",
+      "type": "config",
+      "name": "tsconfig.json",
+      "filePath": "frontend/tsconfig.json",
+      "summary": "TypeScript configuration สำหรับ frontend — strict mode, JSX react-jsx, path aliases",
+      "tags": [
+        "typescript",
+        "config",
+        "strict-mode",
+        "tsconfig"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:docker-compose.yml",
+      "type": "infrastructure",
+      "name": "docker-compose",
+      "filePath": "docker-compose.yml",
+      "summary": "Docker Compose สำหรับ PAFC — PostgreSQL 16 database (port 5432, user/pass: pafc/pafc, db: pafc), พร้อม volume mount สำหรับ persistent data",
+      "tags": [
+        "docker",
+        "compose",
+        "postgresql",
+        "infra",
+        "database"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:backend/pyproject.toml",
+      "type": "config",
+      "name": "pyproject.toml",
+      "filePath": "backend/pyproject.toml",
+      "summary": "Backend project manifest — FastAPI >=0.115, SQLAlchemy async, GeoAlchemy2, Pydantic v2, python-jose, passlib, openpyxl, pandas, numpy, shapely, httpx — Python >=3.11, hatchling build",
+      "tags": [
+        "python",
+        "config",
+        "pyproject",
+        "dependencies",
+        "hatchling"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/index.css",
+      "type": "style",
+      "name": "index.css",
+      "filePath": "frontend/src/index.css",
+      "summary": "Global CSS สำหรับ PAFC — TailwindCSS directives, NBTC theme (dark luxury: #0a0a0a backgrounds, gold/amber accents), DM Serif Display typography, custom utilities",
+      "tags": [
+        "css",
+        "tailwindcss",
+        "nbtc-theme",
+        "dark-theme",
+        "typography"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:frontend/vite.config.ts",
+      "type": "config",
+      "name": "vite.config.ts",
+      "filePath": "frontend/vite.config.ts",
+      "summary": "Vite configuration — proxy /api ไปยัง backend FastAPI (localhost:8001), React plugin, path aliases",
+      "tags": [
+        "vite",
+        "config",
+        "proxy",
+        "typescript"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:frontend/tailwind.config.js",
+      "type": "config",
+      "name": "tailwind.config.js",
+      "filePath": "frontend/tailwind.config.js",
+      "summary": "TailwindCSS configuration — NBTC theme colors (nbtc-navy, nbtc-gold), DM Serif Display + Noto Sans Thai fonts, custom spacing",
+      "tags": [
+        "tailwindcss",
+        "config",
+        "nbtc-theme",
+        "fonts"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:README.md",
+      "type": "documentation",
+      "name": "README",
+      "filePath": "README.md",
+      "summary": "README — PAFC: Private Automated Frequency Coordinator — ระบบจัดสรรคลื่นความถี่สำหรับ IMT Private Network ย่าน 4800-4990 MHz ภายใต้ ITU-R Footnote 5.441B",
+      "tags": [
+        "docs",
+        "readme",
+        "overview",
+        "thai"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.hermes/design-system.md",
+      "type": "documentation",
+      "name": "design-system",
+      "filePath": ".hermes/design-system.md",
+      "summary": "Design system documentation — NBTC theme specifications, color palette, typography guidelines สำหรับ PAFC UI",
+      "tags": [
+        "docs",
+        "design-system",
+        "nbtc-theme",
+        "ui"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:frontend/src/main.tsx",
+      "target": "file:frontend/src/App.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/main.tsx",
+      "target": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/App.tsx",
+      "target": "file:frontend/src/components/MapView.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/App.tsx",
+      "target": "file:frontend/src/components/LoginPage.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/App.tsx",
+      "target": "file:frontend/src/components/FSLinkManager.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/App.tsx",
+      "target": "file:frontend/src/components/IMTManager.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/App.tsx",
+      "target": "file:frontend/src/components/IMTAddWorkspace.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/App.tsx",
+      "target": "file:frontend/src/components/QueryPanel.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/App.tsx",
+      "target": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/MapView.tsx",
+      "target": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/MapView.tsx",
+      "target": "file:frontend/src/types.ts",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/FSLinkManager.tsx",
+      "target": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/FSLinkManager.tsx",
+      "target": "file:frontend/src/types.ts",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/IMTManager.tsx",
+      "target": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/IMTManager.tsx",
+      "target": "file:frontend/src/types.ts",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/IMTAddWorkspace.tsx",
+      "target": "file:frontend/src/components/MapView.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/IMTAddWorkspace.tsx",
+      "target": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/IMTAddWorkspace.tsx",
+      "target": "file:frontend/src/types.ts",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/LoginPage.tsx",
+      "target": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/QueryPanel.tsx",
+      "target": "file:frontend/src/contexts/AuthContext.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/PublicDashboard.tsx",
+      "target": "file:frontend/src/components/MapView.tsx",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/PublicDashboard.tsx",
+      "target": "file:frontend/src/types.ts",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/BlockPanel.tsx",
+      "target": "file:frontend/src/types.ts",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/contexts/AuthContext.tsx",
+      "target": "file:frontend/src/types.ts",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/App.tsx",
+      "target": "file:backend/app/api/auth.py",
+      "type": "api_calls",
+      "label": "POST /api/auth/login",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/FSLinkManager.tsx",
+      "target": "file:backend/app/api/fs_links.py",
+      "type": "api_calls",
+      "label": "GET/POST/PUT/DELETE /api/fs-links",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/IMTManager.tsx",
+      "target": "file:backend/app/api/imt.py",
+      "type": "api_calls",
+      "label": "GET/POST/PUT/DELETE /api/imt",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/IMTAddWorkspace.tsx",
+      "target": "file:backend/app/api/allocation.py",
+      "type": "api_calls",
+      "label": "POST /api/allocate/analyze",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/IMTAddWorkspace.tsx",
+      "target": "file:backend/app/api/coverage.py",
+      "type": "api_calls",
+      "label": "POST /api/coverage/calculate",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/QueryPanel.tsx",
+      "target": "file:backend/app/api/fs_links.py",
+      "type": "api_calls",
+      "label": "GET /api/fs-links",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/components/QueryPanel.tsx",
+      "target": "file:backend/app/api/imt.py",
+      "type": "api_calls",
+      "label": "GET /api/imt",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "config:backend/app/core/config.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "module:backend/app/api/__init__.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "file:backend/app/api/auth.py",
+      "type": "registers_router",
+      "label": "include_router /api/auth",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "file:backend/app/api/propagation.py",
+      "type": "registers_router",
+      "label": "include_router /api/propagation",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "file:backend/app/api/coverage.py",
+      "type": "registers_router",
+      "label": "include_router /api/coverage (JWT)",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "service:backend/app/core/auth.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "file:backend/app/api/allocation.py",
+      "type": "registers_router",
+      "label": "include_router /api/allocate (JWT)",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "file:backend/app/api/fs_links.py",
+      "type": "registers_router",
+      "label": "include_router /api/fs-links (JWT)",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/main.py",
+      "target": "file:backend/app/api/imt.py",
+      "type": "registers_router",
+      "label": "include_router /api/imt (JWT)",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/auth.py",
+      "target": "service:backend/app/core/auth.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/coverage.py",
+      "target": "service:backend/app/services/coverage.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/propagation.py",
+      "target": "service:backend/app/services/propagation.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "service:backend/app/core/auth.py",
+      "target": "config:backend/app/core/config.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "service:backend/app/services/coverage.py",
+      "target": "service:backend/app/services/propagation.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "service:backend/app/services/interference.py",
+      "target": "config:backend/app/core/config.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "service:backend/app/services/interference.py",
+      "target": "service:backend/app/services/propagation.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "service:backend/app/services/coverage.py",
+      "target": "file:backend/app/api/coverage.py",
+      "type": "data_flow",
+      "label": "CoverageEngine → Coverage API",
+      "direction": "forward"
+    },
+    {
+      "source": "service:backend/app/services/propagation.py",
+      "target": "service:backend/app/services/coverage.py",
+      "type": "data_flow",
+      "label": "PropagationRegistry → CoverageEngine",
+      "direction": "forward"
+    },
+    {
+      "source": "service:backend/app/services/propagation.py",
+      "target": "service:backend/app/services/interference.py",
+      "type": "data_flow",
+      "label": "PropagationRegistry → InterferenceEngine",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/allocation.py",
+      "target": "file:backend/app/db/database.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/allocation.py",
+      "target": "file:backend/app/models/fs_link.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/allocation.py",
+      "target": "file:backend/app/models/imt.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/allocation.py",
+      "target": "service:backend/app/services/interference.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/allocation.py",
+      "target": "service:backend/app/services/coverage.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/fs_links.py",
+      "target": "file:backend/app/db/database.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/fs_links.py",
+      "target": "file:backend/app/models/fs_link.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/imt.py",
+      "target": "file:backend/app/db/database.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/imt.py",
+      "target": "file:backend/app/models/imt.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/db/database.py",
+      "target": "config:backend/app/core/config.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/models/fs_link.py",
+      "target": "file:backend/app/db/database.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/models/imt.py",
+      "target": "file:backend/app/db/database.py",
+      "type": "imports",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/allocation.py",
+      "target": "service:backend/app/services/interference.py",
+      "type": "data_flow",
+      "label": "FSLinkData/IMTNeighborData → InterferenceEngine.analyze()",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/allocation.py",
+      "target": "service:backend/app/services/coverage.py",
+      "type": "data_flow",
+      "label": "CoverageEngine.calculate_required_eirp() → auto_eirp",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/fs_links.py",
+      "target": "file:backend/app/models/fs_link.py",
+      "type": "data_flow",
+      "label": "SELECT/INSERT/UPDATE FSLink → fs_links table",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/api/imt.py",
+      "target": "file:backend/app/models/imt.py",
+      "type": "data_flow",
+      "label": "SELECT/INSERT/UPDATE IMTAllocation + SpectrumBlock → imt_allocations + spectrum_blocks tables",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/models/fs_link.py",
+      "target": "file:backend/app/api/fs_links.py",
+      "type": "schema_dependency",
+      "label": "FSLink schema → FS Links CRUD",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/app/models/imt.py",
+      "target": "file:backend/app/api/imt.py",
+      "type": "schema_dependency",
+      "label": "IMTAllocation+SpectrumBlock schema → IMT CRUD",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/migrations/001_init.sql",
+      "target": "file:backend/app/models/fs_link.py",
+      "type": "schema_source",
+      "label": "DDL → fs_links table",
+      "direction": "forward"
+    },
+    {
+      "source": "file:backend/migrations/001_init.sql",
+      "target": "file:backend/app/models/imt.py",
+      "type": "schema_source",
+      "label": "DDL → imt_allocations + spectrum_blocks tables",
+      "direction": "forward"
+    },
+    {
+      "source": "file:.hermes/plans/phase1-backend.md",
+      "target": "file:backend/app/main.py",
+      "type": "documents",
+      "direction": "forward"
+    },
+    {
+      "source": "file:.hermes/plans/phase4-auth-dashboard.md",
+      "target": "service:backend/app/core/auth.py",
+      "type": "documents",
+      "direction": "forward"
+    },
+    {
+      "source": "file:.hermes/plans/phase5-map-spectrum.md",
+      "target": "file:frontend/src/components/MapView.tsx",
+      "type": "documents",
+      "direction": "forward"
+    },
+    {
+      "source": "file:.hermes/plans/phase7-imt-workspace-login.md",
+      "target": "file:frontend/src/components/IMTAddWorkspace.tsx",
+      "type": "documents",
+      "direction": "forward"
+    },
+    {
+      "source": "config:frontend/package.json",
+      "target": "file:frontend/src/main.tsx",
+      "type": "defines_entry",
+      "label": "main entry point",
+      "direction": "forward"
+    },
+    {
+      "source": "config:frontend/tsconfig.json",
+      "target": "file:frontend/src/types.ts",
+      "type": "configures",
+      "direction": "forward"
+    },
+    {
+      "source": "file:docker-compose.yml",
+      "target": "file:backend/app/db/database.py",
+      "type": "configures",
+      "label": "PostgreSQL → SQLAlchemy connection",
+      "direction": "forward"
+    },
+    {
+      "source": "config:backend/pyproject.toml",
+      "target": "file:backend/app/main.py",
+      "type": "declares",
+      "label": "FastAPI dependency",
+      "direction": "forward"
+    },
+    {
+      "source": "config:frontend/vite.config.ts",
+      "target": "file:backend/app/main.py",
+      "type": "proxies",
+      "label": "/api → localhost:8001",
+      "direction": "forward"
+    },
+    {
+      "source": "config:frontend/tailwind.config.js",
+      "target": "file:frontend/src/index.css",
+      "type": "configures",
+      "direction": "forward"
+    },
+    {
+      "source": "file:frontend/src/index.css",
+      "target": "file:frontend/src/main.tsx",
+      "type": "imported_by",
+      "direction": "forward"
+    },
+    {
+      "source": "file:.hermes/design-system.md",
+      "target": "file:frontend/src/index.css",
+      "type": "documents",
+      "direction": "forward"
+    },
+    {
+      "source": "file:README.md",
+      "target": "file:backend/app/main.py",
+      "type": "documents",
+      "direction": "forward"
+    }
+  ]
+}

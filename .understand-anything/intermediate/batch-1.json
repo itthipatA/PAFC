@@ -1,0 +1,142 @@
+{
+  "batchIndex": 1,
+  "nodes": [
+    {
+      "id": "frontend/src/main.tsx",
+      "type": "entry",
+      "name": "main.tsx",
+      "filePath": "frontend/src/main.tsx",
+      "summary": "จุดเริ่มต้นของแอปพลิเคชัน React — สร้าง root element และห่อ App ด้วย AuthProvider เพื่อเปิดใช้งานระบบ authentication ทั่วทั้งแอป",
+      "tags": ["react", "entrypoint", "vite", "typescript", "auth-provider"]
+    },
+    {
+      "id": "frontend/src/App.tsx",
+      "type": "component",
+      "name": "App",
+      "filePath": "frontend/src/App.tsx",
+      "summary": "คอมโพเนนต์หลักของ PAFC Dashboard — จัดการการนำทางด้วยแท็บ (Dashboard/FS Links/IMT/Search), การยืนยันตัวตนผ่าน AuthContext, และส่งต่อเหตุการณ์การคลิกแผนที่ไปยัง MapView เพื่อใช้ในการวิเคราะห์การจัดสรรคลื่นความถี่",
+      "tags": ["react", "component", "navigation", "dashboard", "tabs", "auth-gate", "nbtc-theme"]
+    },
+    {
+      "id": "frontend/src/components/MapView.tsx",
+      "type": "component",
+      "name": "MapView",
+      "filePath": "frontend/src/components/MapView.tsx",
+      "summary": "แผนที่แบบโต้ตอบด้วย MapLibre GL — แสดงผล FS links, IMT allocations, spectrum blocks โดยใช้ GeoJSON layers รองรับหลาย map styles (Voyager, Positron, Dark Matter, Satellite, OSM Basic) คำนวณระยะทางด้วย haversine และแสดงวงกลมครอบคลุมรอบจุดที่เลือก",
+      "tags": ["react", "component", "maplibre-gl", "map", "geojson", "haversine", "carto", "esri", "osm", "spectrum-blocks"]
+    },
+    {
+      "id": "frontend/src/components/LoginPage.tsx",
+      "type": "component",
+      "name": "LoginPage",
+      "filePath": "frontend/src/components/LoginPage.tsx",
+      "summary": "หน้าเข้าสู่ระบบสำหรับ PAFC — ใช้ AuthContext.login() ส่ง username/password ไปยัง POST /api/auth/login แสดงข้อผิดพลาดเมื่อเข้าสู่ระบบไม่สำเร็จ สไตล์ NBTC theme",
+      "tags": ["react", "component", "auth", "login", "nbtc-theme"]
+    },
+    {
+      "id": "frontend/src/components/FSLinkManager.tsx",
+      "type": "component",
+      "name": "FSLinkManager",
+      "filePath": "frontend/src/components/FSLinkManager.tsx",
+      "summary": "ตัวจัดการ Fixed Service (FS) Links — แสดงตาราง FS links จาก GET /api/fs-links/ รองรับการสร้าง/แก้ไข/ลบ ผ่าน CRUD API และการนำเข้าจากไฟล์ CSV แสดงลิงก์บนแผนที่ด้วยสีตามสถานะ",
+      "tags": ["react", "component", "fs-links", "crud", "csv-import", "table", "fixed-service"]
+    },
+    {
+      "id": "frontend/src/components/IMTManager.tsx",
+      "type": "component",
+      "name": "IMTManager",
+      "filePath": "frontend/src/components/IMTManager.tsx",
+      "summary": "ตัวจัดการ IMT Allocations — แสดงรายการ IMT allocations จาก GET /api/imt/ รองรับการสร้าง แก้ไข ลบ พร้อมจัดการ spectrum blocks ภายในแต่ละ allocation ทำงานร่วมกับ IMTAddWorkspace สำหรับการวิเคราะห์การรบกวน",
+      "tags": ["react", "component", "imt", "crud", "spectrum-blocks", "allocation"]
+    },
+    {
+      "id": "frontend/src/components/IMTAddWorkspace.tsx",
+      "type": "component",
+      "name": "IMTAddWorkspace",
+      "filePath": "frontend/src/components/IMTAddWorkspace.tsx",
+      "summary": "พื้นที่ทำงานสำหรับสร้าง IMT allocation พร้อมการวิเคราะห์แบบครบวงจร — เลือกจุดบนแผนที่, กำหนด cell radius, antenna parameters, รันการวิเคราะห์แบบ 3-phase ผ่าน POST /api/allocate/analyze และ /api/coverage/calculate แสดงผล spectrum blocks (เขียว/เทา/แดง), trade-off suggestions, และ coverage classification",
+      "tags": ["react", "component", "imt", "workspace", "allocation", "analysis", "interference", "coverage", "tradeoff"]
+    },
+    {
+      "id": "frontend/src/components/QueryPanel.tsx",
+      "type": "component",
+      "name": "QueryPanel",
+      "filePath": "frontend/src/components/QueryPanel.tsx",
+      "summary": "แผงค้นหาสำหรับ PAFC — รองรับการค้นหา FS links และ IMT allocations ตามพิกัด, ชื่อ, operator, หรือช่วงความถี่ ส่งคำขอไปยัง GET /api/fs-links/ และ GET /api/imt/",
+      "tags": ["react", "component", "search", "query", "fs-links", "imt"]
+    },
+    {
+      "id": "frontend/src/components/BlockPanel.tsx",
+      "type": "component",
+      "name": "BlockPanel",
+      "filePath": "frontend/src/components/BlockPanel.tsx",
+      "summary": "แผงแสดง spectrum blocks — แสดงผลการวิเคราะห์ spectrum allocation ด้วยแถบสีเขียว/เทา/แดง แสดงสถานะแต่ละบล็อก 10 MHz ในย่าน 4800-4990 MHz",
+      "tags": ["react", "component", "spectrum-blocks", "visualization", "green-gray-red"]
+    },
+    {
+      "id": "frontend/src/components/AllocationForm.tsx",
+      "type": "component",
+      "name": "AllocationForm",
+      "filePath": "frontend/src/components/AllocationForm.tsx",
+      "summary": "ฟอร์มสำหรับสร้าง/แก้ไข IMT allocation — จัดการข้อมูล RF parameters, spectrum blocks, และ coverage parameters ก่อนส่งไปยัง backend API",
+      "tags": ["react", "component", "form", "allocation", "rf-parameters"]
+    },
+    {
+      "id": "frontend/src/components/PublicDashboard.tsx",
+      "type": "component",
+      "name": "PublicDashboard",
+      "filePath": "frontend/src/components/PublicDashboard.tsx",
+      "summary": "Dashboard สาธารณะ — แสดงภาพรวมการจัดสรรคลื่นความถี่บนแผนที่โดยไม่ต้องล็อกอิน ใช้เรียกดู FS links และ IMT allocations",
+      "tags": ["react", "component", "public", "dashboard", "readonly"]
+    },
+    {
+      "id": "frontend/src/contexts/AuthContext.tsx",
+      "type": "provider",
+      "name": "AuthProvider",
+      "filePath": "frontend/src/contexts/AuthContext.tsx",
+      "summary": "React Context สำหรับจัดการสถานะ authentication — เก็บ JWT token ใน localStorage, decode JWT payload เพื่อตรวจสอบ expiry, จัดเตรียม login/logout/fetchWithAuth ให้ทุกคอมโพเนนต์ลูก",
+      "tags": ["react", "context", "auth", "jwt", "localstorage", "token-management"]
+    },
+    {
+      "id": "frontend/src/types.ts",
+      "type": "types",
+      "name": "types.ts",
+      "filePath": "frontend/src/types.ts",
+      "summary": "นิยาม TypeScript type/interface ทั้งหมดของ frontend — FSLink, IMTAllocation, BlockResult, Pair, PairResult, CoverageInfo, TradeOff, AnalyzeResponse, BackendVerification, User, LoginRequest/Response, IMTAllocationCreate, FSLinkCreate",
+      "tags": ["typescript", "types", "interfaces", "data-models", "api-response"]
+    }
+  ],
+  "edges": [
+    {"source": "frontend/src/main.tsx", "target": "frontend/src/App.tsx", "type": "imports"},
+    {"source": "frontend/src/main.tsx", "target": "frontend/src/contexts/AuthContext.tsx", "type": "imports"},
+    {"source": "frontend/src/App.tsx", "target": "frontend/src/components/MapView.tsx", "type": "imports"},
+    {"source": "frontend/src/App.tsx", "target": "frontend/src/components/LoginPage.tsx", "type": "imports"},
+    {"source": "frontend/src/App.tsx", "target": "frontend/src/components/FSLinkManager.tsx", "type": "imports"},
+    {"source": "frontend/src/App.tsx", "target": "frontend/src/components/IMTManager.tsx", "type": "imports"},
+    {"source": "frontend/src/App.tsx", "target": "frontend/src/components/IMTAddWorkspace.tsx", "type": "imports"},
+    {"source": "frontend/src/App.tsx", "target": "frontend/src/components/QueryPanel.tsx", "type": "imports"},
+    {"source": "frontend/src/App.tsx", "target": "frontend/src/contexts/AuthContext.tsx", "type": "imports"},
+    {"source": "frontend/src/components/MapView.tsx", "target": "frontend/src/contexts/AuthContext.tsx", "type": "imports"},
+    {"source": "frontend/src/components/MapView.tsx", "target": "frontend/src/types.ts", "type": "imports"},
+    {"source": "frontend/src/components/FSLinkManager.tsx", "target": "frontend/src/contexts/AuthContext.tsx", "type": "imports"},
+    {"source": "frontend/src/components/FSLinkManager.tsx", "target": "frontend/src/types.ts", "type": "imports"},
+    {"source": "frontend/src/components/IMTManager.tsx", "target": "frontend/src/contexts/AuthContext.tsx", "type": "imports"},
+    {"source": "frontend/src/components/IMTManager.tsx", "target": "frontend/src/types.ts", "type": "imports"},
+    {"source": "frontend/src/components/IMTAddWorkspace.tsx", "target": "frontend/src/components/MapView.tsx", "type": "imports"},
+    {"source": "frontend/src/components/IMTAddWorkspace.tsx", "target": "frontend/src/contexts/AuthContext.tsx", "type": "imports"},
+    {"source": "frontend/src/components/IMTAddWorkspace.tsx", "target": "frontend/src/types.ts", "type": "imports"},
+    {"source": "frontend/src/components/LoginPage.tsx", "target": "frontend/src/contexts/AuthContext.tsx", "type": "imports"},
+    {"source": "frontend/src/components/QueryPanel.tsx", "target": "frontend/src/contexts/AuthContext.tsx", "type": "imports"},
+    {"source": "frontend/src/components/PublicDashboard.tsx", "target": "frontend/src/components/MapView.tsx", "type": "imports"},
+    {"source": "frontend/src/components/PublicDashboard.tsx", "target": "frontend/src/types.ts", "type": "imports"},
+    {"source": "frontend/src/components/BlockPanel.tsx", "target": "frontend/src/types.ts", "type": "imports"},
+    {"source": "frontend/src/contexts/AuthContext.tsx", "target": "frontend/src/types.ts", "type": "imports"},
+    {"source": "frontend/src/App.tsx", "target": "backend/app/api/auth.py", "type": "api_calls", "label": "POST /api/auth/login"},
+    {"source": "frontend/src/components/FSLinkManager.tsx", "target": "backend/app/api/fs_links.py", "type": "api_calls", "label": "GET/POST/PUT/DELETE /api/fs-links"},
+    {"source": "frontend/src/components/IMTManager.tsx", "target": "backend/app/api/imt.py", "type": "api_calls", "label": "GET/POST/PUT/DELETE /api/imt"},
+    {"source": "frontend/src/components/IMTAddWorkspace.tsx", "target": "backend/app/api/allocation.py", "type": "api_calls", "label": "POST /api/allocate/analyze"},
+    {"source": "frontend/src/components/IMTAddWorkspace.tsx", "target": "backend/app/api/coverage.py", "type": "api_calls", "label": "POST /api/coverage/calculate"},
+    {"source": "frontend/src/components/QueryPanel.tsx", "target": "backend/app/api/fs_links.py", "type": "api_calls", "label": "GET /api/fs-links"},
+    {"source": "frontend/src/components/QueryPanel.tsx", "target": "backend/app/api/imt.py", "type": "api_calls", "label": "GET /api/imt"}
+  ]
+}

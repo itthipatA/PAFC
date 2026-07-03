@@ -1,0 +1,78 @@
+{
+  "batchIndex": 7,
+  "nodes": [
+    {
+      "id": "docker-compose.yml",
+      "type": "infrastructure",
+      "name": "docker-compose",
+      "filePath": "docker-compose.yml",
+      "summary": "Docker Compose สำหรับ PAFC — PostgreSQL 16 database (port 5432, user/pass: pafc/pafc, db: pafc), พร้อม volume mount สำหรับ persistent data",
+      "tags": ["docker", "compose", "postgresql", "infra", "database"]
+    },
+    {
+      "id": "backend/pyproject.toml",
+      "type": "config",
+      "name": "pyproject.toml",
+      "filePath": "backend/pyproject.toml",
+      "summary": "Backend project manifest — FastAPI >=0.115, SQLAlchemy async, GeoAlchemy2, Pydantic v2, python-jose, passlib, openpyxl, pandas, numpy, shapely, httpx — Python >=3.11, hatchling build",
+      "tags": ["python", "config", "pyproject", "dependencies", "hatchling"]
+    },
+    {
+      "id": "frontend/src/components/AllocationForm.tsx",
+      "type": "component",
+      "name": "AllocationForm",
+      "filePath": "frontend/src/components/AllocationForm.tsx",
+      "summary": "ฟอร์มสำหรับสร้าง/แก้ไข IMT allocation — จัดการข้อมูล RF parameters, spectrum blocks, และ coverage parameters ก่อนส่งไปยัง backend API",
+      "tags": ["react", "component", "form", "allocation", "rf-parameters"]
+    },
+    {
+      "id": "frontend/src/index.css",
+      "type": "style",
+      "name": "index.css",
+      "filePath": "frontend/src/index.css",
+      "summary": "Global CSS สำหรับ PAFC — TailwindCSS directives, NBTC theme (dark luxury: #0a0a0a backgrounds, gold/amber accents), DM Serif Display typography, custom utilities",
+      "tags": ["css", "tailwindcss", "nbtc-theme", "dark-theme", "typography"]
+    },
+    {
+      "id": "frontend/vite.config.ts",
+      "type": "config",
+      "name": "vite.config.ts",
+      "filePath": "frontend/vite.config.ts",
+      "summary": "Vite configuration — proxy /api ไปยัง backend FastAPI (localhost:8001), React plugin, path aliases",
+      "tags": ["vite", "config", "proxy", "typescript"]
+    },
+    {
+      "id": "frontend/tailwind.config.js",
+      "type": "config",
+      "name": "tailwind.config.js",
+      "filePath": "frontend/tailwind.config.js",
+      "summary": "TailwindCSS configuration — NBTC theme colors (nbtc-navy, nbtc-gold), DM Serif Display + Noto Sans Thai fonts, custom spacing",
+      "tags": ["tailwindcss", "config", "nbtc-theme", "fonts"]
+    },
+    {
+      "id": "README.md",
+      "type": "documentation",
+      "name": "README",
+      "filePath": "README.md",
+      "summary": "README — PAFC: Private Automated Frequency Coordinator — ระบบจัดสรรคลื่นความถี่สำหรับ IMT Private Network ย่าน 4800-4990 MHz ภายใต้ ITU-R Footnote 5.441B",
+      "tags": ["docs", "readme", "overview", "thai"]
+    },
+    {
+      "id": ".hermes/design-system.md",
+      "type": "documentation",
+      "name": "design-system",
+      "filePath": ".hermes/design-system.md",
+      "summary": "Design system documentation — NBTC theme specifications, color palette, typography guidelines สำหรับ PAFC UI",
+      "tags": ["docs", "design-system", "nbtc-theme", "ui"]
+    }
+  ],
+  "edges": [
+    {"source": "docker-compose.yml", "target": "backend/app/db/database.py", "type": "configures", "label": "PostgreSQL → SQLAlchemy connection"},
+    {"source": "backend/pyproject.toml", "target": "backend/app/main.py", "type": "declares", "label": "FastAPI dependency"},
+    {"source": "frontend/vite.config.ts", "target": "backend/app/main.py", "type": "proxies", "label": "/api → localhost:8001"},
+    {"source": "frontend/tailwind.config.js", "target": "frontend/src/index.css", "type": "configures"},
+    {"source": "frontend/src/index.css", "target": "frontend/src/main.tsx", "type": "imported_by"},
+    {"source": ".hermes/design-system.md", "target": "frontend/src/index.css", "type": "documents"},
+    {"source": "README.md", "target": "backend/app/main.py", "type": "documents"}
+  ]
+}

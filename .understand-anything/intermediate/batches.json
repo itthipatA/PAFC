@@ -1,0 +1,839 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "louvain",
+  "totalFiles": 57,
+  "totalBatches": 7,
+  "exportsByPath": {
+    ".understand-anything/.understandignore": [],
+    "backend/app/__init__.py": [],
+    "backend/app/api/__init__.py": [],
+    "backend/app/api/allocation.py": [
+      "analyze_allocation",
+      "_compute_tradeoff",
+      "pre_screen",
+      "_parse_wkt_center"
+    ],
+    "backend/app/api/auth.py": [
+      "LoginRequest",
+      "LoginResponse",
+      "login",
+      "me"
+    ],
+    "backend/app/api/coverage.py": [
+      "calculate_coverage"
+    ],
+    "backend/app/api/fs_links.py": [
+      "list_fs_links",
+      "get_fs_link",
+      "create_fs_link",
+      "update_fs_link",
+      "delete_fs_link",
+      "import_fs_csv",
+      "_fs_to_dict"
+    ],
+    "backend/app/api/imt.py": [
+      "list_imt_allocations",
+      "get_imt_allocation",
+      "create_imt_allocation",
+      "update_imt_allocation",
+      "delete_imt_allocation",
+      "_imt_to_dict",
+      "_block_to_dict",
+      "_extract_center_from_wkt"
+    ],
+    "backend/app/api/propagation.py": [
+      "list_models"
+    ],
+    "backend/app/core/__init__.py": [],
+    "backend/app/core/auth.py": [
+      "verify_password",
+      "create_access_token",
+      "decode_access_token",
+      "get_current_user"
+    ],
+    "backend/app/core/config.py": [
+      "Settings",
+      "get_settings"
+    ],
+    "backend/app/db/__init__.py": [],
+    "backend/app/db/database.py": [
+      "Base",
+      "get_db"
+    ],
+    "backend/app/main.py": [
+      "health_check"
+    ],
+    "backend/app/models/__init__.py": [],
+    "backend/app/models/fs_link.py": [
+      "FSLink"
+    ],
+    "backend/app/models/imt.py": [
+      "IMTAllocation",
+      "SpectrumBlock"
+    ],
+    "backend/app/services/__init__.py": [],
+    "backend/app/services/coverage.py": [
+      "LinkBudgetResult",
+      "CoverageTradeOff",
+      "CoverageEngine",
+      "quick_radius",
+      "quick_eirp"
+    ],
+    "backend/app/services/interference.py": [
+      "FSLinkData",
+      "IMTNeighborData",
+      "InterferencePair",
+      "PairResult",
+      "BlockResult",
+      "InterferenceResult",
+      "haversine_m",
+      "bearing_deg",
+      "dist_to_path_m",
+      "freq_overlap",
+      "is_imt_in_fs_beam",
+      "InterferenceEngine",
+      "phase0_only"
+    ],
+    "backend/app/services/propagation.py": [
+      "PropagationModel",
+      "FreeSpaceModel",
+      "ITURP452Model",
+      "HataModel",
+      "PropagationRegistry"
+    ],
+    "backend/tests/__init__.py": [],
+    "frontend/postcss.config.js": [],
+    "frontend/src/App.tsx": [
+      "App"
+    ],
+    "frontend/src/components/AllocationForm.tsx": [
+      "AllocationForm"
+    ],
+    "frontend/src/components/BlockPanel.tsx": [
+      "BlockPanel"
+    ],
+    "frontend/src/components/FSLinkManager.tsx": [
+      "FSLinkManager"
+    ],
+    "frontend/src/components/IMTAddWorkspace.tsx": [
+      "IMTAddWorkspace"
+    ],
+    "frontend/src/components/IMTManager.tsx": [
+      "IMTManager"
+    ],
+    "frontend/src/components/LoginPage.tsx": [
+      "LoginPage"
+    ],
+    "frontend/src/components/MapView.tsx": [
+      "MAP_STYLES",
+      "MapView"
+    ],
+    "frontend/src/components/PublicDashboard.tsx": [
+      "PublicDashboard"
+    ],
+    "frontend/src/components/QueryPanel.tsx": [
+      "QueryPanel"
+    ],
+    "frontend/src/contexts/AuthContext.tsx": [
+      "AuthProvider",
+      "useAuth"
+    ],
+    "frontend/src/main.tsx": [],
+    "frontend/src/types.ts": [],
+    "frontend/src/vite-env.d.ts": [],
+    "frontend/tailwind.config.js": [],
+    "frontend/vite.config.ts": []
+  },
+  "batches": [
+    {
+      "batchIndex": 1,
+      "files": [
+        {
+          "path": "frontend/src/App.tsx",
+          "language": "typescript",
+          "sizeLines": 265,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/BlockPanel.tsx",
+          "language": "typescript",
+          "sizeLines": 153,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/FSLinkManager.tsx",
+          "language": "typescript",
+          "sizeLines": 669,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/IMTAddWorkspace.tsx",
+          "language": "typescript",
+          "sizeLines": 1906,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/IMTManager.tsx",
+          "language": "typescript",
+          "sizeLines": 818,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/LoginPage.tsx",
+          "language": "typescript",
+          "sizeLines": 208,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/MapView.tsx",
+          "language": "typescript",
+          "sizeLines": 990,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/PublicDashboard.tsx",
+          "language": "typescript",
+          "sizeLines": 72,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/QueryPanel.tsx",
+          "language": "typescript",
+          "sizeLines": 283,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/contexts/AuthContext.tsx",
+          "language": "typescript",
+          "sizeLines": 121,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/main.tsx",
+          "language": "typescript",
+          "sizeLines": 13,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/types.ts",
+          "language": "typescript",
+          "sizeLines": 191,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "frontend/src/App.tsx": [
+          "frontend/src/components/FSLinkManager.tsx",
+          "frontend/src/components/IMTAddWorkspace.tsx",
+          "frontend/src/components/IMTManager.tsx",
+          "frontend/src/components/LoginPage.tsx",
+          "frontend/src/components/MapView.tsx",
+          "frontend/src/components/QueryPanel.tsx",
+          "frontend/src/contexts/AuthContext.tsx"
+        ],
+        "frontend/src/components/BlockPanel.tsx": [
+          "frontend/src/types.ts"
+        ],
+        "frontend/src/components/FSLinkManager.tsx": [
+          "frontend/src/contexts/AuthContext.tsx",
+          "frontend/src/types.ts"
+        ],
+        "frontend/src/components/IMTAddWorkspace.tsx": [
+          "frontend/src/components/MapView.tsx",
+          "frontend/src/contexts/AuthContext.tsx",
+          "frontend/src/types.ts"
+        ],
+        "frontend/src/components/IMTManager.tsx": [
+          "frontend/src/contexts/AuthContext.tsx",
+          "frontend/src/types.ts"
+        ],
+        "frontend/src/components/LoginPage.tsx": [
+          "frontend/src/contexts/AuthContext.tsx"
+        ],
+        "frontend/src/components/MapView.tsx": [
+          "frontend/src/contexts/AuthContext.tsx",
+          "frontend/src/types.ts"
+        ],
+        "frontend/src/components/PublicDashboard.tsx": [
+          "frontend/src/components/MapView.tsx",
+          "frontend/src/types.ts"
+        ],
+        "frontend/src/components/QueryPanel.tsx": [
+          "frontend/src/contexts/AuthContext.tsx"
+        ],
+        "frontend/src/contexts/AuthContext.tsx": [
+          "frontend/src/types.ts"
+        ],
+        "frontend/src/main.tsx": [
+          "frontend/src/App.tsx",
+          "frontend/src/contexts/AuthContext.tsx",
+          "frontend/src/index.css"
+        ],
+        "frontend/src/types.ts": []
+      },
+      "neighborMap": {
+        "frontend/src/main.tsx": [
+          {
+            "path": "frontend/src/index.css",
+            "batchIndex": 7,
+            "symbols": []
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 2,
+      "files": [
+        {
+          "path": "backend/app/api/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/api/auth.py",
+          "language": "python",
+          "sizeLines": 40,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/api/coverage.py",
+          "language": "python",
+          "sizeLines": 92,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/api/propagation.py",
+          "language": "python",
+          "sizeLines": 16,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/core/auth.py",
+          "language": "python",
+          "sizeLines": 58,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/core/config.py",
+          "language": "python",
+          "sizeLines": 42,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/main.py",
+          "language": "python",
+          "sizeLines": 45,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/services/coverage.py",
+          "language": "python",
+          "sizeLines": 424,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/services/interference.py",
+          "language": "python",
+          "sizeLines": 1031,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/services/propagation.py",
+          "language": "python",
+          "sizeLines": 120,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "backend/app/api/__init__.py": [],
+        "backend/app/api/auth.py": [
+          "backend/app/core/auth.py"
+        ],
+        "backend/app/api/coverage.py": [
+          "backend/app/services/coverage.py"
+        ],
+        "backend/app/api/propagation.py": [
+          "backend/app/services/propagation.py"
+        ],
+        "backend/app/core/auth.py": [
+          "backend/app/core/config.py"
+        ],
+        "backend/app/core/config.py": [],
+        "backend/app/main.py": [
+          "backend/app/api/__init__.py",
+          "backend/app/api/allocation.py",
+          "backend/app/api/auth.py",
+          "backend/app/api/coverage.py",
+          "backend/app/api/fs_links.py",
+          "backend/app/api/imt.py",
+          "backend/app/api/propagation.py",
+          "backend/app/core/auth.py",
+          "backend/app/core/config.py"
+        ],
+        "backend/app/services/coverage.py": [
+          "backend/app/services/propagation.py"
+        ],
+        "backend/app/services/interference.py": [
+          "backend/app/core/config.py",
+          "backend/app/services/propagation.py"
+        ],
+        "backend/app/services/propagation.py": []
+      },
+      "neighborMap": {
+        "backend/app/core/config.py": [
+          {
+            "path": "backend/app/db/database.py",
+            "batchIndex": 3,
+            "symbols": [
+              "Base",
+              "get_db"
+            ]
+          }
+        ],
+        "backend/app/main.py": [
+          {
+            "path": "backend/app/api/allocation.py",
+            "batchIndex": 3,
+            "symbols": [
+              "analyze_allocation",
+              "_compute_tradeoff",
+              "pre_screen",
+              "_parse_wkt_center"
+            ]
+          },
+          {
+            "path": "backend/app/api/fs_links.py",
+            "batchIndex": 3,
+            "symbols": [
+              "list_fs_links",
+              "get_fs_link",
+              "create_fs_link",
+              "update_fs_link",
+              "delete_fs_link",
+              "import_fs_csv",
+              "_fs_to_dict"
+            ]
+          },
+          {
+            "path": "backend/app/api/imt.py",
+            "batchIndex": 3,
+            "symbols": [
+              "list_imt_allocations",
+              "get_imt_allocation",
+              "create_imt_allocation",
+              "update_imt_allocation",
+              "delete_imt_allocation",
+              "_imt_to_dict",
+              "_block_to_dict",
+              "_extract_center_from_wkt"
+            ]
+          }
+        ],
+        "backend/app/services/coverage.py": [
+          {
+            "path": "backend/app/api/allocation.py",
+            "batchIndex": 3,
+            "symbols": [
+              "analyze_allocation",
+              "_compute_tradeoff",
+              "pre_screen",
+              "_parse_wkt_center"
+            ]
+          }
+        ],
+        "backend/app/services/interference.py": [
+          {
+            "path": "backend/app/api/allocation.py",
+            "batchIndex": 3,
+            "symbols": [
+              "analyze_allocation",
+              "_compute_tradeoff",
+              "pre_screen",
+              "_parse_wkt_center"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 3,
+      "files": [
+        {
+          "path": "backend/app/api/allocation.py",
+          "language": "python",
+          "sizeLines": 452,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/api/fs_links.py",
+          "language": "python",
+          "sizeLines": 140,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/api/imt.py",
+          "language": "python",
+          "sizeLines": 189,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/db/database.py",
+          "language": "python",
+          "sizeLines": 26,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/models/fs_link.py",
+          "language": "python",
+          "sizeLines": 49,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/models/imt.py",
+          "language": "python",
+          "sizeLines": 61,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "backend/app/api/allocation.py": [
+          "backend/app/db/database.py",
+          "backend/app/models/fs_link.py",
+          "backend/app/models/imt.py",
+          "backend/app/services/coverage.py",
+          "backend/app/services/interference.py"
+        ],
+        "backend/app/api/fs_links.py": [
+          "backend/app/db/database.py",
+          "backend/app/models/fs_link.py"
+        ],
+        "backend/app/api/imt.py": [
+          "backend/app/db/database.py",
+          "backend/app/models/imt.py"
+        ],
+        "backend/app/db/database.py": [
+          "backend/app/core/config.py"
+        ],
+        "backend/app/models/fs_link.py": [
+          "backend/app/db/database.py"
+        ],
+        "backend/app/models/imt.py": [
+          "backend/app/db/database.py"
+        ]
+      },
+      "neighborMap": {
+        "backend/app/api/allocation.py": [
+          {
+            "path": "backend/app/services/coverage.py",
+            "batchIndex": 2,
+            "symbols": [
+              "LinkBudgetResult",
+              "CoverageTradeOff",
+              "CoverageEngine",
+              "quick_radius",
+              "quick_eirp"
+            ]
+          },
+          {
+            "path": "backend/app/services/interference.py",
+            "batchIndex": 2,
+            "symbols": [
+              "FSLinkData",
+              "IMTNeighborData",
+              "InterferencePair",
+              "PairResult",
+              "BlockResult",
+              "InterferenceResult",
+              "haversine_m",
+              "bearing_deg",
+              "dist_to_path_m",
+              "freq_overlap",
+              "is_imt_in_fs_beam",
+              "InterferenceEngine",
+              "phase0_only"
+            ]
+          },
+          {
+            "path": "backend/app/main.py",
+            "batchIndex": 2,
+            "symbols": [
+              "health_check"
+            ]
+          }
+        ],
+        "backend/app/api/fs_links.py": [
+          {
+            "path": "backend/app/main.py",
+            "batchIndex": 2,
+            "symbols": [
+              "health_check"
+            ]
+          }
+        ],
+        "backend/app/api/imt.py": [
+          {
+            "path": "backend/app/main.py",
+            "batchIndex": 2,
+            "symbols": [
+              "health_check"
+            ]
+          }
+        ],
+        "backend/app/db/database.py": [
+          {
+            "path": "backend/app/core/config.py",
+            "batchIndex": 2,
+            "symbols": [
+              "Settings",
+              "get_settings"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 4,
+      "files": [
+        {
+          "path": "backend/migrations/001_init.sql",
+          "language": "sql",
+          "sizeLines": 104,
+          "fileCategory": "data"
+        }
+      ],
+      "batchImportData": {
+        "backend/migrations/001_init.sql": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 5,
+      "files": [
+        {
+          "path": ".hermes/plans/narrative-log-patch.txt",
+          "language": "txt",
+          "sizeLines": 264,
+          "fileCategory": "docs"
+        },
+        {
+          "path": ".hermes/plans/phase1-backend.md",
+          "language": "markdown",
+          "sizeLines": 58,
+          "fileCategory": "docs"
+        },
+        {
+          "path": ".hermes/plans/phase4-auth-dashboard.md",
+          "language": "markdown",
+          "sizeLines": 36,
+          "fileCategory": "docs"
+        },
+        {
+          "path": ".hermes/plans/phase5-map-spectrum.md",
+          "language": "markdown",
+          "sizeLines": 82,
+          "fileCategory": "docs"
+        },
+        {
+          "path": ".hermes/plans/phase7-imt-workspace-login.md",
+          "language": "markdown",
+          "sizeLines": 57,
+          "fileCategory": "docs"
+        },
+        {
+          "path": ".hermes/plans/ui-ux-overhaul.md",
+          "language": "markdown",
+          "sizeLines": 64,
+          "fileCategory": "docs"
+        }
+      ],
+      "batchImportData": {
+        ".hermes/plans/narrative-log-patch.txt": [],
+        ".hermes/plans/phase1-backend.md": [],
+        ".hermes/plans/phase4-auth-dashboard.md": [],
+        ".hermes/plans/phase5-map-spectrum.md": [],
+        ".hermes/plans/phase7-imt-workspace-login.md": [],
+        ".hermes/plans/ui-ux-overhaul.md": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 6,
+      "files": [
+        {
+          "path": "frontend/index.html",
+          "language": "html",
+          "sizeLines": 16,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "frontend/package.json",
+          "language": "json",
+          "sizeLines": 28,
+          "fileCategory": "config"
+        },
+        {
+          "path": "frontend/tsconfig.json",
+          "language": "json",
+          "sizeLines": 20,
+          "fileCategory": "config"
+        }
+      ],
+      "batchImportData": {
+        "frontend/index.html": [],
+        "frontend/package.json": [],
+        "frontend/tsconfig.json": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 7,
+      "files": [
+        {
+          "path": ".hermes/design-system.md",
+          "language": "markdown",
+          "sizeLines": 42,
+          "fileCategory": "docs"
+        },
+        {
+          "path": ".understand-anything/.understandignore",
+          "language": "unknown",
+          "sizeLines": 23,
+          "fileCategory": "code"
+        },
+        {
+          "path": ".understand-anything/config.json",
+          "language": "json",
+          "sizeLines": 0,
+          "fileCategory": "config"
+        },
+        {
+          "path": "backend/app/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/core/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/db/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/models/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/app/services/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "backend/pyproject.toml",
+          "language": "toml",
+          "sizeLines": 40,
+          "fileCategory": "config"
+        },
+        {
+          "path": "backend/tests/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "data/mockups/fs_links.csv",
+          "language": "csv",
+          "sizeLines": 11,
+          "fileCategory": "data"
+        },
+        {
+          "path": "docker-compose.yml",
+          "language": "yaml",
+          "sizeLines": 19,
+          "fileCategory": "infra"
+        },
+        {
+          "path": "frontend/postcss.config.js",
+          "language": "javascript",
+          "sizeLines": 6,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/components/AllocationForm.tsx",
+          "language": "typescript",
+          "sizeLines": 178,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/src/index.css",
+          "language": "css",
+          "sizeLines": 124,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "frontend/src/vite-env.d.ts",
+          "language": "typescript",
+          "sizeLines": 1,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/tailwind.config.js",
+          "language": "javascript",
+          "sizeLines": 30,
+          "fileCategory": "code"
+        },
+        {
+          "path": "frontend/vite.config.ts",
+          "language": "typescript",
+          "sizeLines": 16,
+          "fileCategory": "code"
+        },
+        {
+          "path": "README.md",
+          "language": "markdown",
+          "sizeLines": 3,
+          "fileCategory": "docs"
+        }
+      ],
+      "batchImportData": {
+        ".hermes/design-system.md": [],
+        ".understand-anything/.understandignore": [],
+        ".understand-anything/config.json": [],
+        "backend/app/__init__.py": [],
+        "backend/app/core/__init__.py": [],
+        "backend/app/db/__init__.py": [],
+        "backend/app/models/__init__.py": [],
+        "backend/app/services/__init__.py": [],
+        "backend/pyproject.toml": [],
+        "backend/tests/__init__.py": [],
+        "data/mockups/fs_links.csv": [],
+        "docker-compose.yml": [],
+        "frontend/postcss.config.js": [],
+        "frontend/src/components/AllocationForm.tsx": [],
+        "frontend/src/index.css": [],
+        "frontend/src/vite-env.d.ts": [],
+        "frontend/tailwind.config.js": [],
+        "frontend/vite.config.ts": [],
+        "README.md": []
+      },
+      "neighborMap": {
+        "frontend/src/index.css": [
+          {
+            "path": "frontend/src/main.tsx",
+            "batchIndex": 1,
+            "symbols": []
+          }
+        ]
+      }
+    }
+  ]
+}

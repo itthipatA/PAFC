@@ -1,0 +1,73 @@
+{
+  "batchIndex": 3,
+  "nodes": [
+    {
+      "id": "backend/app/api/allocation.py",
+      "type": "route",
+      "name": "allocation.router",
+      "filePath": "backend/app/api/allocation.py",
+      "summary": "Spectrum Allocation Engine API — POST /api/allocate/analyze (วิเคราะห์การรบกวนแบบ 3 เฟสเต็มรูปแบบ: Phase 0 → Phase 1 → Phase 2 โดยดึง FS links และ IMT allocations จาก DB, แปลงเป็น FSLinkData/IMTNeighborData, รัน InterferenceEngine.analyze(), และเสนอ trade-off EIRP reduction เมื่อมี conflicts), POST /api/allocate/pre-screen (Phase 0 only — ระบุ victim/interferer pairs โดยไม่คำนวณละเอียด), helper _parse_wkt_center() และ _compute_tradeoff()",
+      "tags": ["fastapi", "router", "allocation", "interference-engine", "pre-screen", "tradeoff", "wkt-parser", "jwt-protected"]
+    },
+    {
+      "id": "backend/app/api/fs_links.py",
+      "type": "route",
+      "name": "fs_links.router",
+      "filePath": "backend/app/api/fs_links.py",
+      "summary": "FS Links CRUD API — GET / (list พร้อม filter สถานะและช่วงความถี่), GET /:id, POST / (สร้าง), PUT /:id (แก้ไข), DELETE /:id (soft-delete → inactive), POST /import/csv (นำเข้าจากไฟล์ CSV) — helper _fs_to_dict() แปลง FSLink เป็น dict ที่มีโครงสร้าง tx/rx/frequency/rf",
+      "tags": ["fastapi", "router", "crud", "fs-links", "csv-import", "fixed-service", "jwt-protected"]
+    },
+    {
+      "id": "backend/app/api/imt.py",
+      "type": "route",
+      "name": "imt.router",
+      "filePath": "backend/app/api/imt.py",
+      "summary": "IMT Allocations CRUD API — GET / (list เรียงตามวันที่สร้าง), GET /:id (รวม spectrum blocks), POST / (สร้าง allocation + blocks, แปลง center_lat/lon เป็น WKT polygon), PUT /:id (แก้ไข), DELETE /:id (soft-delete → expired) — helpers: _imt_to_dict(), _block_to_dict(), _extract_center_from_wkt()",
+      "tags": ["fastapi", "router", "crud", "imt", "spectrum-blocks", "wkt", "jwt-protected"]
+    },
+    {
+      "id": "backend/app/db/database.py",
+      "type": "infrastructure",
+      "name": "database",
+      "filePath": "backend/app/db/database.py",
+      "summary": "Database connection — SQLAlchemy async engine (postgresql+asyncpg) สร้างจาก settings.database_url, async_sessionmaker, Base class (DeclarativeBase), dependency get_db() สำหรับ FastAPI ให้ async session แบบ context manager",
+      "tags": ["python", "sqlalchemy", "async", "postgresql", "asyncpg", "dependency"]
+    },
+    {
+      "id": "backend/app/models/fs_link.py",
+      "type": "model",
+      "name": "FSLink",
+      "filePath": "backend/app/models/fs_link.py",
+      "summary": "SQLAlchemy Model สำหรับ Fixed Service Link — เก็บข้อมูลตำแหน่ง transmitter/receiver (lat/lon/altitude), ความถี่ (freq_low, freq_high, bandwidth), RF parameters (tx_power, tx_antenna_gain, rx_antenna_gain, beamwidth, azimuth, polarization), channel_plan, modulation, status — table: fs_links",
+      "tags": ["python", "sqlalchemy", "model", "fs-link", "microwave", "incumbent", "orm"]
+    },
+    {
+      "id": "backend/app/models/imt.py",
+      "type": "model",
+      "name": "IMTAllocation+SpectrumBlock",
+      "filePath": "backend/app/models/imt.py",
+      "summary": "SQLAlchemy Models สำหรับ IMT Private Network — IMTAllocation: เก็บข้อมูลพื้นที่ (area_wkt WKT polygon, cell_radius), RF parameters (antenna_height, max_eirp, antenna_gain), coverage params (target_rss, shadow_margin, building_loss, propagation_model, coverage_classification), status, validity dates — SpectrumBlock: บล็อกคลื่นความถี่ 10 MHz (freq_low, freq_high) ผูกกับ allocation_id — tables: imt_allocations, spectrum_blocks",
+      "tags": ["python", "sqlalchemy", "model", "imt", "spectrum-blocks", "wkt", "5g-nr", "orm"]
+    }
+  ],
+  "edges": [
+    {"source": "backend/app/api/allocation.py", "target": "backend/app/db/database.py", "type": "imports"},
+    {"source": "backend/app/api/allocation.py", "target": "backend/app/models/fs_link.py", "type": "imports"},
+    {"source": "backend/app/api/allocation.py", "target": "backend/app/models/imt.py", "type": "imports"},
+    {"source": "backend/app/api/allocation.py", "target": "backend/app/services/interference.py", "type": "imports"},
+    {"source": "backend/app/api/allocation.py", "target": "backend/app/services/coverage.py", "type": "imports"},
+    {"source": "backend/app/api/fs_links.py", "target": "backend/app/db/database.py", "type": "imports"},
+    {"source": "backend/app/api/fs_links.py", "target": "backend/app/models/fs_link.py", "type": "imports"},
+    {"source": "backend/app/api/imt.py", "target": "backend/app/db/database.py", "type": "imports"},
+    {"source": "backend/app/api/imt.py", "target": "backend/app/models/imt.py", "type": "imports"},
+    {"source": "backend/app/db/database.py", "target": "backend/app/core/config.py", "type": "imports"},
+    {"source": "backend/app/models/fs_link.py", "target": "backend/app/db/database.py", "type": "imports"},
+    {"source": "backend/app/models/imt.py", "target": "backend/app/db/database.py", "type": "imports"},
+    {"source": "backend/app/api/allocation.py", "target": "backend/app/services/interference.py", "type": "data_flow", "label": "FSLinkData/IMTNeighborData → InterferenceEngine.analyze()"},
+    {"source": "backend/app/api/allocation.py", "target": "backend/app/services/coverage.py", "type": "data_flow", "label": "CoverageEngine.calculate_required_eirp() → auto_eirp"},
+    {"source": "backend/app/api/fs_links.py", "target": "backend/app/models/fs_link.py", "type": "data_flow", "label": "SELECT/INSERT/UPDATE FSLink → fs_links table"},
+    {"source": "backend/app/api/imt.py", "target": "backend/app/models/imt.py", "type": "data_flow", "label": "SELECT/INSERT/UPDATE IMTAllocation + SpectrumBlock → imt_allocations + spectrum_blocks tables"},
+    {"source": "backend/app/models/fs_link.py", "target": "backend/app/api/fs_links.py", "type": "schema_dependency", "label": "FSLink schema → FS Links CRUD"},
+    {"source": "backend/app/models/imt.py", "target": "backend/app/api/imt.py", "type": "schema_dependency", "label": "IMTAllocation+SpectrumBlock schema → IMT CRUD"}
+  ]
+}

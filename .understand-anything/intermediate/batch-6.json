@@ -1,0 +1,33 @@
+{
+  "batchIndex": 6,
+  "nodes": [
+    {
+      "id": "frontend/index.html",
+      "type": "config",
+      "name": "index.html",
+      "filePath": "frontend/index.html",
+      "summary": "HTML template หลักของ Vite — กำหนด root div สำหรับ React app, meta viewport, Google Fonts (DM Serif Display + Noto Sans Thai)",
+      "tags": ["html", "vite", "template", "fonts"]
+    },
+    {
+      "id": "frontend/package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "frontend/package.json",
+      "summary": "Frontend package manifest — React 18, Vite 6, TypeScript, MapLibre GL, Turf.js, TailwindCSS v4, Lucide React icons",
+      "tags": ["npm", "config", "dependencies", "react", "vite", "maplibre"]
+    },
+    {
+      "id": "frontend/tsconfig.json",
+      "type": "config",
+      "name": "tsconfig.json",
+      "filePath": "frontend/tsconfig.json",
+      "summary": "TypeScript configuration สำหรับ frontend — strict mode, JSX react-jsx, path aliases",
+      "tags": ["typescript", "config", "strict-mode", "tsconfig"]
+    }
+  ],
+  "edges": [
+    {"source": "frontend/package.json", "target": "frontend/src/main.tsx", "type": "defines_entry", "label": "main entry point"},
+    {"source": "frontend/tsconfig.json", "target": "frontend/src/types.ts", "type": "configures"}
+  ]
+}

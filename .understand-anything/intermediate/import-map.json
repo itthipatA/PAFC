@@ -1,0 +1,144 @@
+{
+  "scriptCompleted": true,
+  "stats": {
+    "filesScanned": 57,
+    "filesWithImports": 24,
+    "totalEdges": 53
+  },
+  "importMap": {
+    ".hermes/design-system.md": [],
+    ".hermes/plans/narrative-log-patch.txt": [],
+    ".hermes/plans/phase1-backend.md": [],
+    ".hermes/plans/phase4-auth-dashboard.md": [],
+    ".hermes/plans/phase5-map-spectrum.md": [],
+    ".hermes/plans/phase7-imt-workspace-login.md": [],
+    ".hermes/plans/ui-ux-overhaul.md": [],
+    ".understand-anything/.understandignore": [],
+    ".understand-anything/config.json": [],
+    "backend/app/__init__.py": [],
+    "backend/app/api/__init__.py": [],
+    "backend/app/api/allocation.py": [
+      "backend/app/db/database.py",
+      "backend/app/models/fs_link.py",
+      "backend/app/models/imt.py",
+      "backend/app/services/coverage.py",
+      "backend/app/services/interference.py"
+    ],
+    "backend/app/api/auth.py": [
+      "backend/app/core/auth.py"
+    ],
+    "backend/app/api/coverage.py": [
+      "backend/app/services/coverage.py"
+    ],
+    "backend/app/api/fs_links.py": [
+      "backend/app/db/database.py",
+      "backend/app/models/fs_link.py"
+    ],
+    "backend/app/api/imt.py": [
+      "backend/app/db/database.py",
+      "backend/app/models/imt.py"
+    ],
+    "backend/app/api/propagation.py": [
+      "backend/app/services/propagation.py"
+    ],
+    "backend/app/core/__init__.py": [],
+    "backend/app/core/auth.py": [
+      "backend/app/core/config.py"
+    ],
+    "backend/app/core/config.py": [],
+    "backend/app/db/__init__.py": [],
+    "backend/app/db/database.py": [
+      "backend/app/core/config.py"
+    ],
+    "backend/app/main.py": [
+      "backend/app/api/__init__.py",
+      "backend/app/api/allocation.py",
+      "backend/app/api/auth.py",
+      "backend/app/api/coverage.py",
+      "backend/app/api/fs_links.py",
+      "backend/app/api/imt.py",
+      "backend/app/api/propagation.py",
+      "backend/app/core/auth.py",
+      "backend/app/core/config.py"
+    ],
+    "backend/app/models/__init__.py": [],
+    "backend/app/models/fs_link.py": [
+      "backend/app/db/database.py"
+    ],
+    "backend/app/models/imt.py": [
+      "backend/app/db/database.py"
+    ],
+    "backend/app/services/__init__.py": [],
+    "backend/app/services/coverage.py": [
+      "backend/app/services/propagation.py"
+    ],
+    "backend/app/services/interference.py": [
+      "backend/app/core/config.py",
+      "backend/app/services/propagation.py"
+    ],
+    "backend/app/services/propagation.py": [],
+    "backend/migrations/001_init.sql": [],
+    "backend/pyproject.toml": [],
+    "backend/tests/__init__.py": [],
+    "data/mockups/fs_links.csv": [],
+    "docker-compose.yml": [],
+    "frontend/index.html": [],
+    "frontend/package.json": [],
+    "frontend/postcss.config.js": [],
+    "frontend/src/App.tsx": [
+      "frontend/src/components/FSLinkManager.tsx",
+      "frontend/src/components/IMTAddWorkspace.tsx",
+      "frontend/src/components/IMTManager.tsx",
+      "frontend/src/components/LoginPage.tsx",
+      "frontend/src/components/MapView.tsx",
+      "frontend/src/components/QueryPanel.tsx",
+      "frontend/src/contexts/AuthContext.tsx"
+    ],
+    "frontend/src/components/AllocationForm.tsx": [],
+    "frontend/src/components/BlockPanel.tsx": [
+      "frontend/src/types.ts"
+    ],
+    "frontend/src/components/FSLinkManager.tsx": [
+      "frontend/src/contexts/AuthContext.tsx",
+      "frontend/src/types.ts"
+    ],
+    "frontend/src/components/IMTAddWorkspace.tsx": [
+      "frontend/src/components/MapView.tsx",
+      "frontend/src/contexts/AuthContext.tsx",
+      "frontend/src/types.ts"
+    ],
+    "frontend/src/components/IMTManager.tsx": [
+      "frontend/src/contexts/AuthContext.tsx",
+      "frontend/src/types.ts"
+    ],
+    "frontend/src/components/LoginPage.tsx": [
+      "frontend/src/contexts/AuthContext.tsx"
+    ],
+    "frontend/src/components/MapView.tsx": [
+      "frontend/src/contexts/AuthContext.tsx",
+      "frontend/src/types.ts"
+    ],
+    "frontend/src/components/PublicDashboard.tsx": [
+      "frontend/src/components/MapView.tsx",
+      "frontend/src/types.ts"
+    ],
+    "frontend/src/components/QueryPanel.tsx": [
+      "frontend/src/contexts/AuthContext.tsx"
+    ],
+    "frontend/src/contexts/AuthContext.tsx": [
+      "frontend/src/types.ts"
+    ],
+    "frontend/src/index.css": [],
+    "frontend/src/main.tsx": [
+      "frontend/src/App.tsx",
+      "frontend/src/contexts/AuthContext.tsx",
+      "frontend/src/index.css"
+    ],
+    "frontend/src/types.ts": [],
+    "frontend/src/vite-env.d.ts": [],
+    "frontend/tailwind.config.js": [],
+    "frontend/tsconfig.json": [],
+    "frontend/vite.config.ts": [],
+    "README.md": []
+  }
+}
