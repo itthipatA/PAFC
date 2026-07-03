@@ -458,8 +458,24 @@ function generateNarrativeLog(
     // Note if aggregate I includes co-channel contributions
     const blocksWithI = blocks.filter((b: any) => b.i_total_dbm != null && b.i_total_dbm > -200)
     if (blocksWithI.length > 0) {
-      lines.push('   Note: Co-channel interference is INCLUDED in aggregate I_total')
-      lines.push('   (multiple interferers summed in linear domain per Phase 17)')
+      // Count per-victim aggregates
+      const newImtBlocks = blocks.filter((b: any) => b.i_total_to_new_imt_dbm != null && b.i_total_to_new_imt_dbm > -200)
+      const fsBlocks = blocks.filter((b: any) => b.i_total_to_fs_dbm != null && b.i_total_to_fs_dbm > -200)
+      const existingImtBlocks = blocks.filter((b: any) => b.i_total_to_existing_imt_dbm != null && b.i_total_to_existing_imt_dbm > -200)
+      lines.push('   Note: Aggregate I includes ALL interferers (FS + IMT)')
+      lines.push('   summed in linear domain per victim type')
+      if (newImtBlocks.length > 0) {
+        const worst = newImtBlocks.reduce((a: any, b: any) => (b.i_total_to_new_imt_dbm || -200) > (a.i_total_to_new_imt_dbm || -200) ? b : a, newImtBlocks[0])
+        lines.push(`   I_total → IMT ใหม่: worst ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz = ${worst.i_total_to_new_imt_dbm?.toFixed(1)} dBm (FS + IMT อื่น → IMT ใหม่)`)
+      }
+      if (fsBlocks.length > 0) {
+        const worst = fsBlocks.reduce((a: any, b: any) => (b.i_total_to_fs_dbm || -200) > (a.i_total_to_fs_dbm || -200) ? b : a, fsBlocks[0])
+        lines.push(`   I_total → FS:      worst ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz = ${worst.i_total_to_fs_dbm?.toFixed(1)} dBm (IMT ใหม่ → FS receivers)`)
+      }
+      if (existingImtBlocks.length > 0) {
+        const worst = existingImtBlocks.reduce((a: any, b: any) => (b.i_total_to_existing_imt_dbm || -200) > (a.i_total_to_existing_imt_dbm || -200) ? b : a, existingImtBlocks[0])
+        lines.push(`   I_total → IMT อื่น: worst ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz = ${worst.i_total_to_existing_imt_dbm?.toFixed(1)} dBm (IMT ใหม่ → IMT เดิม)`)
+      }
     }
   } else {
     lines.push('   No co-channel conflicts.')
@@ -578,12 +594,19 @@ function generateNarrativeLog(
   lines.push('   # = Available   X = Blocked   - = Guard Band')
   lines.push('')
 
-  // Aggregate interference summary (Phase 17)
+  // Aggregate interference summary (Phase 17 - per victim)
   const blocksWithI = blocks.filter((b: any) => b.i_total_dbm != null && b.i_total_dbm > -200)
   if (blocksWithI.length > 0) {
     lines.push('   Aggregate Interference (I_total = 10*log(sum of all interferers)):')
     const worst = blocksWithI.reduce((a: any, b: any) => (b.i_total_dbm || -200) > (a.i_total_dbm || -200) ? b : a, blocksWithI[0])
-    lines.push(`   Worst block: ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz | I_total=${worst.i_total_dbm?.toFixed(1)} dBm`)
+    lines.push(`   Worst block (combined): ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz | I_total=${worst.i_total_dbm?.toFixed(1)} dBm`)
+    // Per-victim breakdown
+    const newImtWorst = blocks.filter((b: any) => b.i_total_to_new_imt_dbm && b.i_total_to_new_imt_dbm > -200)
+    const fsWorst = blocks.filter((b: any) => b.i_total_to_fs_dbm && b.i_total_to_fs_dbm > -200)
+    const exImtWorst = blocks.filter((b: any) => b.i_total_to_existing_imt_dbm && b.i_total_to_existing_imt_dbm > -200)
+    if (newImtWorst.length > 0) lines.push(`     → IMT ใหม่: ${newImtWorst.map((b:any) => `${b.freq_low.toFixed(0)}MHz:${b.i_total_to_new_imt_dbm?.toFixed(1)}dBm`).join(', ')}`)
+    if (fsWorst.length > 0) lines.push(`     → FS:      ${fsWorst.map((b:any) => `${b.freq_low.toFixed(0)}MHz:${b.i_total_to_fs_dbm?.toFixed(1)}dBm`).join(', ')}`)
+    if (exImtWorst.length > 0) lines.push(`     → IMT อื่น: ${exImtWorst.map((b:any) => `${b.freq_low.toFixed(0)}MHz:${b.i_total_to_existing_imt_dbm?.toFixed(1)}dBm`).join(', ')}`)
     lines.push('')
   }
 
