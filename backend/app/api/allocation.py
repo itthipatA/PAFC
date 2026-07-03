@@ -153,6 +153,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         antenna_type=str(data.get("antenna_type", "omni") or "omni"),
         sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
         sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
+        model_params=data.get("model_params", {}) or {},
     )
 
     return {
@@ -426,6 +427,7 @@ async def pre_screen(data: dict, db: AsyncSession = Depends(get_db)):
         antenna_type=str(data.get("antenna_type", "omni") or "omni"),
         sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
         sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
+        model_params=data.get("model_params", {}) or {},
     )
 
     return {

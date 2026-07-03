@@ -12,7 +12,7 @@ Key addition: bidirectional analysis — FS_TX → IMT (previously missing),
 plus explicit victim/interferer labeling for every pair.
 """
 import math
-from typing import Optional
+from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 from app.core.config import get_settings
 from app.services.propagation import PropagationRegistry
@@ -495,6 +495,7 @@ class InterferenceEngine:
         antenna_type: str = "omni",
         sector_beamwidth_deg: float = 120,
         sector_azimuth_deg: float = 0,
+        model_params: Optional[dict] = None,
     ) -> InterferenceResult:
         """
         Full three-phase analysis.
@@ -506,6 +507,7 @@ class InterferenceEngine:
 
         band_start = requested_band_start or settings.band_start_mhz
         band_end = requested_band_end or settings.band_end_mhz
+        self.model_params = model_params or {}
 
         # ── Phase 0: Pre-screen ──
         pairs = self.phase0_identify_pairs(
@@ -891,8 +893,16 @@ class InterferenceEngine:
                     antenna_type, sector_beamwidth_deg, sector_azimuth_deg,
                 )
             elif pair.direction == "IMT↔IMT_ADJACENT":
+                victim_imt2 = None
+                if pair.victim_id != "new":
+                    victim_imt2 = imt_by_id.get(pair.victim_id)
+                interferer_imt2 = None
+                if pair.interferer_id != "new":
+                    interferer_imt2 = imt_by_id.get(pair.interferer_id)
                 result = self._compute_imt_to_imt_adjacent(
-                    pair, new_imt_radius, threshold
+                    pair, new_imt_lat, new_imt_lon, new_imt_radius,
+                    new_imt_eirp, new_imt_height, new_imt_ant_gain,
+                    victim_imt2, interferer_imt2, threshold,
                 )
             else:
                 continue
@@ -1049,7 +1059,7 @@ class InterferenceEngine:
 
         i_dbm = interferer_eirp - path_loss + victim_ant_gain
 
-        # Sector antenna discrimination: when NEW_IMT is interferer
+        # Sector antenna discrimination for interferer (both directions)
         sector_disc = 0.0
         if pair.interferer_type == "NEW_IMT" and antenna_type == "sector" and victim_imt:
             sector_disc = sector_antenna_discrimination_db(
@@ -1058,6 +1068,14 @@ class InterferenceEngine:
                 antenna_type="sector",
                 sector_azimuth_deg=sector_azimuth_deg,
                 sector_beamwidth_deg=sector_beamwidth_deg,
+            )
+        elif pair.interferer_type == "EXISTING_IMT" and interferer_imt and interferer_imt.antenna_type == "sector":
+            sector_disc = sector_antenna_discrimination_db(
+                interferer_imt.center_lat, interferer_imt.center_lon,
+                new_imt_lat, new_imt_lon,
+                antenna_type="sector",
+                sector_azimuth_deg=interferer_imt.sector_azimuth_deg,
+                sector_beamwidth_deg=interferer_imt.sector_beamwidth_deg,
             )
         i_dbm -= sector_disc
 
@@ -1091,60 +1109,49 @@ class InterferenceEngine:
 
     def _compute_imt_to_imt_adjacent(
         self, pair: InterferencePair,
-        new_imt_radius: float,
+        new_imt_lat, new_imt_lon, new_imt_radius,
+        new_imt_eirp, new_imt_height, new_imt_ant_gain,
+        victim_imt, interferer_imt,
         threshold: float,
     ) -> PairResult:
-        """IMT ↔ IMT adjacent channel — guard band determination.
-        
-        Required distance depends on guard band width:
-        - 0 MHz (adjacent): ACS only → 134m
-        - 10 MHz: ACS + filter roll-off → ~30m  
-        - 20+ MHz: >55 dB isolation → ~4m
-        - 40+ MHz: >85 dB isolation → co-location possible (0m)
-        
-        Formula: isolation = guard_band_isolation_db(width_mhz)
-                 required_sep = COCHANNEL_PROTECTION_M / 10^(isolation/20)
-        """
+        """IMT ↔ IMT adjacent channel — compute actual I[dBm] with isolation."""
+        if pair.interferer_type == "NEW_IMT":
+            int_eirp = new_imt_eirp
+            int_h = new_imt_height
+            int_lat, int_lon = new_imt_lat, new_imt_lon
+            vic_gain = victim_imt.antenna_gain if victim_imt else 12
+            vic_h = victim_imt.antenna_height if victim_imt else 15
+            vic_r = victim_imt.cell_radius if victim_imt else 500
+            eff_d = max(pair.distance_m - vic_r, 1.0)
+        else:
+            int_eirp = interferer_imt.max_eirp if interferer_imt else 35
+            int_h = interferer_imt.antenna_height if interferer_imt else 15
+            int_lat = interferer_imt.center_lat if interferer_imt else new_imt_lat
+            int_lon = interferer_imt.center_lon if interferer_imt else new_imt_lon
+            vic_gain = new_imt_ant_gain
+            vic_h = new_imt_height
+            eff_d = max(pair.distance_m - new_imt_radius, 1.0)
+        freq_mhz = (pair.freq_overlap_low + pair.freq_overlap_high) / 2
+        pl = self.model.path_loss_db(distance_m=eff_d, frequency_mhz=freq_mhz,
+                                      tx_height_m=int_h, rx_height_m=vic_h,
+                                      **self.model_params)
         guard_mhz = max(pair.guard_band_mhz, 0)
-        isolation_db = self.guard_band_isolation_db(guard_mhz)
-        
-        # Required separation from isolation
-        distance_factor = 10 ** (isolation_db / 20)
-        required_adj_sep = max(self.COCHANNEL_PROTECTION_M / distance_factor, 1)
-        
-        # Use conservative victim cell_radius default
-        victim_cell_r = 500
-        min_adj_sep = new_imt_radius + victim_cell_r + required_adj_sep
-        needs_guard = pair.distance_m < min_adj_sep
-        
-        # Determine verdict
-        if needs_guard:
-            if required_adj_sep <= 1:
-                verdict = "CLEAR"  # Isolation sufficient, no physical separation needed
-                detail_end = "→ CLEAR (isolation เพียงพอ — ติดกันได้)"
-            else:
-                verdict = "GUARD_BAND"
-                detail_end = f"→ GUARD_BAND"
+        total_iso = self.guard_band_isolation_db(guard_mhz) + self.ACS_DB + self.ACLR_DB
+        i_dbm = int_eirp - pl + vic_gain - total_iso
+        margin = i_dbm - threshold
+        df = 10 ** (total_iso / 20)
+        req_sep = max(self.COCHANNEL_PROTECTION_M / df, 1)
+        int_r = interferer_imt.cell_radius if interferer_imt else 500 if pair.interferer_id != "new" else new_imt_radius
+        vic_r2 = victim_imt.cell_radius if victim_imt else 500 if pair.victim_id != "new" else new_imt_radius
+        violates = pair.distance_m < (int_r + vic_r2 + req_sep)
+        if i_dbm > threshold or violates:
+            verdict = "CONFLICT" if i_dbm > threshold else "GUARD_BAND"
         else:
             verdict = "CLEAR"
-            detail_end = "→ CLEAR"
-
-        return PairResult(
-            pair=pair,
-            i_dbm=-200,
-            threshold_dbm=threshold,
-            margin_db=-200,
-            path_loss_db=isolation_db,  # Store isolation in path_loss_db for frontend
-            effective_distance_m=pair.distance_m,
-            verdict=verdict,
-            detail=(
-                f"Guard band: {guard_mhz:.0f} MHz → isolation={isolation_db:.0f} dB (ACS={self.ACS_DB}+{isolation_db-self.ACS_DB:.0f} filter) → "
-                f"distance_factor=10^({isolation_db:.0f}/20)={distance_factor:.0f}× → "
-                f"required_sep={self.COCHANNEL_PROTECTION_M}/{distance_factor:.0f}≈{required_adj_sep:.0f}m | "
-                f"min_sep={new_imt_radius}+{victim_cell_r}+{required_adj_sep:.0f}={min_adj_sep:.0f}m, "
-                f"actual={pair.distance_m:.0f}m {detail_end}"
-            ),
-        )
+        return PairResult(pair=pair, i_dbm=round(i_dbm,1), threshold_dbm=threshold,
+                          margin_db=round(margin,1), path_loss_db=round(pl,1),
+                          effective_distance_m=eff_d, verdict=verdict,
+                          detail=f"IMT↔IMT Adjacent [{pair.interferer_name}→{pair.victim_name}]: I={i_dbm:.1f} dBm vs {threshold} dBm, guard={guard_mhz:.0f}MHz iso={total_iso:.0f}dB, dist={pair.distance_m:.0f}m")
 
     def _compute_fs_to_imt_adjacent(
         self, pair: InterferencePair,
@@ -1180,7 +1187,9 @@ class InterferenceEngine:
             fs_eirp = 65
             beam_disc = 0 if pair.within_beam else 25
         
-        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc - self.ACS_DB - self.ACLR_DB
+        guard_mhz = max(pair.guard_band_mhz, 0)
+        total_adj = self.guard_band_isolation_db(guard_mhz) + self.ACS_DB + self.ACLR_DB
+        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc - total_adj
         margin = i_dbm - threshold
         verdict = "CONFLICT" if i_dbm > threshold else "CLEAR"
         

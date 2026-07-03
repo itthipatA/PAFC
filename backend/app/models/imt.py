@@ -23,6 +23,11 @@ class IMTAllocation(Base):
     max_eirp = Column(Float, nullable=False)           # dBm (already includes antenna gain)
     antenna_gain = Column(Float, nullable=True)        # dBi
 
+    # Antenna Pattern (Phase 17)
+    antenna_type = Column(String(20), nullable=True, default="omni")  # omni | sector
+    sector_beamwidth_deg = Column(Float, nullable=True, default=120)  # deg — only for sector
+    sector_azimuth_deg = Column(Float, nullable=True, default=0)      # deg from True North
+
     # Coverage / Link Budget Parameters (Phase 15)
     target_rss = Column(Float, nullable=True)          # dBm — target RSS at cell edge
     shadow_margin = Column(Float, nullable=True)       # dB — shadow fade margin

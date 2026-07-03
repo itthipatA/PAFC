@@ -147,6 +147,10 @@ def _imt_to_dict(a: IMTAllocation, blocks: list) -> dict:
         "antenna_height": a.antenna_height,
         "max_eirp": a.max_eirp,
         "antenna_gain": a.antenna_gain,
+        # Antenna Pattern (Phase 17)
+        "antenna_type": a.antenna_type or "omni",
+        "sector_beamwidth_deg": a.sector_beamwidth_deg or 120,
+        "sector_azimuth_deg": a.sector_azimuth_deg or 0,
         # Coverage params (Phase 15)
         "target_rss": a.target_rss,
         "shadow_margin": a.shadow_margin,

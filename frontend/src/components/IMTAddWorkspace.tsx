@@ -640,6 +640,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [antennaType, setAntennaType] = useState('omni')
   const [sectorBeamwidth, setSectorBeamwidth] = useState(120)
   const [sectorAzimuth, setSectorAzimuth] = useState(0)
+  const [modelParams, setModelParams] = useState<Record<string, any>>({})
   const [name, setName] = useState('')
   const [operator, setOperator] = useState('')
 
@@ -774,6 +775,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         antenna_type: antennaType,
         sector_beamwidth_deg: sectorBeamwidth,
         sector_azimuth_deg: sectorAzimuth,
+        model_params: modelParams,
       }
       if (autoEirp) {
         body.auto_eirp = true
@@ -1136,7 +1138,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     {p.name === 'clutter_type' || p.name === 'environment' ? (
                       <select
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                        defaultValue={p.defaultValue}
+                        value={modelParams[p.name] ?? p.defaultValue}
+                        onChange={(e) => setModelParams(prev => ({...prev, [p.name]: e.target.value}))}
                       >
                         <option value="urban">Urban (เมือง)</option>
                         <option value="suburban">Suburban (ชานเมือง)</option>
