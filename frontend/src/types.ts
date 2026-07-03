@@ -90,6 +90,12 @@ export interface IMTAllocationCreate {
   antenna_height: number
   antenna_gain: number
   max_eirp: number
+  // Coverage params (Phase 15)
+  target_rss?: number
+  shadow_margin?: number
+  building_loss?: number
+  propagation_model?: string
+  coverage_classification?: string
 }
 
 // ─── Phase 0: Victim/Interferer Pairs ───────────────────────────────────────

@@ -28,6 +28,11 @@ const EMPTY_FORM: IMTAllocationCreate = {
   antenna_height: 15,
   antenna_gain: 12,
   max_eirp: 23,
+  target_rss: -95,
+  shadow_margin: 8,
+  building_loss: 0,
+  propagation_model: 'free_space',
+  coverage_classification: '',
 }
 
 // ─── IMT Detail Panel (expandable row content) ────────────────────────────
@@ -254,6 +259,11 @@ export default function IMTManager() {
       antenna_height: alloc.antenna_height,
       antenna_gain: alloc.antenna_gain,
       max_eirp: alloc.max_eirp,
+      target_rss: (alloc as any).target_rss ?? -95,
+      shadow_margin: (alloc as any).shadow_margin ?? 8,
+      building_loss: (alloc as any).building_loss ?? 0,
+      propagation_model: (alloc as any).propagation_model ?? 'free_space',
+      coverage_classification: (alloc as any).coverage_classification ?? '',
     })
     setFormError('')
     setShowModal(true)
@@ -676,6 +686,62 @@ export default function IMTManager() {
                       onChange={(e) => handleFieldChange('max_eirp', Number(e.target.value))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Coverage Params (Phase 15) */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-100">
+                  พารามิเตอร์ Link Budget (Coverage Engine)
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Target RSS (dBm)
+                    </label>
+                    <input
+                      type="number"
+                      value={form.target_rss}
+                      onChange={(e) => handleFieldChange('target_rss', Number(e.target.value))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Shadow Margin (dB)
+                    </label>
+                    <input
+                      type="number"
+                      value={form.shadow_margin}
+                      onChange={(e) => handleFieldChange('shadow_margin', Number(e.target.value))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Building Loss (dB)
+                    </label>
+                    <input
+                      type="number"
+                      value={form.building_loss}
+                      onChange={(e) => handleFieldChange('building_loss', Number(e.target.value))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Propagation Model
+                    </label>
+                    <select
+                      value={form.propagation_model}
+                      onChange={(e) => handleFieldChange('propagation_model', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                    >
+                      <option value="free_space">Free Space (FSPL)</option>
+                      <option value="p452">ITU-R P.452</option>
+                      <option value="hata">Hata (Urban)</option>
+                    </select>
                   </div>
                 </div>
               </div>
