@@ -1435,7 +1435,11 @@ class InterferenceEngine:
         checks["reciprocal_symmetry"] = {
             "pass": sym_ok,
             "reason": "IMT↔IMT reciprocal margins symmetric (within 10 dB)" if sym_ok
-                      else sym_detail or "Reciprocal asymmetry — check EIRP",
+                      else (
+                          f"{sym_detail} — "
+                          "height-dependent models (Hata, P.1411) produce asymmetric PL "
+                          "when tx_h != rx_h. Expected physics, not a bug."
+                      ),
         }
 
         # 8. EIRP sanity — no positive I[dBm] for 5 GHz IMT
