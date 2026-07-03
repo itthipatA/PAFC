@@ -927,8 +927,8 @@ async function loadIMTAllocations(
 
     if (outerFeatures.length === 0) return
 
-    // 3-layer gradient fill (like FS coordination zone) — NO outline
-    // Outer layer: cell edge — faint signal
+    // 3-layer gradient fill — signal strength colors (no outline)
+    // Outer layer: cell edge — weak signal (light green)
     map.addSource(LAYER_IDS.imtCoverageSource, {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: outerFeatures },
@@ -937,7 +937,7 @@ async function loadIMTAllocations(
       id: LAYER_IDS.imtCoverageFill,
       type: 'fill',
       source: LAYER_IDS.imtCoverageSource,
-      paint: { 'fill-color': '#16A34A', 'fill-opacity': 0.08 },
+      paint: { 'fill-color': '#86EFAC', 'fill-opacity': 0.18 },
     })
     // Mid layer: 60% radius — medium signal
     const midSourceId = LAYER_IDS.imtCoverageSource + '-mid'
@@ -949,9 +949,9 @@ async function loadIMTAllocations(
       id: LAYER_IDS.imtCoverageFill + '-mid',
       type: 'fill',
       source: midSourceId,
-      paint: { 'fill-color': '#16A34A', 'fill-opacity': 0.14 },
+      paint: { 'fill-color': '#16A34A', 'fill-opacity': 0.22 },
     })
-    // Inner layer: 30% radius — strong signal near center
+    // Inner layer: 30% radius — strong signal near center (dark green)
     const innerSourceId = LAYER_IDS.imtCoverageSource + '-inner'
     map.addSource(innerSourceId, {
       type: 'geojson',
@@ -961,7 +961,7 @@ async function loadIMTAllocations(
       id: LAYER_IDS.imtCoverageFill + '-inner',
       type: 'fill',
       source: innerSourceId,
-      paint: { 'fill-color': '#16A34A', 'fill-opacity': 0.20 },
+      paint: { 'fill-color': '#0D6B2E', 'fill-opacity': 0.28 },
     })
 
     // Click on coverage
