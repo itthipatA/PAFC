@@ -324,7 +324,13 @@ function generateNarrativeLog(
       highRisk.forEach((p, i) => {
         const dirLabel = directionLabelForLog(p.direction)
         lines.push(`   ${i + 1}. ${dirLabel}: ${p.interferer_name} → ${p.victim_name}`)
-        lines.push(`      Distance: ${(p.distance_m / 1000).toFixed(1)} km | I≈${p.estimated_i_dbm.toFixed(1)} dBm`)
+        const freqStr = p.freq_overlap_low && p.freq_overlap_high
+          ? `${p.freq_overlap_low.toFixed(0)}-${p.freq_overlap_high.toFixed(0)} MHz`
+          : 'N/A'
+        lines.push(`      Freq: ${freqStr} | Dist: ${(p.distance_m / 1000).toFixed(1)} km | I≈${p.estimated_i_dbm.toFixed(1)} dBm`)
+        if (p.direction === 'FS→IMT' && p.within_beam !== null) {
+          lines.push(`      FS beam: ${p.within_beam ? 'IMT IN main beam' : 'IMT outside beam (-25 dB)'}`)
+        }
       })
     }
     if (medRisk.length > 0) {
@@ -435,6 +441,27 @@ function generateNarrativeLog(
     lines.push('   No co-channel conflicts.')
   }
   lines.push('')
+
+  // Section 4.5: Adjacent Channel Analysis
+  const adjPairs = pairResults.filter(pr => pr.direction === 'IMT↔IMT_ADJACENT')
+  if (adjPairs.length > 0) {
+    lines.push('─── 4.5 ADJACENT CHANNEL ANALYSIS ───────────────────────────────')
+    lines.push(`   Adjacent pairs  : ${adjPairs.length} IMT(s) on adjacent channels`)
+    lines.push('')
+    lines.push('   Adjacent = 0 MHz guard — isolation from ACS (33 dB) only')
+    lines.push('   Wider guard → Section 5 (Guard Band Analysis)')
+    lines.push('')
+    adjPairs.forEach((pr, i) => {
+      const d = pr.detail || ''
+      lines.push(`   ${i+1}. ${pr.interferer} → ${pr.victim}`)
+      lines.push(`      ${d}`)
+      lines.push('')
+    })
+    const clearAdj = adjPairs.filter(pr => pr.verdict === 'CLEAR')
+    const guardAdj = adjPairs.filter(pr => pr.verdict === 'GUARD_BAND')
+    lines.push(`   Result: ${clearAdj.length} CLEAR, ${guardAdj.length} GUARD_BAND`)
+    lines.push('')
+  }
 
   // Section 5: Guard Band
   const guardBlocks = gray.filter((b: any) => b.reason?.includes('Guard band'))
