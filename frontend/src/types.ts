@@ -4,7 +4,10 @@ export interface BlockResult {
   status: 'green' | 'gray' | 'red'
   max_eirp: number | null
   reason: string
-  i_total_dbm?: number | null  // Aggregate interference (Phase 17)
+  i_total_dbm?: number | null  // Aggregate interference — combined
+  i_total_to_new_imt_dbm?: number | null  // Aggregate → new IMT (FS + existing IMT interferers)
+  i_total_to_fs_dbm?: number | null       // Aggregate → FS receivers
+  i_total_to_existing_imt_dbm?: number | null  // Aggregate → existing IMT
 }
 
 export interface FSLink {
@@ -77,6 +80,9 @@ export interface IMTAllocation {
   antenna_height: number
   antenna_gain: number
   max_eirp: number
+  antenna_type: string
+  sector_beamwidth_deg: number
+  sector_azimuth_deg: number
   status: string
   blocks: IMTBlock[]
   created_at: string
@@ -91,6 +97,9 @@ export interface IMTAllocationCreate {
   antenna_height: number
   antenna_gain: number
   max_eirp: number
+  antenna_type: string
+  sector_beamwidth_deg: number
+  sector_azimuth_deg: number
   // Coverage params (Phase 15)
   target_rss?: number
   shadow_margin?: number

@@ -28,6 +28,9 @@ const EMPTY_FORM: IMTAllocationCreate = {
   antenna_height: 15,
   antenna_gain: 12,
   max_eirp: 23,
+  antenna_type: 'omni',
+  sector_beamwidth_deg: 120,
+  sector_azimuth_deg: 0,
   target_rss: -95,
   shadow_margin: 8,
   building_loss: 0,
@@ -261,6 +264,9 @@ export default function IMTManager() {
       antenna_height: alloc.antenna_height,
       antenna_gain: alloc.antenna_gain,
       max_eirp: alloc.max_eirp,
+      antenna_type: (alloc as any).antenna_type ?? 'omni',
+      sector_beamwidth_deg: (alloc as any).sector_beamwidth_deg ?? 120,
+      sector_azimuth_deg: (alloc as any).sector_azimuth_deg ?? 0,
       target_rss: (alloc as any).target_rss ?? -95,
       shadow_margin: (alloc as any).shadow_margin ?? 8,
       building_loss: (alloc as any).building_loss ?? 0,
@@ -696,6 +702,45 @@ export default function IMTManager() {
                       title="Total EIRP = Transmitter Power + Antenna Gain — ไม่ต้องบวก antenna_gain ซ้ำ"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      สายอากาศ IMT
+                    </label>
+                    <select
+                      value={form.antenna_type || 'omni'}
+                      onChange={(e) => handleFieldChange('antenna_type', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                    >
+                      <option value="omni">Omni — รอบทิศทาง</option>
+                      <option value="sector">Sector — แบบเซกเตอร์</option>
+                    </select>
+                  </div>
+                  {(form.antenna_type === 'sector') && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">
+                          Sector Beamwidth (deg)
+                        </label>
+                        <input
+                          type="number"
+                          value={form.sector_beamwidth_deg || 120}
+                          onChange={(e) => handleFieldChange('sector_beamwidth_deg', Number(e.target.value))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">
+                          Sector Azimuth (deg)
+                        </label>
+                        <input
+                          type="number"
+                          value={form.sector_azimuth_deg || 0}
+                          onChange={(e) => handleFieldChange('sector_azimuth_deg', Number(e.target.value))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

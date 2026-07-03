@@ -133,7 +133,10 @@ class BlockResult:
     status: str          # "green" | "gray" | "red"
     max_eirp: Optional[float] = None
     reason: str = ""
-    i_total_dbm: float = -200  # Aggregate interference from all sources (Phase 17)
+    i_total_dbm: float = -200  # Aggregate interference from all sources (combined)
+    i_total_to_new_imt_dbm: float = -200  # Aggregate to new IMT victim (FS + existing IMT)
+    i_total_to_fs_dbm: float = -200       # Aggregate to FS receivers
+    i_total_to_existing_imt_dbm: float = -200  # Aggregate to existing IMTs
     conflicting_pairs: list = field(default_factory=list)  # PairResult refs
 
 
@@ -488,6 +491,9 @@ class InterferenceEngine:
         neighbor_imts: list[IMTNeighborData],
         requested_band_start: Optional[float] = None,
         requested_band_end: Optional[float] = None,
+        antenna_type: str = "omni",
+        sector_beamwidth_deg: float = 120,
+        sector_azimuth_deg: float = 0,
     ) -> InterferenceResult:
         """
         Full three-phase analysis.
@@ -509,6 +515,9 @@ class InterferenceEngine:
             max_eirp=max_eirp,
             fs_links=fs_links,
             neighbor_imts=neighbor_imts,
+            antenna_type=antenna_type,
+            sector_beamwidth_deg=sector_beamwidth_deg,
+            sector_azimuth_deg=sector_azimuth_deg,
         )
 
         # ── Phase 1: Calculate ──
@@ -521,6 +530,9 @@ class InterferenceEngine:
             new_imt_ant_gain=antenna_gain,
             fs_links=fs_links,
             neighbor_imts=neighbor_imts,
+            antenna_type=antenna_type,
+            sector_beamwidth_deg=sector_beamwidth_deg,
+            sector_azimuth_deg=sector_azimuth_deg,
         )
 
         # ── Phase 2: Aggregate to blocks ──
@@ -575,6 +587,9 @@ class InterferenceEngine:
         max_eirp: float,
         fs_links: list[FSLinkData],
         neighbor_imts: list[IMTNeighborData],
+        antenna_type: str = "omni",
+        sector_beamwidth_deg: float = 120,
+        sector_azimuth_deg: float = 0,
     ) -> list[InterferencePair]:
         """
         Phase 0: Identify all potential victim/interferer pairs.
@@ -819,6 +834,9 @@ class InterferenceEngine:
         new_imt_ant_gain: float,
         fs_links: list[FSLinkData],
         neighbor_imts: list[IMTNeighborData],
+        antenna_type: str = "omni",
+        sector_beamwidth_deg: float = 120,
+        sector_azimuth_deg: float = 0,
     ) -> list[PairResult]:
         """
         Phase 1: For each identified pair, compute actual I[dBm].
@@ -844,7 +862,8 @@ class InterferenceEngine:
                 fs = fs_by_id.get(pair.victim_id)
                 result = self._compute_imt_to_fs(pair, new_imt_lat, new_imt_lon,
                                                   new_imt_radius, new_imt_eirp,
-                                                  new_imt_height, fs, threshold)
+                                                  new_imt_height, fs, threshold,
+                                                  antenna_type, sector_beamwidth_deg, sector_azimuth_deg)
             elif pair.direction == "FS→IMT":
                 fs = fs_by_id.get(pair.interferer_id)
                 result = self._compute_fs_to_imt(pair,
@@ -867,7 +886,8 @@ class InterferenceEngine:
                 result = self._compute_imt_to_imt_cochannel(
                     pair, new_imt_lat, new_imt_lon, new_imt_radius,
                     new_imt_eirp, new_imt_height, new_imt_ant_gain,
-                    victim_imt, interferer_imt, threshold
+                    victim_imt, interferer_imt, threshold,
+                    antenna_type, sector_beamwidth_deg, sector_azimuth_deg,
                 )
             elif pair.direction == "IMT↔IMT_ADJACENT":
                 result = self._compute_imt_to_imt_adjacent(
@@ -887,6 +907,9 @@ class InterferenceEngine:
         imt_lat, imt_lon, imt_radius, imt_eirp, imt_height,
         fs: Optional[FSLinkData],
         threshold: float,
+        antenna_type: str = "omni",
+        sector_beamwidth_deg: float = 120,
+        sector_azimuth_deg: float = 0,
     ) -> PairResult:
         """➀ IMT → FS Receiver interference."""
         effective_dist = max(pair.distance_m - imt_radius, 1.0)
@@ -902,7 +925,18 @@ class InterferenceEngine:
             rx_height_m=rx_height,
         )
 
-        i_dbm = imt_eirp - path_loss + rx_gain
+        # Sector antenna discrimination: IMT transmit direction toward FS receiver
+        sector_disc = 0.0
+        if antenna_type == "sector" and fs:
+            sector_disc = sector_antenna_discrimination_db(
+                imt_lat, imt_lon,
+                fs.rx_lat, fs.rx_lon,
+                antenna_type=antenna_type,
+                sector_azimuth_deg=sector_azimuth_deg,
+                sector_beamwidth_deg=sector_beamwidth_deg,
+            )
+
+        i_dbm = imt_eirp - path_loss + rx_gain - sector_disc
         margin = i_dbm - threshold
         verdict = "CONFLICT" if i_dbm > threshold else "CLEAR"
 
@@ -983,6 +1017,9 @@ class InterferenceEngine:
         victim_imt: Optional[IMTNeighborData],
         interferer_imt: Optional[IMTNeighborData],
         threshold: float,
+        antenna_type: str = "omni",
+        sector_beamwidth_deg: float = 120,
+        sector_azimuth_deg: float = 0,
     ) -> PairResult:
         """➂/➃ IMT ↔ IMT co-channel interference."""
         # Determine EIRP and heights based on who is interferer
@@ -1010,6 +1047,18 @@ class InterferenceEngine:
         )
 
         i_dbm = interferer_eirp - path_loss + victim_ant_gain
+
+        # Sector antenna discrimination: when NEW_IMT is interferer
+        sector_disc = 0.0
+        if pair.interferer_type == "NEW_IMT" and antenna_type == "sector" and victim_imt:
+            sector_disc = sector_antenna_discrimination_db(
+                new_imt_lat, new_imt_lon,
+                victim_imt.center_lat, victim_imt.center_lon,
+                antenna_type="sector",
+                sector_azimuth_deg=sector_azimuth_deg,
+                sector_beamwidth_deg=sector_beamwidth_deg,
+            )
+        i_dbm -= sector_disc
 
         # Distance-based co-channel separation
         victim_r = victim_imt.cell_radius if victim_imt else 500 if pair.victim_id != "new" else new_imt_radius
@@ -1214,15 +1263,29 @@ class InterferenceEngine:
                     relevant.append(pr)
 
             # Determine status with aggregate interference (Phase 17)
-            # Sum all interference contributions in linear domain
-            i_linear_sum = 0
+            # Separate aggregation per victim type:
+            #   to_new_imt: FS→IMT + FS→IMT_ADJACENT + EXISTING_IMT→NEW_IMT (co+adj)
+            #   to_fs: NEW_IMT→FS
+            #   to_existing_imt: NEW_IMT→EXISTING_IMT (co+adj)
+            i_to_new_imt_linear = 0
+            i_to_fs_linear = 0
+            i_to_existing_imt_linear = 0
             for pr in relevant:
                 if pr.i_dbm > -200:
-                    i_linear_sum += 10 ** (pr.i_dbm / 10)
+                    i_lin = 10 ** (pr.i_dbm / 10)
+                    if pr.pair.victim_type == "NEW_IMT":
+                        i_to_new_imt_linear += i_lin
+                    elif pr.pair.victim_type == "FS_RX":
+                        i_to_fs_linear += i_lin
+                    elif pr.pair.victim_type == "EXISTING_IMT":
+                        i_to_existing_imt_linear += i_lin
             
-            i_total = -200
-            if i_linear_sum > 0:
-                i_total = 10 * math.log10(i_linear_sum)
+            i_total_to_new_imt = 10 * math.log10(i_to_new_imt_linear) if i_to_new_imt_linear > 0 else -200
+            i_total_to_fs = 10 * math.log10(i_to_fs_linear) if i_to_fs_linear > 0 else -200
+            i_total_to_existing_imt = 10 * math.log10(i_to_existing_imt_linear) if i_to_existing_imt_linear > 0 else -200
+            # Legacy combined total
+            combined_linear = i_to_new_imt_linear + i_to_fs_linear + i_to_existing_imt_linear
+            i_total = 10 * math.log10(combined_linear) if combined_linear > 0 else -200
             
             if not relevant:
                 status = "green"
@@ -1275,6 +1338,9 @@ class InterferenceEngine:
                 max_eirp=max_eirp if status == "green" else None,
                 reason=reason,
                 i_total_dbm=round(i_total, 1),
+                i_total_to_new_imt_dbm=round(i_total_to_new_imt, 1),
+                i_total_to_fs_dbm=round(i_total_to_fs, 1),
+                i_total_to_existing_imt_dbm=round(i_total_to_existing_imt, 1),
                 conflicting_pairs=relevant,
             ))
 

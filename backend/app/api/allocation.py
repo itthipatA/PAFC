@@ -133,6 +133,9 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
                     max_eirp=float(getattr(imt, 'max_eirp', 23) or 23),
                     antenna_gain=float(getattr(imt, 'antenna_gain', 12) or 12),
                     antenna_height=float(getattr(imt, 'antenna_height', 15) or 15),
+                    antenna_type=str(getattr(imt, 'antenna_type', 'omni') or 'omni'),
+                    sector_beamwidth_deg=float(getattr(imt, 'sector_beamwidth_deg', 120) or 120),
+                    sector_azimuth_deg=float(getattr(imt, 'sector_azimuth_deg', 0) or 0),
                 )
             )
 
@@ -147,6 +150,9 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         max_eirp=max_eirp,
         fs_links=fs_links,
         neighbor_imts=neighbor_imts,
+        antenna_type=str(data.get("antenna_type", "omni") or "omni"),
+        sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
+        sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
     )
 
     return {
@@ -199,6 +205,9 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
                 "max_eirp": b.max_eirp,
                 "reason": b.reason,
                 "i_total_dbm": round(b.i_total_dbm, 1) if b.i_total_dbm > -200 else None,
+                "i_total_to_new_imt_dbm": round(b.i_total_to_new_imt_dbm, 1) if b.i_total_to_new_imt_dbm > -200 else None,
+                "i_total_to_fs_dbm": round(b.i_total_to_fs_dbm, 1) if b.i_total_to_fs_dbm > -200 else None,
+                "i_total_to_existing_imt_dbm": round(b.i_total_to_existing_imt_dbm, 1) if b.i_total_to_existing_imt_dbm > -200 else None,
             }
             for b in result.blocks
         ],
@@ -399,6 +408,9 @@ async def pre_screen(data: dict, db: AsyncSession = Depends(get_db)):
                     max_eirp=float(getattr(imt, 'max_eirp', 23) or 23),
                     antenna_gain=float(getattr(imt, 'antenna_gain', 12) or 12),
                     antenna_height=float(getattr(imt, 'antenna_height', 15) or 15),
+                    antenna_type=str(getattr(imt, 'antenna_type', 'omni') or 'omni'),
+                    sector_beamwidth_deg=float(getattr(imt, 'sector_beamwidth_deg', 120) or 120),
+                    sector_azimuth_deg=float(getattr(imt, 'sector_azimuth_deg', 0) or 0),
                 )
             )
 
@@ -411,6 +423,9 @@ async def pre_screen(data: dict, db: AsyncSession = Depends(get_db)):
         max_eirp=max_eirp,
         fs_links=fs_links,
         neighbor_imts=neighbor_imts,
+        antenna_type=str(data.get("antenna_type", "omni") or "omni"),
+        sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
+        sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
     )
 
     return {

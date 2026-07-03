@@ -610,10 +610,13 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [antennaHeight, setAntennaHeight] = useState(15)
   const [antennaGain, setAntennaGain] = useState(12)
   const [maxEirp, setMaxEirp] = useState(23)
-  const [autoEirp, setAutoEirp] = useState(false)
+  const [autoEirp, setAutoEirp] = useState(true)
   const [coverageInfo, setCoverageInfo] = useState<CoverageInfo | null>(null)
   const [tradeoff, setTradeoff] = useState<TradeOff | null>(null)
   const [propagationModel, setPropagationModel] = useState('free_space')
+  const [antennaType, setAntennaType] = useState('omni')
+  const [sectorBeamwidth, setSectorBeamwidth] = useState(120)
+  const [sectorAzimuth, setSectorAzimuth] = useState(0)
   const [name, setName] = useState('')
   const [operator, setOperator] = useState('')
 
@@ -745,6 +748,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         antenna_height: antennaHeight,
         antenna_gain: antennaGain,
         model: propagationModel,
+        antenna_type: antennaType,
+        sector_beamwidth_deg: sectorBeamwidth,
+        sector_azimuth_deg: sectorAzimuth,
       }
       if (autoEirp) {
         body.auto_eirp = true
@@ -813,6 +819,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
           antenna_height: antennaHeight,
           antenna_gain: antennaGain,
           max_eirp: maxEirp,
+          antenna_type: antennaType,
+          sector_beamwidth_deg: sectorBeamwidth,
+          sector_azimuth_deg: sectorAzimuth,
           name: name.trim(),
           operator: operator.trim(),
           status: 'active',
@@ -987,20 +996,58 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
+                    สายอากาศ IMT
+                  </label>
+                  <select
+                    value={antennaType}
+                    onChange={(e) => setAntennaType(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  >
+                    <option value="omni">Omni — รอบทิศทาง</option>
+                    <option value="sector">Sector — แบบเซกเตอร์</option>
+                  </select>
+                </div>
+                {antennaType === 'sector' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Sector Beamwidth (deg)
+                      </label>
+                      <input
+                        type="number"
+                        value={sectorBeamwidth}
+                        onChange={(e) => setSectorBeamwidth(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Sector Azimuth (deg จาก True North)
+                      </label>
+                      <input
+                        type="number"
+                        value={sectorAzimuth}
+                        onChange={(e) => setSectorAzimuth(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      />
+                    </div>
+                  </>
+                )}
+                {!autoEirp && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
                     Max EIRP — รวม TX Power + Antenna Gain (dBm)
                   </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={autoEirp ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius)).toFixed(1) : maxEirp}
-                      onChange={(e) => setMaxEirp(Number(e.target.value))}
-                      disabled={autoEirp}
-                      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none ${
-                        autoEirp ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
-                      }`}
-                    />
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={maxEirp}
+                    onChange={(e) => setMaxEirp(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                )}
+                <div>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
@@ -1027,6 +1074,15 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       </span>
                     )}
                   </div>
+                  {autoEirp && (
+                    <div className="mt-2 p-2 bg-[#C00000]/5 rounded-lg border border-[#C00000]/10">
+                      <span className="text-xs text-gray-500">กำลังส่งที่คำนวณได้: </span>
+                      <span className="text-sm font-mono font-bold text-[#C00000]">
+                        {(coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius)).toFixed(1)} dBm
+                      </span>
+                      <span className="text-xs text-gray-400 ml-1">(จากรัศมี {cellRadius}m)</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="mt-3">
