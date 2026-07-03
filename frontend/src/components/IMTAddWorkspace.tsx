@@ -4,7 +4,7 @@ import { circle } from '@turf/turf'
 import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
-import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary } from '../types'
+import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification } from '../types'
 
 interface IMTAddWorkspaceProps {
   onBack: () => void
@@ -149,10 +149,23 @@ const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: strin
 
 // ─── Narrative ASCII Log Generator ────────────────────────────────────────
 
+function directionLabelForLog(direction: string): string {
+  const labels: Record<string, string> = {
+    'IMT→FS': 'IMT→Fixed Service',
+    'FS→IMT': 'Fixed Service→IMT',
+    'IMT↔IMT_COCHANNEL': 'IMT↔IMT (co-channel)',
+    'IMT↔IMT_ADJACENT': 'IMT↔IMT (adjacent)',
+  }
+  return labels[direction] || direction
+}
+
 function generateNarrativeLog(
   params: { lat: number; lon: number; cellRadius: number; antH: number; antG: number; eirp: number; model: string },
   response: any,
   elapsedMs: number,
+  pairs: Pair[],
+  pairResults: PairResultType[],
+  backendVerification: BackendVerification | null,
 ): string[] {
   const lines: string[] = []
   const blocks = response.blocks || []
@@ -176,6 +189,34 @@ function generateNarrativeLog(
   lines.push(`   Propagation     : ${modelLabel}`)
   lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks × 10 MHz)`)
   lines.push('')
+
+  // Section 1.5: Phase 0 — Victim/Interferer Identification
+  if (pairs.length > 0) {
+    lines.push('─── 1.5 VICTIM/INTERFERER IDENTIFICATION ───────────────────────')
+    lines.push(`   Pairs identified : ${pairs.length} total`)
+    const highRisk = pairs.filter(p => p.preliminary_risk === 'HIGH')
+    const medRisk = pairs.filter(p => p.preliminary_risk === 'MEDIUM')
+    const lowRisk = pairs.filter(p => p.preliminary_risk === 'LOW')
+    lines.push(`   Risk distribution: ${highRisk.length} HIGH, ${medRisk.length} MEDIUM, ${lowRisk.length} LOW`)
+    lines.push('')
+    if (highRisk.length > 0) {
+      lines.push('   === HIGH RISK PAIRS ===')
+      highRisk.forEach((p, i) => {
+        const dirLabel = directionLabelForLog(p.direction)
+        lines.push(`   ${i + 1}. ${dirLabel}: ${p.interferer_name} → ${p.victim_name}`)
+        lines.push(`      Distance: ${(p.distance_m / 1000).toFixed(1)} km | I≈${p.estimated_i_dbm.toFixed(1)} dBm`)
+      })
+    }
+    if (medRisk.length > 0) {
+      lines.push('')
+      lines.push('   === MEDIUM RISK PAIRS ===')
+      medRisk.forEach((p, i) => {
+        const dirLabel = directionLabelForLog(p.direction)
+        lines.push(`   ${i + 1}. ${dirLabel}: ${p.interferer_name} → ${p.victim_name}`)
+      })
+    }
+    lines.push('')
+  }
 
   // Section 2: Propagation Model
   lines.push('─── 2. PROPAGATION MODEL ───────────────────────────────────────')
@@ -314,6 +355,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [pairs, setPairs] = useState<Pair[]>([])
   const [pairResults, setPairResults] = useState<PairResultType[]>([])
   const [analysisSummary, setAnalysisSummary] = useState<AnalyzeSummary | null>(null)
+  const [backendVerification, setBackendVerification] = useState<BackendVerification | null>(null)
 
   // Save state
   const [saving, setSaving] = useState(false)
@@ -445,10 +487,14 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       setPairs(data.pairs || [])
       setPairResults(data.pair_results || [])
       setAnalysisSummary(data.summary || null)
+      setBackendVerification(data.verification || null)
       setLogLines(generateNarrativeLog(
         { lat, lon, cellRadius, antH: antennaHeight, antG: antennaGain, eirp: maxEirp, model: propagationModel },
         data,
         elapsedMs,
+        data.pairs || [],
+        data.pair_results || [],
+        data.verification || null,
       ))
     } catch (err) {
       console.error('Analysis failed:', err)
@@ -1032,6 +1078,50 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
 
                   {/* ─── Verification ─── */}
                   {(() => {
+                    // Use backend verification if available, fall back to frontend
+                    if (backendVerification) {
+                      const bv = backendVerification
+                      const checks = [
+                        { label: 'Block Count', key: 'block_count', val: bv.block_count },
+                        { label: 'Frequency Continuity', key: 'frequency_continuity', val: bv.frequency_continuity },
+                        { label: 'Guard Adjacency', key: 'guard_adjacency', val: bv.guard_adjacency },
+                        { label: 'Total MHz', key: 'total_mhz', val: bv.total_mhz },
+                        { label: 'Guard Reasons', key: 'guard_reasons', val: bv.guard_reasons },
+                      ]
+                      return (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Verification</h4>
+                          <div className="space-y-1.5">
+                            {checks.map(({ label, key, val }) => (
+                              <div key={key} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded border ${
+                                val.pass ? 'bg-green-50 border-green-200 text-green-700' :
+                                'bg-red-50 border-red-200 text-red-700'
+                              }`}>
+                                {val.pass ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                                <span className="font-medium">{label}</span>
+                                <span className="text-gray-400">
+                                  {key === 'block_count' || key === 'total_mhz'
+                                    ? `(expected ${(val as any).expected}, actual ${(val as any).actual})`
+                                    : key === 'guard_adjacency'
+                                      ? `(warnings: ${(val as any).warnings})`
+                                      : key === 'guard_reasons'
+                                        ? `(invalid: ${(val as any).invalid_count})`
+                                        : ''}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className={`mt-2 text-xs font-semibold px-3 py-1.5 rounded ${
+                            bv.all_pass
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {bv.all_pass ? 'All 5 verification checks passed' : 'Some verification checks failed'}
+                          </div>
+                        </div>
+                      )
+                    }
+                    // Fallback: frontend verifyResults
                     const vr = verifyResults(blocks)
                     return (
                       <div className="mt-3 pt-3 border-t border-gray-200">

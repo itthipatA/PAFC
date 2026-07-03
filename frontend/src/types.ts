@@ -126,11 +126,11 @@ export interface PairResult {
 // ─── Backend Verification ───────────────────────────────────────────────────
 
 export interface BackendVerification {
-  block_count: { pass: boolean; expected: number; actual: number }
+  block_count: { pass: boolean; expected?: number; actual?: number }
   frequency_continuity: { pass: boolean }
-  guard_adjacency: { pass: boolean; warnings: number }
-  total_mhz: { pass: boolean; expected: number; actual: number }
-  guard_reasons: { pass: boolean; invalid_count: number }
+  guard_adjacency: { pass: boolean; warnings?: number }
+  total_mhz: { pass: boolean; expected?: number; actual?: number }
+  guard_reasons: { pass: boolean; invalid_count?: number }
   all_pass: boolean
 }
 
