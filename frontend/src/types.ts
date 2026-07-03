@@ -91,3 +91,66 @@ export interface IMTAllocationCreate {
   antenna_gain: number
   max_eirp: number
 }
+
+// ─── Phase 0: Victim/Interferer Pairs ───────────────────────────────────────
+
+export interface Pair {
+  interferer_type: string
+  interferer_name: string
+  victim_type: string
+  victim_name: string
+  direction: string
+  freq_overlap_low: number
+  freq_overlap_high: number
+  distance_m: number
+  within_beam: boolean | null
+  estimated_i_dbm: number
+  preliminary_risk: 'HIGH' | 'MEDIUM' | 'LOW'
+}
+
+// ─── Phase 1: Detailed Pair Results ─────────────────────────────────────────
+
+export interface PairResult {
+  direction: string
+  interferer: string
+  victim: string
+  i_dbm: number
+  threshold_dbm: number
+  margin_db: number
+  path_loss_db: number
+  effective_distance_m: number
+  verdict: 'CONFLICT' | 'CLEAR' | 'GUARD_BAND'
+  detail: string
+}
+
+// ─── Backend Verification ───────────────────────────────────────────────────
+
+export interface BackendVerification {
+  block_count: { pass: boolean; expected: number; actual: number }
+  frequency_continuity: { pass: boolean }
+  guard_adjacency: { pass: boolean; warnings: number }
+  total_mhz: { pass: boolean; expected: number; actual: number }
+  guard_reasons: { pass: boolean; invalid_count: number }
+  all_pass: boolean
+}
+
+// ─── Full Analyze Response ──────────────────────────────────────────────────
+
+export interface AnalyzeSummary {
+  total_blocks: number
+  green: number
+  gray: number
+  red: number
+  pairs_identified?: number
+  pairs_high_risk?: number
+  pairs_conflict?: number
+}
+
+export interface AnalyzeResponse {
+  blocks: BlockResult[]
+  summary: AnalyzeSummary
+  pairs?: Pair[]
+  pair_results?: PairResult[]
+  verification?: BackendVerification
+  computation_time_ms?: number
+}

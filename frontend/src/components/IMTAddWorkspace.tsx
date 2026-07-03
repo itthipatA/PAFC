@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
-import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin } from 'lucide-react'
+import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
-import type { BlockResult } from '../types'
+import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary } from '../types'
 
 interface IMTAddWorkspaceProps {
   onBack: () => void
@@ -311,6 +311,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [loading, setLoading] = useState(false)
   const [logLines, setLogLines] = useState<string[]>([])
   const [blocks, setBlocks] = useState<BlockResult[]>([])
+  const [pairs, setPairs] = useState<Pair[]>([])
+  const [pairResults, setPairResults] = useState<PairResultType[]>([])
+  const [analysisSummary, setAnalysisSummary] = useState<AnalyzeSummary | null>(null)
 
   // Save state
   const [saving, setSaving] = useState(false)
@@ -439,6 +442,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       const data = await res.json()
       const elapsedMs = Math.round(performance.now() - startTime)
       setBlocks(data.blocks || [])
+      setPairs(data.pairs || [])
+      setPairResults(data.pair_results || [])
+      setAnalysisSummary(data.summary || null)
       setLogLines(generateNarrativeLog(
         { lat, lon, cellRadius, antH: antennaHeight, antG: antennaGain, eirp: maxEirp, model: propagationModel },
         data,
@@ -735,6 +741,220 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 ))}
               </div>
             </section>
+          )}
+
+          {/* SECTION 2.5: Pairs Report — Victim/Interferer Analysis */}
+          {(pairs.length > 0 || pairResults.length > 0) && (
+            <>
+              <div className="flex items-center gap-3 my-1">
+                <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, #C00000, #D1D5DB)' }} />
+                <span className="text-xs font-medium text-[#C00000] tracking-wider">PAIRS REPORT</span>
+                <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, #C00000, #D1D5DB)' }} />
+              </div>
+
+              <section className="bg-white rounded-xl border border-gray-200 p-5 font-serif animate-fade-in-up">
+                <h3 className="text-base font-bold text-[#1A1A2E] mb-3 flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-[#C00000]" />
+                  รายงานคู่รบกวนและผู้ถูกรบกวน (Victim/Interferer Pairs)
+                </h3>
+
+                {/* ─── Summary Cards ─── */}
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="text-center p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="text-2xl font-bold text-[#1A1A2E]">{pairs.length}</div>
+                    <div className="text-xs text-gray-500 mt-1">คู่รบกวนทั้งหมด</div>
+                    <div className="text-xs text-gray-400">Total Pairs</div>
+                  </div>
+                  <div className="text-center p-3 bg-red-50 rounded-lg border border-red-200">
+                    <div className="text-2xl font-bold text-[#DC2626]">
+                      {pairs.filter(p => p.preliminary_risk === 'HIGH').length}
+                    </div>
+                    <div className="text-xs text-red-700 mt-1 flex items-center justify-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      ความเสี่ยงสูง
+                    </div>
+                  </div>
+                  <div className="text-center p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <div className="text-2xl font-bold text-[#F59E0B]">
+                      {pairs.filter(p => p.preliminary_risk === 'MEDIUM').length}
+                    </div>
+                    <div className="text-xs text-amber-700 mt-1 flex items-center justify-center gap-1">
+                      <Shield className="w-3 h-3" />
+                      ความเสี่ยงปานกลาง
+                    </div>
+                  </div>
+                </div>
+
+                {/* ─── Per-Pair Cards (Phase 0: Estimated) ─── */}
+                {pairs.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                      Phase 0 — ระบุคู่รบกวน (Preliminary)
+                    </h4>
+                    <div className="space-y-2">
+                      {pairs.map((pair, idx) => {
+                        const directionLabel: Record<string, string> = {
+                          'IMT→FS': 'IMT → Fixed Service',
+                          'FS→IMT': 'Fixed Service → IMT',
+                          'IMT↔IMT_COCHANNEL': 'IMT ↔ IMT (ความถี่เดียวกัน)',
+                          'IMT↔IMT_ADJACENT': 'IMT ↔ IMT (ความถี่ข้างเคียง)',
+                          'IMT↔IMT': 'IMT ↔ IMT',
+                        }
+                        const riskColor =
+                          pair.preliminary_risk === 'HIGH' ? '#DC2626' :
+                          pair.preliminary_risk === 'MEDIUM' ? '#F59E0B' : '#16A34A'
+                        const riskBg =
+                          pair.preliminary_risk === 'HIGH' ? 'bg-red-50 border-red-300' :
+                          pair.preliminary_risk === 'MEDIUM' ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-lg border ${riskBg}`}
+                            style={{ borderLeftWidth: '4px', borderLeftColor: riskColor }}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-gray-300 text-gray-700">
+                                {directionLabel[pair.direction] || pair.direction}
+                              </span>
+                              <span
+                                className="text-xs font-bold px-2 py-0.5 rounded-full"
+                                style={{ backgroundColor: riskColor, color: '#fff' }}
+                              >
+                                {pair.preliminary_risk === 'HIGH' ? 'ความเสี่ยงสูง' :
+                                 pair.preliminary_risk === 'MEDIUM' ? 'ความเสี่ยงปานกลาง' : 'ความเสี่ยงต่ำ'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-sm mb-1">
+                              <span className="font-semibold text-[#1A1A2E]">{pair.interferer_name}</span>
+                              <span className="text-xs text-gray-400">({pair.interferer_type.replace(/_/g, ' ')})</span>
+                              <ArrowRight className="w-4 h-4 text-[#C00000]" />
+                              <span className="font-semibold text-[#1A1A2E]">{pair.victim_name}</span>
+                              <span className="text-xs text-gray-400">({pair.victim_type.replace(/_/g, ' ')})</span>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 mt-2 pt-2 border-t border-gray-200">
+                              <div>
+                                <span className="text-gray-400">ระยะห่าง:</span>{' '}
+                                <span className="font-mono font-semibold text-gray-800">{(pair.distance_m).toLocaleString()} m</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">I ประมาณ:</span>{' '}
+                                <span className="font-mono font-semibold" style={{ color: riskColor }}>
+                                  {pair.estimated_i_dbm.toFixed(1)} dBm
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">ความถี่:</span>{' '}
+                                <span className="font-mono font-semibold text-gray-800">
+                                  {pair.freq_overlap_low}-{pair.freq_overlap_high} MHz
+                                </span>
+                              </div>
+                              {pair.within_beam !== null && (
+                                <div className="col-span-3">
+                                  <span className="text-gray-400">ภายในลำคลื่น:</span>{' '}
+                                  <span className={pair.within_beam ? 'text-red-600 font-semibold' : 'text-green-600'}>
+                                    {pair.within_beam ? 'ใช่' : 'ไม่ใช่'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── Phase 1: Computed Results ─── */}
+                {pairResults.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                      Phase 1 — ผลคำนวณ I[dBm] (Computed)
+                    </h4>
+                    <div className="space-y-2">
+                      {pairResults.map((pr, idx) => {
+                        const verdictBg =
+                          pr.verdict === 'CONFLICT' ? 'bg-red-600' :
+                          pr.verdict === 'GUARD_BAND' ? 'bg-gray-500' : 'bg-green-600'
+                        const verdictThai =
+                          pr.verdict === 'CONFLICT' ? 'พบการรบกวน' :
+                          pr.verdict === 'GUARD_BAND' ? 'ต้องการ Guard Band' : 'ไม่มีการรบกวน'
+                        const cardBorder =
+                          pr.verdict === 'CONFLICT' ? 'border-red-300 bg-red-50/30' :
+                          pr.verdict === 'GUARD_BAND' ? 'border-gray-300 bg-gray-50' : 'border-green-300 bg-green-50/30'
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-lg border ${cardBorder}`}
+                            style={{
+                              borderLeftWidth: '4px',
+                              borderLeftColor:
+                                pr.verdict === 'CONFLICT' ? '#DC2626' :
+                                pr.verdict === 'GUARD_BAND' ? '#6B7280' : '#16A34A',
+                            }}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-gray-300 text-gray-700">
+                                {pr.direction}
+                              </span>
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${verdictBg}`}>
+                                {verdictThai}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-sm mb-1">
+                              <span className="font-semibold text-[#1A1A2E]">{pr.interferer}</span>
+                              <ArrowRight className="w-4 h-4 text-[#C00000]" />
+                              <span className="font-semibold text-[#1A1A2E]">{pr.victim}</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 mt-2 pt-2 border-t border-gray-200">
+                              <div>
+                                <span className="text-gray-400">I[dBm]:</span>{' '}
+                                <span className={`font-mono font-bold ${
+                                  pr.verdict === 'CONFLICT' ? 'text-red-600' :
+                                  pr.verdict === 'GUARD_BAND' ? 'text-amber-600' : 'text-green-600'
+                                }`}>{pr.i_dbm.toFixed(1)} dBm</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">Threshold:</span>{' '}
+                                <span className="font-mono font-semibold text-gray-800">{pr.threshold_dbm.toFixed(1)} dBm</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">Margin:</span>{' '}
+                                <span className={`font-mono font-bold ${
+                                  pr.margin_db > 0 && pr.verdict === 'CONFLICT' ? 'text-red-600' : 'text-green-600'
+                                }`}>
+                                  {pr.margin_db > 0 ? '+' : ''}{pr.margin_db.toFixed(1)} dB
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">Path Loss:</span>{' '}
+                                <span className="font-mono font-semibold text-gray-800">{pr.path_loss_db.toFixed(1)} dB</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">ระยะ:</span>{' '}
+                                <span className="font-mono font-semibold text-gray-800">{pr.effective_distance_m.toLocaleString()} m</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">ผล:</span>{' '}
+                                <span className={`font-semibold ${
+                                  pr.verdict === 'CONFLICT' ? 'text-red-600' :
+                                  pr.verdict === 'GUARD_BAND' ? 'text-gray-600' : 'text-green-600'
+                                }`}>{verdictThai}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </section>
+            </>
           )}
 
           {/* ─── DIVIDER 2: between Log and Calculation Details ─── */}
