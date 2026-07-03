@@ -542,12 +542,20 @@ class InterferenceEngine:
                 ))
 
             # Guard band pairs for adjacent channels
-            if adjacent_possible and not cochannel_possible:
+            # Create pair covering neighbor block ± guard band range
+            # so Phase 2 maps to both adjacent blocks (e.g., neighbor at
+            # 4810-4820 → expanded 4800-4830 covers 4800-4810 and 4820-4830)
+            # NOTE: create adjacent pairs REGARDLESS of co-channel — a single
+            # IMT can be both co-channel on one block AND adjacent on others
+            if adjacent_possible:
+                guard_range = settings.default_guard_band_mhz  # 10 MHz
                 pairs.append(InterferencePair(
                     interferer_type="NEW_IMT", interferer_id="new", interferer_name="IMT ใหม่",
                     victim_type="EXISTING_IMT", victim_id=imt.id, victim_name=imt.name,
                     direction="IMT↔IMT_ADJACENT",
-                    freq_overlap_low=imt.freq_low, freq_overlap_high=imt.freq_high,
+                    # Expand range so Phase 2 maps to both adjacent blocks
+                    freq_overlap_low=imt.freq_low - guard_range,
+                    freq_overlap_high=imt.freq_high + guard_range,
                     distance_m=dist,
                     estimated_i_dbm=-200,  # Adjacent — not co-channel power calc
                     preliminary_risk="MEDIUM",
@@ -920,25 +928,52 @@ class InterferenceEngine:
         checks["block_count"] = {
             "pass": len(blocks) == expected,
             "expected": expected, "actual": len(blocks),
+            "reason": (
+                f"Band 4800-4990 MHz = 190 MHz / 10 MHz = {expected} blocks"
+                if len(blocks) == expected
+                else f"Expected {expected} blocks (190 MHz / 10 MHz), got {len(blocks)}"
+            ),
         }
 
         # 2. Frequency continuity
         continuity_ok = True
+        continuity_detail = ""
         for i in range(len(blocks) - 1):
             if abs(blocks[i + 1].freq_low - blocks[i].freq_high) > 0.1:
                 continuity_ok = False
+                continuity_detail = (
+                    f"Gap at block {i}: {blocks[i].freq_low}-{blocks[i].freq_high} "
+                    f"→ {blocks[i+1].freq_low}-{blocks[i+1].freq_high}"
+                )
                 break
-        checks["frequency_continuity"] = {"pass": continuity_ok}
+        checks["frequency_continuity"] = {
+            "pass": continuity_ok,
+            "reason": (
+                "All blocks are contiguous 10 MHz steps"
+                if continuity_ok
+                else continuity_detail or "Blocks are not contiguous"
+            ),
+        }
 
         # 3. Guard adjacency (green next to red without gray = warning)
         adjacency_warnings = 0
+        adjacency_detail = []
         for i in range(len(blocks) - 1):
             if (blocks[i].status == "green" and blocks[i + 1].status == "red") or \
                (blocks[i].status == "red" and blocks[i + 1].status == "green"):
                 adjacency_warnings += 1
+                adjacency_detail.append(
+                    f"Block {blocks[i].freq_low:.0f}-{blocks[i].freq_high:.0f} ({blocks[i].status}) "
+                    f"adjacent to {blocks[i+1].freq_low:.0f}-{blocks[i+1].freq_high:.0f} ({blocks[i+1].status})"
+                )
         checks["guard_adjacency"] = {
             "pass": adjacency_warnings == 0,
             "warnings": adjacency_warnings,
+            "reason": (
+                "No green-red adjacency without guard band"
+                if adjacency_warnings == 0
+                else f"{adjacency_warnings} instance(s) of green→red without guard: {'; '.join(adjacency_detail[:3])}"
+            ),
         }
 
         # 4. Total MHz consistency
@@ -946,6 +981,11 @@ class InterferenceEngine:
         checks["total_mhz"] = {
             "pass": abs(total_mhz - (band_end - band_start)) < 0.1,
             "expected": band_end - band_start, "actual": total_mhz,
+            "reason": (
+                f"Total bandwidth = {total_mhz:.0f} MHz (expected {band_end - band_start:.0f} MHz)"
+                if abs(total_mhz - (band_end - band_start)) < 0.1
+                else f"Total {total_mhz:.0f} MHz != expected {band_end - band_start:.0f} MHz"
+            ),
         }
 
         # 5. Guard reason validation
@@ -954,6 +994,11 @@ class InterferenceEngine:
         checks["guard_reasons"] = {
             "pass": invalid_guards == 0,
             "invalid_count": invalid_guards,
+            "reason": (
+                "All gray blocks have valid guard band reasons"
+                if invalid_guards == 0
+                else f"{invalid_guards} gray block(s) missing guard reason"
+            ),
         }
 
         checks["all_pass"] = all(c["pass"] for c in checks.values())

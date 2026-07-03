@@ -1308,14 +1308,16 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                               }`}>
                                 {val.pass ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                                 <span className="font-medium">{label}</span>
-                                <span className="text-gray-400">
-                                  {key === 'block_count' || key === 'total_mhz'
-                                    ? `(expected ${(val as any).expected}, actual ${(val as any).actual})`
-                                    : key === 'guard_adjacency'
-                                      ? `(warnings: ${(val as any).warnings})`
-                                      : key === 'guard_reasons'
-                                        ? `(invalid: ${(val as any).invalid_count})`
-                                        : ''}
+                                <span className="text-gray-500">
+                                  {(val as any).reason || (
+                                    key === 'block_count' || key === 'total_mhz'
+                                      ? `(expected ${(val as any).expected}, actual ${(val as any).actual})`
+                                      : key === 'guard_adjacency'
+                                        ? `(warnings: ${(val as any).warnings})`
+                                        : key === 'guard_reasons'
+                                          ? `(invalid: ${(val as any).invalid_count})`
+                                          : ''
+                                  )}
                                 </span>
                               </div>
                             ))}
