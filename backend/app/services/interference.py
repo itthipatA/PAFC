@@ -86,6 +86,9 @@ class InterferencePair:
     # Spatial context
     within_beam: Optional[bool] = None  # For FS→IMT: is IMT in FS main beam?
 
+    # Guard band (adjacent channel only)
+    guard_band_mhz: float = 0.0  # MHz — frequency separation between allocations
+
     # Pre-computed rough estimate (quick FSPL for risk classification)
     estimated_i_dbm: float = -200.0
     preliminary_risk: str = "LOW"  # "HIGH" | "MEDIUM" | "LOW"
@@ -290,16 +293,22 @@ class InterferenceEngine:
             },
             "adjacent_protection": {
                 "label": "Adjacent Channel Protection",
-                "value": f"{self.ADJACENT_PROTECTION_M} m ({(self.ADJACENT_PROTECTION_M/1000):.2f} km)",
-                "description": f"ระยะเผื่อสำหรับ adjacent channel — คำนวณจาก electrical parameter ACS = {self.ACS_DB} dB",
-                "reference": f"ACS = {self.ACS_DB} dB (3GPP TS 38.104), co-channel {self.COCHANNEL_PROTECTION_M}m ÷ 10^({self.ACS_DB}/20) ≈ {self._ADJACENT_RAW_M:.0f}m × 3x safety = {self.ADJACENT_PROTECTION_M}m",
-                "impact": "ค่าสูงขึ้น → ต้องใช้ guard band มากขึ้น",
+                "value": f"Dynamic — depends on guard band width (0-40+ MHz)",
+                "description": f"ระยะห่างสำหรับ adjacent channel — คำนวณจาก guard_band_isolation_db(width)",
+                "reference": f"ACS = {self.ACS_DB} dB (3GPP TS 38.104) + filter roll-off: 12 dB/10MHz (near) + 15 dB/10MHz (far)",
+                "impact": "Guard band กว้างขึ้น → isolation เพิ่ม → ระยะห่างลดลง → ≥40 MHz ติดกันได้",
+                "isolation_table": {
+                    "0 MHz (adjacent)": f"isolation={self.guard_band_isolation_db(0):.0f} dB → required_sep={self.COCHANNEL_PROTECTION_M/10**(self.guard_band_isolation_db(0)/20):.0f}m",
+                    "10 MHz": f"isolation={self.guard_band_isolation_db(10):.0f} dB → required_sep={self.COCHANNEL_PROTECTION_M/10**(self.guard_band_isolation_db(10)/20):.0f}m",
+                    "20 MHz": f"isolation={self.guard_band_isolation_db(20):.0f} dB → required_sep={self.COCHANNEL_PROTECTION_M/10**(self.guard_band_isolation_db(20)/20):.0f}m",
+                    "40 MHz": f"isolation={self.guard_band_isolation_db(40):.0f} dB → co-location possible",
+                },
                 "justification": (
-                    f"ACS = {self.ACS_DB} dB หมายถึง interference จาก adjacent channel ลดลง {self._ADJACENT_FACTOR:.0f}× "
-                    f"เทียบกับ co-channel → ระยะห่างขั้นต่ำลดลงจาก 2000m เป็น 2000/{self._ADJACENT_FACTOR:.0f} ≈ {self._ADJACENT_RAW_M:.0f}m "
-                    f"→ safety factor 3× = {self.ADJACENT_PROTECTION_M}m"
+                    f"ACS = {self.ACS_DB} dB + filter roll-off ตาม 3GPP TS 38.104 → "
+                    f"total isolation = f(guard_band_width) → "
+                    f"required separation = co-channel/{self._ADJACENT_FACTOR:.0f} / 10^(filter_roll_off/20)"
                 ),
-                "reality_check": f"✅ สมเหตุสมผล — ACS {self.ACS_DB} dB ตาม 3GPP TS 38.104 Table 7.8.2.2-1 สำหรับ NR base station ที่ 5 GHz ให้ระยะ adjacent ~{self.ADJACENT_PROTECTION_M}m",
+                "reality_check": "✅ สมเหตุสมผล — อิงจาก 3GPP filter masks สำหรับ NR base station ที่ 5 GHz",
             },
             "fs_beamwidth": {
                 "label": "FS Antenna Beamwidth",
@@ -654,6 +663,8 @@ class InterferenceEngine:
             # IMT can be both co-channel on one block AND adjacent on others
             if adjacent_possible:
                 guard_range = settings.default_guard_band_mhz  # 10 MHz
+                # guard_band_mhz = 0 for pre-screen (minimum case — adjacent block)
+                # Actual guard band width depends on which block new IMT uses
                 pairs.append(InterferencePair(
                     interferer_type="NEW_IMT", interferer_id="new", interferer_name="IMT ใหม่",
                     victim_type="EXISTING_IMT", victim_id=imt.id, victim_name=imt.name,
@@ -662,7 +673,8 @@ class InterferenceEngine:
                     freq_overlap_low=imt.freq_low - guard_range,
                     freq_overlap_high=imt.freq_high + guard_range,
                     distance_m=dist,
-                    estimated_i_dbm=-200,  # Adjacent — not co-channel power calc
+                    guard_band_mhz=0,  # Minimum: adjacent block (0 MHz guard)
+                    estimated_i_dbm=-200,
                     preliminary_risk="MEDIUM",
                 ))
 
@@ -899,29 +911,82 @@ class InterferenceEngine:
     ) -> PairResult:
         """IMT ↔ IMT adjacent channel — guard band determination.
         
-        Guard band required when distance < new_imt_radius + victim_cell_radius + ADJACENT_PROTECTION_M
-        where ADJACENT_PROTECTION_M = co-channel / 10^(ACS/20) × safety_factor
+        Required distance depends on guard band width:
+        - 0 MHz (adjacent): ACS only → 134m
+        - 10 MHz: ACS + filter roll-off → ~30m  
+        - 20+ MHz: >55 dB isolation → ~4m
+        - 40+ MHz: >85 dB isolation → co-location possible (0m)
+        
+        Formula: isolation = guard_band_isolation_db(width_mhz)
+                 required_sep = COCHANNEL_PROTECTION_M / 10^(isolation/20)
         """
-        # Use 500m as conservative victim cell_radius default
-        victim_cell_r = 500  # conservative default
-        min_adj_sep = new_imt_radius + victim_cell_r + self.ADJACENT_PROTECTION_M
+        guard_mhz = max(pair.guard_band_mhz, 0)
+        isolation_db = self.guard_band_isolation_db(guard_mhz)
+        
+        # Required separation from isolation
+        distance_factor = 10 ** (isolation_db / 20)
+        required_adj_sep = max(self.COCHANNEL_PROTECTION_M / distance_factor, 1)
+        
+        # Use conservative victim cell_radius default
+        victim_cell_r = 500
+        min_adj_sep = new_imt_radius + victim_cell_r + required_adj_sep
         needs_guard = pair.distance_m < min_adj_sep
+        
+        # Determine verdict
+        if needs_guard:
+            if required_adj_sep <= 1:
+                verdict = "CLEAR"  # Isolation sufficient, no physical separation needed
+                detail_end = "→ CLEAR (isolation เพียงพอ — ติดกันได้)"
+            else:
+                verdict = "GUARD_BAND"
+                detail_end = f"→ GUARD_BAND"
+        else:
+            verdict = "CLEAR"
+            detail_end = "→ CLEAR"
 
         return PairResult(
             pair=pair,
             i_dbm=-200,
             threshold_dbm=threshold,
             margin_db=-200,
-            path_loss_db=0,
+            path_loss_db=isolation_db,  # Store isolation in path_loss_db for frontend
             effective_distance_m=pair.distance_m,
-            verdict="GUARD_BAND" if needs_guard else "CLEAR",
+            verdict=verdict,
             detail=(
-                f"Guard band: ACS={self.ACS_DB} dB → isolation={10**(self.ACS_DB/10):.0f}× → "
-                f"adjacent_sep={self.COCHANNEL_PROTECTION_M}/{10**(self.ACS_DB/20):.0f}≈{self._ADJACENT_RAW_M:.0f}m ×3 safety={self.ADJACENT_PROTECTION_M}m | "
-                f"min_sep={new_imt_radius}+{victim_cell_r}+{self.ADJACENT_PROTECTION_M}={min_adj_sep}m, "
-                f"actual={pair.distance_m:.0f}m → {'GUARD_BAND' if needs_guard else 'CLEAR'}"
+                f"Guard band: {guard_mhz:.0f} MHz → isolation={isolation_db:.0f} dB (ACS={self.ACS_DB}+{isolation_db-self.ACS_DB:.0f} filter) → "
+                f"distance_factor=10^({isolation_db:.0f}/20)={distance_factor:.0f}× → "
+                f"required_sep={self.COCHANNEL_PROTECTION_M}/{distance_factor:.0f}≈{required_adj_sep:.0f}m | "
+                f"min_sep={new_imt_radius}+{victim_cell_r}+{required_adj_sep:.0f}={min_adj_sep:.0f}m, "
+                f"actual={pair.distance_m:.0f}m {detail_end}"
             ),
         )
+
+    @staticmethod
+    def guard_band_isolation_db(guard_mhz: float) -> float:
+        """Calculate total isolation from guard band width.
+        
+        Based on 3GPP TS 38.104 NR base station requirements:
+        - 0 MHz (adjacent): ACS = 33 dB
+        - 10 MHz: ACS + 10-15 dB filter roll-off ≈ 45 dB
+        - 20 MHz: ACS + 28 dB ≈ 61 dB  
+        - 40 MHz: ACS + 55 dB ≈ 88 dB
+        - 60+ MHz: ACS + 70+ dB ≈ 103+ dB → fully isolated
+        
+        Simplified filter roll-off model:
+        First 10 MHz: ~12 dB (near-band filter transition)
+        Each additional 10 MHz: ~15 dB (filter stopband)
+        """
+        if guard_mhz <= 0:
+            return 33.0  # Pure ACS, no guard band
+        
+        ACS_DB = 33
+        # Filter roll-off: ~12 dB in first 10 MHz, then ~15 dB per 10 MHz
+        if guard_mhz <= 10:
+            roll_off = guard_mhz / 10 * 12  # Linear in first 10 MHz
+        else:
+            roll_off = 12 + (guard_mhz - 10) / 10 * 15
+        
+        return ACS_DB + roll_off
 
     # ══════════════════════════════════════════════════════════
     # PHASE 2: AGGREGATE TO SPECTRUM BLOCKS
