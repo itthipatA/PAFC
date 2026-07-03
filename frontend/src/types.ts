@@ -4,6 +4,7 @@ export interface BlockResult {
   status: 'green' | 'gray' | 'red'
   max_eirp: number | null
   reason: string
+  i_total_dbm?: number | null  // Aggregate interference (Phase 17)
 }
 
 export interface FSLink {

@@ -59,6 +59,10 @@ class IMTNeighborData:
     max_eirp: float = 23   # dBm total EIRP (default conservative)
     antenna_gain: float = 12  # dBi (used for VICTIM receiver gain only)
     antenna_height: float = 15  # m (default)
+    # Antenna pattern (Phase 17)
+    antenna_type: str = "omni"  # "omni" | "sector"
+    sector_beamwidth_deg: float = 120  # deg — only for sector type
+    sector_azimuth_deg: float = 0  # deg from True North — only for sector type
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -129,6 +133,7 @@ class BlockResult:
     status: str          # "green" | "gray" | "red"
     max_eirp: Optional[float] = None
     reason: str = ""
+    i_total_dbm: float = -200  # Aggregate interference from all sources (Phase 17)
     conflicting_pairs: list = field(default_factory=list)  # PairResult refs
 
 
@@ -204,30 +209,92 @@ def freq_overlap(f1_low: float, f1_high: float, f2_low: float, f2_high: float) -
     return f1_low < f2_high and f2_low < f1_high
 
 
+def fs_antenna_gain_db(
+    fs_tx_lat: float, fs_tx_lon: float,
+    fs_rx_lat: float, fs_rx_lon: float,
+    imt_lat: float, imt_lon: float,
+    beamwidth_deg: float = 3.0,
+    max_gain_dbi: float = 35.0
+) -> float:
+    """
+    ITU-R F.699 reference antenna pattern for FS parabolic dishes.
+    
+    Returns antenna gain (dBi) in the direction of the IMT.
+    Positive = gain toward IMT. Zero = isotropic. Negative = attenuation.
+    
+    Pattern regions:
+    - Main lobe (phi <= bw/2): G_max = max_gain_dbi
+    - First side-lobe (bw/2 < phi <= 3*bw/2): G = 2 + 15*log(D/lambda) ≈ -20 to -25 dB
+    - Far side-lobe (3*bw/2 < phi <= 48deg): G = 52 - 10*log(D/lambda) - 25*log(phi)
+    - Back lobe (phi > 48deg): G = -10 - 10*log(D/lambda) ≈ -30 dB
+    
+    For interference analysis, we compute discrimination = max_gain - actual_gain.
+    """
+    bearing_to_rx = bearing_deg(fs_tx_lat, fs_tx_lon, fs_rx_lat, fs_rx_lon)
+    bearing_to_imt = bearing_deg(fs_tx_lat, fs_tx_lon, imt_lat, imt_lon)
+    
+    phi = abs((bearing_to_imt - bearing_to_rx + 180) % 360 - 180)
+    half_bw = beamwidth_deg / 2
+    
+    import math
+    D_over_lambda = 10 ** ((max_gain_dbi - 7.5) / 20)  # Approximate from G = 20*log(D/lambda) + 7.5
+    
+    if phi <= half_bw:
+        gain = max_gain_dbi  # Main lobe
+    elif phi <= 3 * half_bw:
+        # First side-lobe: ~20-25 dB below main lobe
+        gain = 2 + 15 * math.log10(max(D_over_lambda, 1))
+        gain = min(gain, max_gain_dbi - 15)  # At least 15 dB down
+    elif phi <= 48:
+        # Far side-lobe: ITU-R F.699 envelope
+        gain = 52 - 10 * math.log10(max(D_over_lambda, 1)) - 25 * math.log10(max(phi, 1))
+    else:
+        # Back lobe
+        gain = -10 - 10 * math.log10(max(D_over_lambda, 1))
+    
+    return gain
+
 def is_imt_in_fs_beam(
     fs_tx_lat: float, fs_tx_lon: float,
     fs_rx_lat: float, fs_rx_lon: float,
     imt_lat: float, imt_lon: float,
     beamwidth_deg: float = 3.0
 ) -> bool:
+    """Backward-compatible wrapper: returns True if IMT is in main beam."""
+    gain = fs_antenna_gain_db(fs_tx_lat, fs_tx_lon, fs_rx_lat, fs_rx_lon,
+                               imt_lat, imt_lon, beamwidth_deg)
+    return gain >= (35.0 - 3)  # Within 3 dB of max = in main beam
+
+
+
+
+def sector_antenna_discrimination_db(
+    imt_lat: float, imt_lon: float,
+    target_lat: float, target_lon: float,
+    antenna_type: str = "omni",
+    sector_azimuth_deg: float = 0,
+    sector_beamwidth_deg: float = 120
+) -> float:
     """
-    Check if IMT center falls within FS antenna main beam.
-
-    FS links typically use high-gain directional antennas (parabolic dishes)
-    with very narrow beamwidths (1-5°). If the IMT is outside the main beam,
-    interference is dramatically reduced (side-lobe suppression ~20-30 dB).
-
-    Args:
-        beamwidth_deg: Half-power beamwidth in degrees (default 3° for ~35 dBi dish)
+    Compute antenna discrimination for sectored/omni IMT.
+    Returns: dB attenuation relative to max gain.
+    - Omni: 0 dB (no discrimination)
+    - Sector: 0 dB if in beam, -20 dB front-to-back ratio otherwise
     """
-    bearing_to_rx = bearing_deg(fs_tx_lat, fs_tx_lon, fs_rx_lat, fs_rx_lon)
-    bearing_to_imt = bearing_deg(fs_tx_lat, fs_tx_lon, imt_lat, imt_lon)
-
-    # Angular difference (wraps around 360)
-    angle_diff = abs((bearing_to_imt - bearing_to_rx + 180) % 360 - 180)
-
-    return angle_diff <= beamwidth_deg / 2
-
+    if antenna_type == "omni":
+        return 0.0
+    
+    # Bearing from IMT to target
+    bearing = bearing_deg(imt_lat, imt_lon, target_lat, target_lon)
+    
+    # Angular difference from sector center
+    phi = abs((bearing - sector_azimuth_deg + 180) % 360 - 180)
+    half_bw = sector_beamwidth_deg / 2
+    
+    if phi <= half_bw:
+        return 0.0  # In sector → full gain
+    else:
+        return 20.0  # Outside sector → -20 dB (typical panel FBR)
 
 # ═══════════════════════════════════════════════════════════════
 # ENGINE — Three-Phase
@@ -625,6 +692,23 @@ class InterferenceEngine:
                 preliminary_risk=risk,
             ))
 
+            # ── ➁b FS_TX → NEW_IMT ADJACENT (Phase 17 — adjacent channel) ──
+            # FS can interfere even on adjacent channels due to high EIRP
+            guard_range = settings.default_guard_band_mhz
+            pairs.append(InterferencePair(
+                interferer_type="FS_LINK", interferer_id=fs.id, interferer_name=fs.name,
+                victim_type="NEW_IMT", victim_id="new", victim_name="IMT ใหม่",
+                direction="FS→IMT_ADJACENT",
+                freq_overlap_low=fs.freq_low - guard_range,
+                freq_overlap_high=fs.freq_high + guard_range,
+                distance_m=dist_to_tx,
+                within_beam=in_beam,
+                guard_band_mhz=0,
+                estimated_i_dbm=est_i - self.ACS_DB,  # ACS reduces interference
+                preliminary_risk=self._classify_risk(est_i - self.ACS_DB,
+                    settings.interference_threshold_dbm, dist_to_tx),
+            ))
+
         # ── ➂ & ➃ NEW_IMT ↔ EXISTING_IMT (bidirectional) ──
         for imt in neighbor_imts:
             dist = haversine_m(center_lat, center_lon, imt.center_lat, imt.center_lon)
@@ -767,6 +851,12 @@ class InterferenceEngine:
                                                   new_imt_lat, new_imt_lon,
                                                   new_imt_radius, new_imt_ant_gain,
                                                   new_imt_height, fs, threshold)
+            elif pair.direction == "FS→IMT_ADJACENT":
+                fs = fs_by_id.get(pair.interferer_id)
+                result = self._compute_fs_to_imt_adjacent(pair,
+                                                  new_imt_lat, new_imt_lon,
+                                                  new_imt_radius, new_imt_ant_gain,
+                                                  new_imt_height, fs, threshold)
             elif pair.direction == "IMT↔IMT_COCHANNEL":
                 victim_imt = None
                 if pair.victim_id != "new":
@@ -855,8 +945,17 @@ class InterferenceEngine:
         else:
             fs_eirp = 65  # dBm conservative
 
-        # Beam discrimination
-        beam_disc = 0 if pair.within_beam else 25  # dB
+        # Beam discrimination using F.699 pattern (Phase 17)
+        if fs:
+            fs_gain = fs_antenna_gain_db(
+                fs.tx_lat, fs.tx_lon, fs.rx_lat, fs.rx_lon,
+                imt_lat, imt_lon,
+                beamwidth_deg=fs.beamwidth_deg,
+                max_gain_dbi=fs.tx_antenna_gain or 35
+            )
+            beam_disc = (fs.tx_antenna_gain or 35) - fs_gain  # dB below max
+        else:
+            beam_disc = 0 if pair.within_beam else 25
 
         i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc
         margin = i_dbm - threshold
@@ -997,6 +1096,61 @@ class InterferenceEngine:
             ),
         )
 
+    def _compute_fs_to_imt_adjacent(
+        self, pair: InterferencePair,
+        imt_lat, imt_lon, imt_radius, imt_ant_gain, imt_height,
+        fs, threshold: float,
+    ) -> PairResult:
+        """FS Transmitter → IMT Receiver ADJACENT channel (Phase 17).
+        
+        Same as FS→IMT but with ACS isolation subtracted.
+        FS EIRP is high enough that adjacent channel can still interfere.
+        """
+        effective_dist = max(pair.distance_m - imt_radius, 1.0)
+        tx_height = fs.tx_altitude if fs and fs.tx_altitude else 30
+        fs_freq = (pair.freq_overlap_low + pair.freq_overlap_high) / 2
+        
+        path_loss = self.model.path_loss_db(
+            distance_m=effective_dist,
+            frequency_mhz=fs_freq,
+            tx_height_m=tx_height,
+            rx_height_m=imt_height,
+        )
+        
+        if fs:
+            fs_eirp = (fs.tx_power or 30) + (fs.tx_antenna_gain or 35)
+            fs_gain = fs_antenna_gain_db(
+                fs.tx_lat, fs.tx_lon, fs.rx_lat, fs.rx_lon,
+                imt_lat, imt_lon,
+                beamwidth_deg=fs.beamwidth_deg,
+                max_gain_dbi=fs.tx_antenna_gain or 35
+            )
+            beam_disc = (fs.tx_antenna_gain or 35) - fs_gain
+        else:
+            fs_eirp = 65
+            beam_disc = 0 if pair.within_beam else 25
+        
+        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc - self.ACS_DB
+        margin = i_dbm - threshold
+        verdict = "CONFLICT" if i_dbm > threshold else "CLEAR"
+        
+        beam_note = "ใน main beam" if pair.within_beam else "นอก main beam"
+        fs_name = fs.name if fs else pair.interferer_name
+        return PairResult(
+            pair=pair,
+            i_dbm=i_dbm,
+            threshold_dbm=threshold,
+            margin_db=margin,
+            path_loss_db=path_loss,
+            effective_distance_m=effective_dist,
+            verdict=verdict,
+            detail=(
+                f"FS→IMT Adjacent [{fs_name}]: I={i_dbm:.1f} dBm vs threshold {threshold} dBm "
+                f"(margin={margin:+.1f} dB, dist={effective_dist:.0f}m, "
+                f"PL={path_loss:.1f} dB, FS_EIRP={fs_eirp} dBm, ACS=−{self.ACS_DB} dB, {beam_note})"
+            ),
+        )
+
     @staticmethod
     def guard_band_isolation_db(guard_mhz: float) -> float:
         """Calculate total isolation from guard band width.
@@ -1059,7 +1213,17 @@ class InterferenceEngine:
                                 pr.pair.freq_overlap_low, pr.pair.freq_overlap_high):
                     relevant.append(pr)
 
-            # Determine status
+            # Determine status with aggregate interference (Phase 17)
+            # Sum all interference contributions in linear domain
+            i_linear_sum = 0
+            for pr in relevant:
+                if pr.i_dbm > -200:
+                    i_linear_sum += 10 ** (pr.i_dbm / 10)
+            
+            i_total = -200
+            if i_linear_sum > 0:
+                i_total = 10 * math.log10(i_linear_sum)
+            
             if not relevant:
                 status = "green"
                 reason = "Available"
@@ -1110,6 +1274,7 @@ class InterferenceEngine:
                 status=status,
                 max_eirp=max_eirp if status == "green" else None,
                 reason=reason,
+                i_total_dbm=round(i_total, 1),
                 conflicting_pairs=relevant,
             ))
 

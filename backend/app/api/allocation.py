@@ -198,6 +198,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
                 "status": b.status,
                 "max_eirp": b.max_eirp,
                 "reason": b.reason,
+                "i_total_dbm": round(b.i_total_dbm, 1) if b.i_total_dbm > -200 else None,
             }
             for b in result.blocks
         ],

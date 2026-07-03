@@ -238,6 +238,7 @@ function directionLabelForLog(direction: string): string {
   const labels: Record<string, string> = {
     'IMT→FS': 'IMT→Fixed Service',
     'FS→IMT': 'Fixed Service→IMT',
+    'FS→IMT_ADJACENT': 'Fixed Service→IMT (adjacent)',
     'IMT↔IMT_COCHANNEL': 'IMT↔IMT (co-channel)',
     'IMT↔IMT_ADJACENT': 'IMT↔IMT (adjacent)',
   }
@@ -543,6 +544,15 @@ function generateNarrativeLog(
   lines.push('    4800    4850    4900    4950    4990 MHz')
   lines.push('   # = Available   X = Blocked   - = Guard Band')
   lines.push('')
+
+  // Aggregate interference summary (Phase 17)
+  const blocksWithI = blocks.filter((b: any) => b.i_total_dbm != null && b.i_total_dbm > -200)
+  if (blocksWithI.length > 0) {
+    lines.push('   Aggregate Interference (I_total = 10*log(sum of all interferers)):')
+    const worst = blocksWithI.reduce((a: any, b: any) => (b.i_total_dbm || -200) > (a.i_total_dbm || -200) ? b : a, blocksWithI[0])
+    lines.push(`   Worst block: ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz | I_total=${worst.i_total_dbm?.toFixed(1)} dBm`)
+    lines.push('')
+  }
 
   const availMHz = green.length * 10
   const pct = ((availMHz / 190) * 100).toFixed(1)
