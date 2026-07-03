@@ -1513,32 +1513,50 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       const checks = [
                         { label: 'Block Count', key: 'block_count', val: bv.block_count },
                         { label: 'Frequency Continuity', key: 'frequency_continuity', val: bv.frequency_continuity },
-                        { label: 'Guard Adjacency', key: 'guard_adjacency', val: bv.guard_adjacency },
+                        { label: 'Guard Adjacency', key: 'guard_adjacency', val: bv.guard_adjacency,
+                          explain: bv.guard_adjacency?.pass ? '' : (
+                            'เกิดเมื่อ FS Link บล็อกเฉพาะความถี่ที่ทับซ้อน — บล็อกข้างเคียงอยู่นอกความถี่ FS จึงใช้ได้โดยไม่ต้องมี guard band (ผ่าน Adjacent Channel check ด้วย ACS 33 dB แล้ว)'
+                          )},
                         { label: 'Total MHz', key: 'total_mhz', val: bv.total_mhz },
                         { label: 'Guard Reasons', key: 'guard_reasons', val: bv.guard_reasons },
+                        { label: 'Path Loss Monotonicity', key: 'path_loss_monotonicity', val: (bv as any).path_loss_monotonicity },
+                        { label: 'Reciprocal Symmetry', key: 'reciprocal_symmetry', val: (bv as any).reciprocal_symmetry,
+                          explain: (bv as any).reciprocal_symmetry?.pass ? '' : (
+                            'เมื่อใช้ Hata/P.1411 (height-dependent) — Path Loss ไม่เท่ากันเมื่อสลับฝั่ง tx/rx เพราะความสูงเสาต่างกัน นี่คือฟิสิกส์จริง ไม่ใช่บั๊ก'
+                          )},
+                        { label: 'EIRP Sanity', key: 'eirp_sanity', val: (bv as any).eirp_sanity },
+                        { label: 'FS Beam Coverage', key: 'fs_beam_coverage', val: (bv as any).fs_beam_coverage },
+                        { label: 'Block Distribution', key: 'block_distribution', val: (bv as any).block_distribution },
                       ]
                       return (
                         <div className="mt-3 pt-3 border-t border-gray-200">
                           <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Verification</h4>
                           <div className="space-y-1.5">
-                            {checks.map(({ label, key, val }) => (
-                              <div key={key} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded border ${
-                                val.pass ? 'bg-green-50 border-green-200 text-green-700' :
-                                'bg-red-50 border-red-200 text-red-700'
-                              }`}>
-                                {val.pass ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                                <span className="font-medium">{label}</span>
-                                <span className="text-gray-500">
-                                  {(val as any).reason || (
-                                    key === 'block_count' || key === 'total_mhz'
-                                      ? `(expected ${(val as any).expected}, actual ${(val as any).actual})`
-                                      : key === 'guard_adjacency'
-                                        ? `(warnings: ${(val as any).warnings})`
-                                        : key === 'guard_reasons'
-                                          ? `(invalid: ${(val as any).invalid_count})`
-                                          : ''
-                                  )}
-                                </span>
+                            {checks.map(({ label, key, val, explain }) => (
+                              <div key={key}>
+                                <div className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded border ${
+                                  val?.pass ? 'bg-green-50 border-green-200 text-green-700' :
+                                  'bg-red-50 border-red-200 text-red-700'
+                                }`}>
+                                  {val?.pass ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                                  <span className="font-medium">{label}</span>
+                                  <span className="text-gray-500">
+                                    {(val as any)?.reason || (
+                                      key === 'block_count' || key === 'total_mhz'
+                                        ? `(expected ${(val as any)?.expected}, actual ${(val as any)?.actual})`
+                                        : key === 'guard_adjacency'
+                                          ? `(warnings: ${(val as any)?.warnings})`
+                                          : key === 'guard_reasons'
+                                            ? `(invalid: ${(val as any)?.invalid_count})`
+                                            : ''
+                                    )}
+                                  </span>
+                                </div>
+                                {!val?.pass && explain && (
+                                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-1 mt-0.5 ml-5">
+                                    {explain}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1737,15 +1755,24 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                           <div className="text-red-700 pl-5 space-y-0.5">
                             <div className="font-medium">รายละเอียดสัญญาณรบกวน:</div>
                             <div>&nbsp;&nbsp;&nbsp;• ชื่อ FS Link: {parsed.linkName}</div>
+                            {parsed.imtDistance && (
+                              <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจาก IMT ถึง FS: {parsed.imtDistance} km</div>
+                            )}
                             <div>&nbsp;&nbsp;&nbsp;• กำลังสัญญาณรบกวน (I): {parsed.iValue} dBm</div>
                             <div>&nbsp;&nbsp;&nbsp;• Threshold ที่ยอมรับได้: {parsed.threshold} dBm</div>
                             <div>&nbsp;&nbsp;&nbsp;• เกิน Threshold: {parsed.exceedDb} dB</div>
+                            {parsed.neededSeparation && (
+                              <div>&nbsp;&nbsp;&nbsp;• {parsed.neededSeparation}</div>
+                            )}
                           </div>
                           <div className="text-xs text-red-600 bg-red-100/50 rounded p-2 mt-1 leading-relaxed">
                             คำอธิบาย: FS Link {parsed.linkName} ส่งสัญญาณในช่วงความถี่ที่ทับซ้อน
-                            กับบล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz กำลังสัญญาณรบกวนที่คำนวณได้
+                            กับบล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz{parsed.imtDistance ? ` อยู่ห่างจาก IMT ${parsed.imtDistance} km` : ''} กำลังสัญญาณรบกวนที่คำนวณได้
                             ({parsed.iValue} dBm) สูงกว่า threshold การป้องกัน ({parsed.threshold} dBm)
                             อยู่ {parsed.exceedDb} dB จึงไม่สามารถจัดสรรคลื่นความถี่บล็อกนี้ให้กับ IMT ได้
+                            {parsed.imtDistance && (
+                              <span className="block mt-1">บล็อกข้างเคียงที่อยู่นอกความถี่ของ FS นี้ ผ่านการตรวจสอบ Adjacent Channel (ACS 33 dB) แล้ว — สามารถจัดสรรได้โดยไม่ต้องมี Guard Band กับ FS</span>
+                            )}
                           </div>
                         </div>
                       )}
