@@ -347,32 +347,28 @@ function generateNarrativeLog(
 
   // Section 1.5: LINK BUDGET CALCULATION (Coverage Engine)
   if (coverage?.auto_eirp) {
-    const dKm = params.cellRadius / 1000
-    const fsplEdge = 32.4 + 20 * Math.log10(dKm || 0.001) + 20 * Math.log10(4900)
-    const gUe = 0
+    const modelLabel = PROPAGATION_MODEL_INFO[coverage.propagation_model || 'free_space']?.label || coverage.propagation_model || 'Free Space'
     const thaiClass = coverageClassificationThai(coverage.coverage_classification)
+    const pl = coverage.actual_path_loss_db
     lines.push('─── 1.4 LINK BUDGET CALCULATION ────────────────────────────────')
-    lines.push('   Coverage Engine : Phase 15 (Auto EIRP)')
+    lines.push(`   Model           : ${modelLabel}`)
     lines.push('')
     lines.push('   Input Parameters:')
-    lines.push(`     Cell Radius        : ${params.cellRadius} m (${dKm.toFixed(2)} km)`)
+    lines.push(`     Cell Radius        : ${params.cellRadius} m`)
     lines.push(`     Target RSS         : ${coverage.target_rss_dbm} dBm`)
     lines.push(`     Shadow Margin      : ${coverage.shadow_margin_db} dB`)
-    lines.push(`     UE Antenna Gain    : ${gUe} dBi`)
     lines.push('')
     lines.push('   Formula:')
-    lines.push('     EIRP_req = RSS_target + FSPL(d, f) - G_UE + Margin')
+    lines.push('     EIRP_req = RSS_target + PathLoss(model, d, f) + Margin')
     lines.push('')
     lines.push('   Calculation:')
-    lines.push(`     FSPL at cell edge  = 32.4 + 20*log10(${dKm.toFixed(2)}) + 20*log10(4900)`)
-    lines.push(`                        = ${fsplEdge.toFixed(1)} dB`)
-    lines.push(`     Required EIRP      = ${coverage.target_rss_dbm} + ${fsplEdge.toFixed(1)} - ${gUe} + ${coverage.shadow_margin_db}`)
+    lines.push(`     Path Loss (${modelLabel})  : ${pl?.toFixed(1) || 'N/A'} dB at cell edge`)
+    lines.push(`     Required EIRP      = ${coverage.target_rss_dbm} + ${pl?.toFixed(1) || '?'} + ${coverage.shadow_margin_db}`)
     lines.push(`                        = ${coverage.required_eirp_dbm.toFixed(1)} dBm`)
     lines.push(`     Used EIRP          = ${coverage.used_eirp_dbm.toFixed(1)} dBm`)
     lines.push(`     Cell Edge RSS      = ${coverage.cell_edge_rss_dbm.toFixed(1)} dBm`)
     lines.push('')
-    lines.push(`   Coverage Classification: ${coverage.coverage_classification}`)
-    lines.push(`   (${thaiClass})`)
+    lines.push(`   Coverage Classification: ${coverage.coverage_classification} (${thaiClass})`)
     lines.push('')
   }
 
@@ -512,13 +508,23 @@ function generateNarrativeLog(
     lines.push('   ระบบใช้ guard_band_isolation_db(width) — isolation เพิ่มตามความกว้าง')
     lines.push('')
     lines.push('   === ISOLATION vs GUARD BAND WIDTH ===')
-    lines.push('   Guard Band  | Isolation | Required Sep (from co-channel IMT)')
-    lines.push('   ------------|-----------|-----------------------------------')
+    lines.push('   Guard Band  | Isolation | Required Distance')
+    lines.push('   ------------|-----------|------------------')
     lines.push('   0 MHz (adj) |   33 dB   |   134 m')
     lines.push('   10 MHz      |   45 dB   |    30 m')
     lines.push('   20 MHz      |   61 dB   |     4 m')
-    lines.push('   40+ MHz     |   88+ dB  |  < 0.1 m (co-locate possible)')
+    lines.push('   40+ MHz     |   88+ dB  |  < 0.1 m (co-locate)')
     lines.push('')
+    // Per-site guard band requirements
+    if (guardPairs.length > 0) {
+      lines.push('   === PER-SITE GUARD BAND REQUIREMENTS ===')
+      guardPairs.forEach((pr, i) => {
+        const d = pr.detail || ''
+        lines.push(`   ${i+1}. ${pr.interferer} -> ${pr.victim}`)
+        lines.push(`      ${d}`)
+        lines.push('')
+      })
+    }
     lines.push('   หลักการ: isolation(dB) = ACS 33 + filter_roll_off(guard_width)')
     lines.push('   distance = co-channel / 10^(isolation/20)')
     lines.push('   อ้างอิง: 3GPP TS 38.104 NR base station ACLR/ACS requirements')
@@ -1600,6 +1606,20 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                           }`}>
                             {bv.all_pass ? 'All 10 verification checks passed' : 'Some verification checks need review'}
                           </div>
+                          {!bv.all_pass && (
+                            <div className="mt-2 space-y-1 text-xs">
+                              {Object.entries(bv).map(([k, v]) => {
+                                if (k === 'all_pass') return null
+                                const check = v as any
+                                if (check.pass) return null
+                                return (
+                                  <div key={k} className="text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1">
+                                    <span className="font-mono font-semibold">{k}</span>: {check.reason || 'failed'}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )
                     }

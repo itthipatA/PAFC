@@ -213,9 +213,11 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         "spatial_filter_km": round(engine._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts), 1),
         "coverage": ({
             "auto_eirp": auto_eirp,
+            "propagation_model": model_name,
             "used_eirp_dbm": round(max_eirp, 1) if max_eirp else None,
             "cell_edge_rss_dbm": round(coverage_result.cell_edge_rss_dbm, 1) if coverage_result else None,
             "required_eirp_dbm": round(coverage_result.required_eirp_dbm, 1) if coverage_result else None,
+            "actual_path_loss_db": round(coverage_result.actual_path_loss_db, 1) if coverage_result else None,
             "coverage_classification": coverage_result.coverage_classification if coverage_result else None,
             "target_rss_dbm": coverage_result.target_rss_dbm if coverage_result else None,
             "shadow_margin_db": coverage_result.shadow_margin_db if coverage_result else None,

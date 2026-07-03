@@ -145,9 +145,11 @@ export interface BackendVerification {
 
 export interface CoverageInfo {
   auto_eirp: boolean
+  propagation_model?: string
   used_eirp_dbm: number
   cell_edge_rss_dbm: number
   required_eirp_dbm: number
+  actual_path_loss_db?: number
   coverage_classification: 'OUTDOOR_GOOD' | 'OUTDOOR_BASIC' | 'MARGINAL' | 'INADEQUATE'
   target_rss_dbm: number
   shadow_margin_db: number
