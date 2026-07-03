@@ -438,8 +438,10 @@ function generateNarrativeLog(
 
   // Section 5: Guard Band
   const guardBlocks = gray.filter((b: any) => b.reason?.includes('Guard band'))
+  // Find GUARD_BAND pair_results for detailed calculation display
+  const guardPairs = pairResults.filter(pr => pr.verdict === 'GUARD_BAND')
   lines.push('─── 5. GUARD BAND ANALYSIS ──────────────────────────────────────')
-  lines.push(`   Guard bands     : ${guardBlocks.length} block(s)`)
+  lines.push(`   Guard bands     : ${guardBlocks.length} block(s), ${guardPairs.length} pair(s)`)
   if (guardBlocks.length > 0) {
     guardBlocks.forEach((b: any) => {
       const m = b.reason.match(/Guard band:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
@@ -454,6 +456,17 @@ function generateNarrativeLog(
     lines.push('   Guard bands (ย่านป้องกัน) ป้องกันการรบกวนระหว่างช่องความถี่ข้างเคียง')
     lines.push('   เกณฑ์: ACS 33 dB (3GPP TS 38.104) → ระยะ adjacent = co-channel/10^(33/20) ≈ 45m → 3× safety = 135m')
     lines.push('   อ้างอิง: ACS = Adjacent Channel Selectivity — ค่าทางไฟฟ้าที่ใช้คำนวณระยะห่าง')
+    lines.push('')
+    // Show per-pair calculation detail
+    if (guardPairs.length > 0) {
+      lines.push('   === GUARD BAND PAIR DETAILS ===')
+      guardPairs.forEach((pr, i) => {
+        const d = pr.detail || ''
+        lines.push(`   ${i+1}. ${pr.interferer} → ${pr.victim}`)
+        lines.push(`      ${d}`)
+        lines.push('')
+      })
+    }
   } else {
     lines.push('   No guard bands required.')
   }

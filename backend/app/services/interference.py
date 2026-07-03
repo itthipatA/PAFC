@@ -897,21 +897,30 @@ class InterferenceEngine:
         new_imt_radius: float,
         threshold: float,
     ) -> PairResult:
-        """IMT ↔ IMT adjacent channel — guard band determination."""
-        # Adjacent channel: need guard band if too close
-        min_adj_sep = new_imt_radius + 500 + self.ADJACENT_PROTECTION_M
+        """IMT ↔ IMT adjacent channel — guard band determination.
+        
+        Guard band required when distance < new_imt_radius + victim_cell_radius + ADJACENT_PROTECTION_M
+        where ADJACENT_PROTECTION_M = co-channel / 10^(ACS/20) × safety_factor
+        """
+        # Use 500m as conservative victim cell_radius default
+        victim_cell_r = 500  # conservative default
+        min_adj_sep = new_imt_radius + victim_cell_r + self.ADJACENT_PROTECTION_M
         needs_guard = pair.distance_m < min_adj_sep
 
         return PairResult(
             pair=pair,
-            i_dbm=-200,  # Adjacent — not a power calculation
+            i_dbm=-200,
             threshold_dbm=threshold,
             margin_db=-200,
             path_loss_db=0,
             effective_distance_m=pair.distance_m,
             verdict="GUARD_BAND" if needs_guard else "CLEAR",
-            detail=f"IMT↔IMT Adjacent: ระยะ {pair.distance_m/1000:.1f} km, "
-                   f"{'ต้องการ guard band' if needs_guard else 'ไม่ต้องการ guard band'}"
+            detail=(
+                f"Guard band: ACS={self.ACS_DB} dB → isolation={10**(self.ACS_DB/10):.0f}× → "
+                f"adjacent_sep={self.COCHANNEL_PROTECTION_M}/{10**(self.ACS_DB/20):.0f}≈{self._ADJACENT_RAW_M:.0f}m ×3 safety={self.ADJACENT_PROTECTION_M}m | "
+                f"min_sep={new_imt_radius}+{victim_cell_r}+{self.ADJACENT_PROTECTION_M}={min_adj_sep}m, "
+                f"actual={pair.distance_m:.0f}m → {'GUARD_BAND' if needs_guard else 'CLEAR'}"
+            ),
         )
 
     # ══════════════════════════════════════════════════════════
