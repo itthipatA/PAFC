@@ -209,6 +209,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         "model_used": model_name,
         "neighbor_imts_checked": len(neighbor_imts),
         "fs_links_checked": len(fs_links),
+        "spatial_filter_km": round(engine._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts), 1),
         "coverage": ({
             "auto_eirp": auto_eirp,
             "used_eirp_dbm": round(max_eirp, 1) if max_eirp else None,

@@ -307,10 +307,10 @@ function generateNarrativeLog(
 
   // Section 1.5: Phase 0 — Victim/Interferer Identification
   if (pairs.length > 0) {
-    lines.push('─── 1.5 VICTIM/INTERFERER IDENTIFICATION ───────────────────────')
-    lines.push('   Search criteria: 5 km spatial radius + frequency overlap')
-    lines.push('   เกณฑ์: cell_radius + 5 km buffer — อ้างอิง ITU-R SM.1047')
-    lines.push('   (typical IMT coverage ≤ 2 km + FS coordination ≤ 2 km)')
+    const filterKm = response.spatial_filter_km || '5.0'
+    lines.push('─── 1.3 VICTIM/INTERFERER IDENTIFICATION ───────────────────────')
+    lines.push(`   Search radius   : ${filterKm} km (max IMT radius + max FS coord + 1 km margin)`)
+    lines.push('   เกณฑ์: คำนวณจาก FSPL — adapts to max FS EIRP in system')
     lines.push(`   Systems checked : ${(response.fs_links_checked || 0)} FS links + ${(response.neighbor_imts_checked || 0)} IMT blocks`)
     lines.push(`   Pairs identified : ${pairs.length} total`)
     const highRisk = pairs.filter(p => p.preliminary_risk === 'HIGH')
@@ -344,7 +344,7 @@ function generateNarrativeLog(
     const fsplEdge = 32.4 + 20 * Math.log10(dKm || 0.001) + 20 * Math.log10(4900)
     const gUe = 0
     const thaiClass = coverageClassificationThai(coverage.coverage_classification)
-    lines.push('─── 1.5 LINK BUDGET CALCULATION ────────────────────────────────')
+    lines.push('─── 1.4 LINK BUDGET CALCULATION ────────────────────────────────')
     lines.push('   Coverage Engine : Phase 15 (Auto EIRP)')
     lines.push('')
     lines.push('   Input Parameters:')
@@ -458,11 +458,11 @@ function generateNarrativeLog(
     lines.push('')
     lines.push('   === ISOLATION vs GUARD BAND WIDTH ===')
     lines.push('   Guard Band  | Isolation | Required Sep | Co-location?')
-    lines.push('   0 MHz (adj) |   33 dB   |   ~134 m     | ❌')
-    lines.push('   10 MHz      |   45 dB   |   ~ 30 m     | ❌')
-    lines.push('   20 MHz      |   61 dB   |   ~  4 m     | ❌')
-    lines.push('   30 MHz      |   76 dB   |   ~  0.3 m   | ⚠️ ใกล้')
-    lines.push('   40+ MHz     |   88+ dB  |   < 0.1 m    | ✅ ติดกันได้')
+    lines.push('   0 MHz (adj) |   33 dB   |   ~134 m     | No')
+    lines.push('   10 MHz      |   45 dB   |   ~ 30 m     | No')
+    lines.push('   20 MHz      |   61 dB   |   ~  4 m     | No')
+    lines.push('   30 MHz      |   76 dB   |   ~  0.3 m   | Near')
+    lines.push('   40+ MHz     |   88+ dB  |   < 0.1 m    | Yes — co-locate')
     lines.push('')
     lines.push('   หลักการ: isolation(dB) = ACS 33 + filter_roll_off(guard_width)')
     lines.push('   distance = co-channel / 10^(isolation/20)')
@@ -508,12 +508,13 @@ function generateNarrativeLog(
   lines.push('')
   let barLine = '   ['
   blocks.forEach((b: any) => {
-    barLine += b.status === 'green' ? '█' : b.status === 'red' ? '▓' : '░'
+    barLine += b.status === 'green' ? '#' : b.status === 'red' ? 'X' : '-'
   })
   barLine += ']'
   lines.push(barLine)
-  lines.push('   4800                                                                 4990 MHz')
-  lines.push('   █ = Available   ▓ = Blocked   ░ = Guard Band')
+  // Align labels: 19 blocks, markers every ~5 blocks
+  lines.push('    4800    4850    4900    4950    4990 MHz')
+  lines.push('   # = Available   X = Blocked   - = Guard Band')
   lines.push('')
 
   const availMHz = green.length * 10

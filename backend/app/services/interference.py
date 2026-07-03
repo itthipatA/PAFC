@@ -250,7 +250,6 @@ class InterferenceEngine:
     """
 
     # Configuration
-    SPATIAL_FILTER_KM = 5.0        # Bounding box expansion for candidate query
     BEAMWIDTH_DEG = 3.0             # FS antenna beamwidth
     COCHANNEL_PROTECTION_M = 2000   # Minimum co-channel separation (rule of thumb)
     ACS_DB = 33                     # Adjacent Channel Selectivity (3GPP TS 38.104)
@@ -258,6 +257,7 @@ class InterferenceEngine:
     _ADJACENT_FACTOR = 10 ** (ACS_DB / 20)  # ~44.7x
     _ADJACENT_RAW_M = COCHANNEL_PROTECTION_M / _ADJACENT_FACTOR  # ~45m
     ADJACENT_PROTECTION_M = int(_ADJACENT_RAW_M * 3)  # ~135m with 3x safety factor
+    SPATIAL_MARGIN_KM = 1.0         # Safety margin for spatial search
 
     def __init__(self, propagation_model: str = "free_space"):
         self.model_name = propagation_model
@@ -267,6 +267,45 @@ class InterferenceEngine:
         """Switch propagation model at runtime."""
         self.model_name = model_name
         self.model = PropagationRegistry.get(model_name)
+
+    def _compute_spatial_filter_km(
+        self, cell_radius: float, fs_links: list, neighbor_imts: list
+    ) -> float:
+        """Compute spatial search radius from actual system parameters.
+        
+        spatial_filter = max(cell_radius) + max(FS coordination distance) + margin
+        where FS coordination distance = distance at which FS EIRP reaches threshold.
+        
+        Uses FSPL to derive coordination distance from max FS EIRP in the system.
+        """
+        # 1. Max IMT cell radius (km)
+        max_imt_r_km = cell_radius / 1000
+        for imt in neighbor_imts:
+            max_imt_r_km = max(max_imt_r_km, imt.cell_radius / 1000)
+        
+        # 2. Max FS coordination distance (km)
+        # Worst case: highest FS EIRP in the system
+        max_fs_eirp = 65  # dBm conservative default
+        if fs_links:
+            max_fs_eirp = max(
+                (fs.tx_power or 30) + (fs.tx_antenna_gain or 35)
+                for fs in fs_links
+            )
+        
+        # FSPL at which FS interference reaches threshold
+        # I = EIRP_FS - FSPL + G_IMT → FSPL = EIRP_FS - threshold + G_IMT
+        # Use -80 dBm for pre-screen (IMT receiver sensitivity, not FS threshold)
+        pre_screen_threshold = -80
+        fs_pl_threshold = max_fs_eirp - pre_screen_threshold + 12
+        
+        # Distance: d_km = 10^((PL - 32.4 - 20*log(f))/20)
+        center_freq = (settings.band_start_mhz + settings.band_end_mhz) / 2
+        fs_coord_km = 10 ** (
+            (fs_pl_threshold - 32.4 - 20 * math.log10(center_freq)) / 20
+        )
+        fs_coord_km = max(min(fs_coord_km, 10), 0.5)  # Cap at 10 km, min 500m
+        
+        return max_imt_r_km + fs_coord_km + self.SPATIAL_MARGIN_KM
 
     def get_assumptions(self) -> dict:
         """
@@ -328,18 +367,14 @@ class InterferenceEngine:
             },
             "spatial_filter": {
                 "label": "Spatial Search Radius",
-                "value": f"{self.SPATIAL_FILTER_KM} km",
-                "description": "รัศมีการค้นหาระบบข้างเคียง — ระบบที่ไกลกว่านี้จะไม่ถูกนำมาคำนวณ",
-                "reference": "Engineering judgement (> typical coordination distance)",
-                "impact": "กว้างขึ้น → พบคู่ interference มากขึ้น → ใช้เวลาคำนวณนานขึ้น",
-                "justification": (
-                    "เกณฑ์ 5 km มาจาก: (1) typical IMT coverage ≤ 2 km → cell edge + protection = ~3.5 km, "
-                    "(2) FS link ที่ EIRP 65 dBm มี coordination distance ~2 km ที่ 5 GHz, "
-                    "(3) worst-case sum = 3.5+2 = 5.5 km → ปัดลง 5 km conservative สำหรับ pre-screen "
-                    "(Phase 1 จะคำนวณจริงอีกครั้ง). "
-                    "อ้างอิง: ITU-R SM.1047 สำหรับ coordination distance ของ land mobile services."
+                "value": "Dynamic — จากการคำนวณ FSPL (max IMT radius + max FS coord distance + margin)",
+                "description": (
+                    "คำนวณจาก: max(cell_radius) + max FS coordination distance (FSPL-derived "
+                    "from max EIRP in system) + 1 km safety margin"
                 ),
-                "reality_check": "✅ สมเหตุสมผล — 5 km เพียงพอสำหรับระบบ IMT (cell ≤ 2 km) + FS (coord ≤ 2 km) ที่ 5 GHz",
+                "reference": "ITU-R P.525 (FSPL) + ITU-R SM.1047 (coordination distance)",
+                "impact": "ขึ้นกับ FS EIRP ในระบบ — EIRP สูงขึ้น → ค้นหากว้างขึ้น",
+                "reality_check": "✅ คำนวณจาก FSPL จริง ไม่ใช่ hardcoded — adapts to system parameters",
             },
             "propagation": {
                 "label": "Propagation Model",
@@ -488,7 +523,8 @@ class InterferenceEngine:
         pairs: list[InterferencePair] = []
         # max_eirp = total EIRP (TX power + antenna gain) — consistent with Coverage Engine
         new_imt_eirp = max_eirp
-        spatial_limit_m = (cell_radius + self.SPATIAL_FILTER_KM * 1000)
+        spatial_filter_km = self._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts)
+        spatial_limit_m = (cell_radius + spatial_filter_km * 1000)
 
         # ── ➀ NEW_IMT → FS_RX ──
         for fs in fs_links:
