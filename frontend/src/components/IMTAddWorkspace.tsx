@@ -1740,6 +1740,24 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                             <CheckCircle className="w-3.5 h-3.5" />
                             สามารถจัดสรรได้
                           </div>
+                          {/* Explain why green is safe when adjacent to FS-blocked red */}
+                          {(() => {
+                            const idx = blocks.indexOf(block)
+                            const prevBlock = idx > 0 ? blocks[idx - 1] : null
+                            const nextBlock = idx < blocks.length - 1 ? blocks[idx + 1] : null
+                            const prevIsFsRed = prevBlock?.status === 'red' && prevBlock?.reason?.includes('FS conflict')
+                            const nextIsFsRed = nextBlock?.status === 'red' && nextBlock?.reason?.includes('FS conflict')
+                            if (prevIsFsRed || nextIsFsRed) {
+                              return (
+                                <div className="text-xs text-green-600 bg-green-100/50 rounded p-1.5 mt-1 leading-relaxed">
+                                  บล็อกนี้อยู่นอกความถี่ของ FS Link{prevIsFsRed && nextIsFsRed ? 's' : ''}ที่บล็อกบล็อกข้างเคียง — 
+                                  ผ่านการตรวจสอบ Adjacent Channel แล้ว (ACS 33 dB + ACLR 45 dB = 78 dB isolation) 
+                                  จึงไม่ต้องมี Guard Band ระหว่าง FS
+                                </div>
+                              )
+                            }
+                            return null
+                          })()}
                         </div>
                       )}
 

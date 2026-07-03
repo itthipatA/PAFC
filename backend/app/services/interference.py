@@ -323,6 +323,7 @@ class InterferenceEngine:
     BEAMWIDTH_DEG = 3.0             # FS antenna beamwidth
     COCHANNEL_PROTECTION_M = 2000   # Minimum co-channel separation (rule of thumb)
     ACS_DB = 33                     # Adjacent Channel Selectivity (3GPP TS 38.104)
+    ACLR_DB = 45                    # Adjacent Channel Leakage Ratio (3GPP TS 38.104 — BS transmitter)
     # Adjacent protection derived from ACS: co-channel / 10^(ACS/20) with safety factor
     _ADJACENT_FACTOR = 10 ** (ACS_DB / 20)  # ~44.7x
     _ADJACENT_RAW_M = COCHANNEL_PROTECTION_M / _ADJACENT_FACTOR  # ~45m
@@ -719,7 +720,7 @@ class InterferenceEngine:
                 distance_m=dist_to_tx,
                 within_beam=in_beam,
                 guard_band_mhz=0,
-                estimated_i_dbm=est_i - self.ACS_DB,  # ACS reduces interference
+                estimated_i_dbm=est_i - self.ACS_DB - self.ACLR_DB,  # ACS + ACLR for adjacent
                 preliminary_risk=self._classify_risk(est_i - self.ACS_DB,
                     settings.interference_threshold_dbm, dist_to_tx),
             ))
@@ -1151,9 +1152,9 @@ class InterferenceEngine:
         fs, threshold: float,
     ) -> PairResult:
         """FS Transmitter → IMT Receiver ADJACENT channel (Phase 17).
-        
-        Same as FS→IMT but with ACS isolation subtracted.
-        FS EIRP is high enough that adjacent channel can still interfere.
+
+        ACS (33 dB receiver) + ACLR (45 dB transmitter) = 78 dB total isolation.
+        Reference: 3GPP TS 38.104 §6.6 (ACS) + §6.6.3 (ACLR for BS).
         """
         effective_dist = max(pair.distance_m - imt_radius, 1.0)
         tx_height = fs.tx_altitude if fs and fs.tx_altitude else 30
@@ -1179,7 +1180,7 @@ class InterferenceEngine:
             fs_eirp = 65
             beam_disc = 0 if pair.within_beam else 25
         
-        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc - self.ACS_DB
+        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc - self.ACS_DB - self.ACLR_DB
         margin = i_dbm - threshold
         verdict = "CONFLICT" if i_dbm > threshold else "CLEAR"
         
@@ -1196,7 +1197,7 @@ class InterferenceEngine:
             detail=(
                 f"FS→IMT Adjacent [{fs_name}]: I={i_dbm:.1f} dBm vs threshold {threshold} dBm "
                 f"(margin={margin:+.1f} dB, dist={effective_dist:.0f}m, "
-                f"PL={path_loss:.1f} dB, FS_EIRP={fs_eirp} dBm, ACS=−{self.ACS_DB} dB, {beam_note})"
+                f"PL={path_loss:.1f} dB, FS_EIRP={fs_eirp} dBm, ACS=−{self.ACS_DB} dB, ACLR=−{self.ACLR_DB} dB, {beam_note})"
             ),
         )
 
