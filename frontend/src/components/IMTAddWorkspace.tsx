@@ -452,8 +452,8 @@ function generateNarrativeLog(
     })
     lines.push('')
     lines.push('   Guard bands (ย่านป้องกัน) ป้องกันการรบกวนระหว่างช่องความถี่ข้างเคียง')
-    lines.push('   เกณฑ์: ระยะห่าง < cell_radius + 500m + 500m → ต้องการ guard band')
-    lines.push('   อ้างอิง: 3GPP TS 38.104 ACS ≥ 33 dB → adjacent channel isolation')
+    lines.push('   เกณฑ์: ACS 33 dB (3GPP TS 38.104) → ระยะ adjacent = co-channel/10^(33/20) ≈ 45m → 3× safety = 135m')
+    lines.push('   อ้างอิง: ACS = Adjacent Channel Selectivity — ค่าทางไฟฟ้าที่ใช้คำนวณระยะห่าง')
   } else {
     lines.push('   No guard bands required.')
   }
