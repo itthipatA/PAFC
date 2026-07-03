@@ -616,7 +616,7 @@ async function loadFSLinks(
   fsMarkersRef: React.MutableRefObject<maplibregl.Marker[]>,
 ) {
   try {
-    const res = await fetchWithAuth('/api/fs-links/')
+    const res = await fetchWithAuth('/api/fs-links/?status=active')
     if (!res.ok) {
       console.warn('FS links not available (auth required)')
       return
@@ -807,7 +807,7 @@ async function loadIMTAllocations(
   imtMarkersRef: React.MutableRefObject<maplibregl.Marker[]>,
 ) {
   try {
-    const res = await fetchWithAuth('/api/imt/')
+    const res = await fetchWithAuth('/api/imt/?status=active')
     if (!res.ok) {
       console.warn('IMT allocations not available (auth required)')
       return
