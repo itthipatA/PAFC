@@ -215,6 +215,105 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
             "target_rss_dbm": coverage_result.target_rss_dbm if coverage_result else None,
             "shadow_margin_db": coverage_result.shadow_margin_db if coverage_result else None,
         } if auto_eirp else None),
+        
+        # Trade-off suggestion (when conflicts exist + auto_eirp)
+        "tradeoff": _compute_tradeoff(result, coverage_result, max_eirp, auto_eirp, model_name, antenna_height, antenna_gain),
+    }
+
+
+def _compute_tradeoff(result, coverage_result, max_eirp, auto_eirp, model_name, antenna_height, antenna_gain):
+    """
+    When conflicts exist and auto_eirp was used, suggest EIRP reduction
+    that avoids conflicts while maximizing coverage radius.
+    
+    Power-based conflicts (IMT→FS, FS→IMT) can be resolved by reducing EIRP.
+    Distance-based conflicts (IMT↔IMT co-channel) require relocation.
+    """
+    if not auto_eirp or not coverage_result:
+        return None
+    
+    conflicts = [pr for pr in result.pair_results if pr.verdict == "CONFLICT"]
+    if not conflicts:
+        return None
+    
+    # Separate power-based and distance-based conflicts
+    power_conflicts = [pr for pr in conflicts 
+                       if pr.pair.direction in ("IMT→FS", "FS→IMT")]
+    distance_conflicts = [pr for pr in conflicts 
+                          if pr.pair.direction == "IMT↔IMT_COCHANNEL"]
+    
+    conflicting_names = list(set(
+        pr.pair.victim_name if pr.pair.interferer_type == "NEW_IMT"
+        else pr.pair.interferer_name
+        for pr in conflicts
+    ))
+    
+    # Find required EIRP reduction from power-based conflicts
+    if power_conflicts:
+        # Each conflict: I[dBm] exceeds threshold by margin_db
+        # To avoid: reduce EIRP by (I - threshold) = margin_db
+        max_margin = max(pr.margin_db for pr in power_conflicts)
+        suggested_eirp = max_eirp - max_margin
+        
+        # Clamp to reasonable minimum (0 dBm)
+        suggested_eirp = max(suggested_eirp, 0)
+    else:
+        # Only distance-based conflicts — EIRP reduction won't help
+        suggested_eirp = max_eirp
+    
+    # Calculate achievable radius at suggested EIRP
+    from app.services.coverage import CoverageEngine
+    cov = CoverageEngine(propagation_model=model_name)
+    suggested_radius = cov.calculate_achievable_radius(
+        eirp_dbm=suggested_eirp,
+        bs_antenna_height_m=antenna_height,
+        bs_antenna_gain_dbi=antenna_gain,
+        target_rss_dbm=coverage_result.target_rss_dbm,
+        shadow_margin_db=coverage_result.shadow_margin_db,
+        building_loss_db=coverage_result.building_loss_db,
+        ue_antenna_gain_dbi=coverage_result.ue_antenna_gain_dbi,
+    )
+    
+    original_radius = coverage_result.cell_radius_m
+    reduction_pct = ((original_radius - suggested_radius) / original_radius * 100) if original_radius > 0 else 0
+    
+    # Build message
+    if power_conflicts and distance_conflicts:
+        message = (
+            f"ลด EIRP จาก {max_eirp:.1f} → {suggested_eirp:.1f} dBm (แก้ power conflicts) "
+            f"→ รัศมี {original_radius:.0f}m → {suggested_radius:.0f}m (ลดลง {reduction_pct:.0f}%) "
+            f"⚠️ co-channel conflicts ยังคงอยู่ — ต้องย้ายตำแหน่ง"
+        )
+        resolution = "partial"
+    elif power_conflicts:
+        if reduction_pct < 5:
+            message = (
+                f"EIRP reduction {max_eirp:.1f} → {suggested_eirp:.1f} dBm "
+                f"resolves conflicts with minimal coverage impact "
+                f"(radius {original_radius:.0f}m → {suggested_radius:.0f}m, −{reduction_pct:.0f}%)"
+            )
+        else:
+            message = (
+                f"ลด EIRP จาก {max_eirp:.1f} → {suggested_eirp:.1f} dBm "
+                f"→ รัศมี {original_radius:.0f}m → {suggested_radius:.0f}m (ลดลง {reduction_pct:.0f}%)"
+            )
+        resolution = "eirp_reduction"
+    else:
+        message = (
+            f"⚠️ ทุก conflict เป็น distance-based (co-channel) — "
+            f"การลด EIRP ไม่ช่วย ต้องย้ายตำแหน่ง"
+        )
+        resolution = "relocation_required"
+    
+    return {
+        "resolution_type": resolution,
+        "original_radius_m": round(original_radius, 0),
+        "original_eirp_dbm": round(max_eirp, 1),
+        "suggested_radius_m": round(suggested_radius, 0),
+        "suggested_eirp_dbm": round(suggested_eirp, 1),
+        "radius_reduction_pct": round(reduction_pct, 0),
+        "conflicting_systems": conflicting_names,
+        "message": message,
     }
 
 

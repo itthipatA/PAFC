@@ -147,6 +147,19 @@ export interface CoverageInfo {
   building_loss_db?: number
 }
 
+// ─── Trade-off (Phase 15) ──────────────────────────────────────────────────
+
+export interface TradeOff {
+  resolution_type: 'eirp_reduction' | 'partial' | 'relocation_required'
+  original_radius_m: number
+  original_eirp_dbm: number
+  suggested_radius_m: number
+  suggested_eirp_dbm: number
+  radius_reduction_pct: number
+  conflicting_systems: string[]
+  message: string
+}
+
 // ─── Full Analyze Response ──────────────────────────────────────────────────
 
 export interface AnalyzeSummary {
@@ -166,5 +179,7 @@ export interface AnalyzeResponse {
   pair_results?: PairResult[]
   verification?: BackendVerification
   coverage?: CoverageInfo
+  tradeoff?: TradeOff
   computation_time_ms?: number
+  model_used?: string
 }

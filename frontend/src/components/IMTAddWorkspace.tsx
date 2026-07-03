@@ -4,7 +4,7 @@ import { circle } from '@turf/turf'
 import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
-import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo } from '../types'
+import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff } from '../types'
 
 interface IMTAddWorkspaceProps {
   onBack: () => void
@@ -418,6 +418,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [maxEirp, setMaxEirp] = useState(23)
   const [autoEirp, setAutoEirp] = useState(false)
   const [coverageInfo, setCoverageInfo] = useState<CoverageInfo | null>(null)
+  const [tradeoff, setTradeoff] = useState<TradeOff | null>(null)
   const [propagationModel, setPropagationModel] = useState('free_space')
   const [name, setName] = useState('')
   const [operator, setOperator] = useState('')
@@ -570,6 +571,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       setBackendVerification(data.verification || null)
       if (data.coverage) {
         setCoverageInfo(data.coverage)
+      }
+      if (data.tradeoff) {
+        setTradeoff(data.tradeoff)
       }
       // Use backend-provided EIRP if autoEIRP was used
       const effectiveEirp = data.coverage?.used_eirp_dbm ?? maxEirp
@@ -1255,6 +1259,53 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       </div>
                     </div>
                     <hr className="my-3 border-gray-200" />
+
+                    {/* ─── Trade-off Suggestion ─── */}
+                    {tradeoff && (
+                      <div className="mb-4">
+                        <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">ข้อเสนอแนะ (Trade-off)</h4>
+                        <div className={`p-3 rounded-lg border-l-4 ${
+                          tradeoff.resolution_type === 'relocation_required'
+                            ? 'bg-red-50 border-red-500'
+                            : tradeoff.resolution_type === 'partial'
+                            ? 'bg-amber-50 border-amber-500'
+                            : 'bg-blue-50 border-blue-500'
+                        }`}>
+                          <div className="flex items-start gap-2 mb-2">
+                            <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                              tradeoff.resolution_type === 'relocation_required' ? 'text-red-600' :
+                              tradeoff.resolution_type === 'partial' ? 'text-amber-600' : 'text-blue-600'
+                            }`} />
+                            <p className="text-sm text-gray-800">{tradeoff.message}</p>
+                          </div>
+                          {tradeoff.resolution_type !== 'relocation_required' && (
+                            <div className="grid grid-cols-2 gap-2 text-xs mt-2 pt-2 border-t border-gray-200">
+                              <div>
+                                <span className="text-gray-400">EIRP เดิม:</span>{' '}
+                                <span className="font-mono font-semibold">{tradeoff.original_eirp_dbm} dBm</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">EIRP แนะนำ:</span>{' '}
+                                <span className="font-mono font-semibold text-blue-700">{tradeoff.suggested_eirp_dbm} dBm</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">รัศมีเดิม:</span>{' '}
+                                <span className="font-mono">{tradeoff.original_radius_m}m</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">รัศมีที่ทำได้:</span>{' '}
+                                <span className="font-mono font-semibold text-blue-700">{tradeoff.suggested_radius_m}m ({tradeoff.radius_reduction_pct > 0 ? '−' : ''}{tradeoff.radius_reduction_pct}%)</span>
+                              </div>
+                            </div>
+                          )}
+                          {tradeoff.conflicting_systems.length > 0 && (
+                            <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+                              ระบบที่ขัดแย้ง: {tradeoff.conflicting_systems.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
 
