@@ -33,6 +33,7 @@ class FSLink(Base):
     tx_power = Column(Float, nullable=False)       # dBm
     tx_antenna_gain = Column(Float, nullable=False)  # dBi
     rx_antenna_gain = Column(Float, nullable=True)   # dBi
+    beamwidth_deg = Column(Float, nullable=True, default=3.0)  # deg — half-power beamwidth
     azimuth = Column(Float, nullable=True)          # deg from True North
     polarization = Column(String(10), nullable=True)  # H, V, or dual
 

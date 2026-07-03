@@ -39,8 +39,9 @@ class FSLinkData:
     freq_high: float
     bandwidth: float
     tx_power: float          # dBm
-    tx_antenna_gain: float   # dBi
-    rx_antenna_gain: float   # dBi
+    tx_antenna_gain: float  # dBi
+    rx_antenna_gain: float  # dBi
+    beamwidth_deg: float = 3.0  # deg — half-power beamwidth
 
 
 @dataclass
@@ -439,7 +440,7 @@ class InterferenceEngine:
             in_beam = is_imt_in_fs_beam(
                 fs.tx_lat, fs.tx_lon, fs.rx_lat, fs.rx_lon,
                 center_lat, center_lon,
-                beamwidth_deg=self.BEAMWIDTH_DEG,
+                beamwidth_deg=fs.beamwidth_deg,
             )
 
             # FS EIRP = tx_power + tx_antenna_gain (directional)

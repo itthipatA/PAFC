@@ -82,6 +82,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
             tx_power=fs.tx_power,
             tx_antenna_gain=fs.tx_antenna_gain,
             rx_antenna_gain=fs.rx_antenna_gain or 0,
+            beamwidth_deg=float(getattr(fs, 'beamwidth_deg', 3.0) or 3.0),
         )
         for fs in fs_links_raw
     ]
@@ -249,6 +250,7 @@ async def pre_screen(data: dict, db: AsyncSession = Depends(get_db)):
             tx_power=fs.tx_power,
             tx_antenna_gain=fs.tx_antenna_gain,
             rx_antenna_gain=fs.rx_antenna_gain or 0,
+            beamwidth_deg=float(getattr(fs, 'beamwidth_deg', 3.0) or 3.0),
         )
         for fs in fs_links_raw
     ]

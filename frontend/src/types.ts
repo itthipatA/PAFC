@@ -144,6 +144,7 @@ export interface CoverageInfo {
   coverage_classification: 'OUTDOOR_GOOD' | 'OUTDOOR_BASIC' | 'MARGINAL' | 'INADEQUATE'
   target_rss_dbm: number
   shadow_margin_db: number
+  building_loss_db?: number
 }
 
 // ─── Full Analyze Response ──────────────────────────────────────────────────

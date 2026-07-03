@@ -147,6 +147,12 @@ def _imt_to_dict(a: IMTAllocation, blocks: list) -> dict:
         "antenna_height": a.antenna_height,
         "max_eirp": a.max_eirp,
         "antenna_gain": a.antenna_gain,
+        # Coverage params (Phase 15)
+        "target_rss": a.target_rss,
+        "shadow_margin": a.shadow_margin,
+        "building_loss": a.building_loss,
+        "propagation_model": a.propagation_model,
+        "coverage_classification": a.coverage_classification,
         "status": a.status,
         "approved_by": a.approved_by,
         "valid_from": str(a.valid_from) if a.valid_from else None,

@@ -20,8 +20,15 @@ class IMTAllocation(Base):
 
     # RF Parameters
     antenna_height = Column(Float, nullable=False)   # m AGL
-    max_eirp = Column(Float, nullable=False)           # dBm
+    max_eirp = Column(Float, nullable=False)           # dBm (already includes antenna gain)
     antenna_gain = Column(Float, nullable=True)        # dBi
+
+    # Coverage / Link Budget Parameters (Phase 15)
+    target_rss = Column(Float, nullable=True)          # dBm — target RSS at cell edge
+    shadow_margin = Column(Float, nullable=True)       # dB — shadow fade margin
+    building_loss = Column(Float, nullable=True, default=0)  # dB — building penetration
+    propagation_model = Column(String(50), nullable=True)    # which model was used
+    coverage_classification = Column(String(30), nullable=True)  # OUTDOOR_GOOD etc.
 
     # Status
     status = Column(String(20), default="pending")  # pending/active/rejected/expired

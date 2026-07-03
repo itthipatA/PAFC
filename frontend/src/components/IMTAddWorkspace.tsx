@@ -617,6 +617,14 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
           name: name.trim(),
           operator: operator.trim(),
           status: 'active',
+          // Coverage params (Phase 15)
+          ...(coverageInfo ? {
+            target_rss: coverageInfo.target_rss_dbm,
+            shadow_margin: coverageInfo.shadow_margin_db,
+            building_loss: coverageInfo.building_loss_db ?? 0,
+            propagation_model: propagationModel,
+            coverage_classification: coverageInfo.coverage_classification,
+          } : {}),
           blocks: blocks.map((b) => ({
             freq_low: b.freq_low,
             freq_high: b.freq_high,
@@ -638,7 +646,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     } finally {
       setSaving(false)
     }
-  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, blocks, fetchWithAuth, onBack])
+  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, blocks, coverageInfo, fetchWithAuth, onBack])
 
   // Spectrum summary
   const statusCounts = {
