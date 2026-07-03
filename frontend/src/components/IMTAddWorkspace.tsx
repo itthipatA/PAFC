@@ -426,18 +426,45 @@ function generateNarrativeLog(
   // Section 4: IMT Co-Channel
   const imtConflicts = red.filter((b: any) => b.reason?.includes('IMT co-channel'))
   const neighborsChecked = response.neighbor_imts_checked || 0
+  // Find co-channel pair results for details
+  const coPairs = pairResults.filter(pr => pr.direction === 'IMT↔IMT_COCHANNEL' && pr.verdict === 'CONFLICT')
   lines.push('─── 4. IMT CO-CHANNEL ANALYSIS ──────────────────────────────────')
   lines.push(`   Neighbors       : ${neighborsChecked} block(s) from nearby IMT stations`)
-  lines.push(`   Co-channel hits : ${imtConflicts.length} block(s)`)
+  lines.push(`   Co-channel hits : ${imtConflicts.length} block(s), ${coPairs.length} conflicting pair(s)`)
   if (imtConflicts.length > 0) {
     imtConflicts.forEach((b: any) => {
-      const m = b.reason.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
+      // Match old format: "IMT-A (0.6 km < 1.1 km)" or new: "IMT-A (0.6 km < ขั้นต่ำ 1.1 km | ...)"
+      const m = b.reason.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*(?:ขั้นต่ำ\s*)?([\d.]+)\s*km/)
       if (m) {
-        lines.push(`   ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : ${m[1].trim()} at ${m[2]} km (need ${m[3]} km)`)
+        const name = m[1].trim()
+        const actual = m[2]
+        const needed = m[3]
+        lines.push(`   ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${name}`)
+        lines.push(`     Required separation: ≥ ${needed} km (cell radii + 2 km co-channel protection)`)
+        lines.push(`     Actual distance   : ${actual} km → ต้องอยู่ห่าง ${name} อย่างน้อย ${needed} km`)
       } else {
         lines.push(`   ${b.reason}`)
       }
     })
+    lines.push('')
+    lines.push('   Co-channel = SAME frequency block → no electrical isolation')
+    lines.push('   Only PHYSICAL DISTANCE prevents interference')
+    lines.push('')
+    // Show co-channel pair details
+    if (coPairs.length > 0) {
+      lines.push('   === CO-CHANNEL PAIR DETAILS ===')
+      coPairs.forEach((pr, i) => {
+        lines.push(`   ${i+1}. ${pr.interferer} → ${pr.victim}`)
+        lines.push(`      ${pr.detail}`)
+        lines.push('')
+      })
+    }
+    // Note if aggregate I includes co-channel contributions
+    const blocksWithI = blocks.filter((b: any) => b.i_total_dbm != null && b.i_total_dbm > -200)
+    if (blocksWithI.length > 0) {
+      lines.push('   Note: Co-channel interference is INCLUDED in aggregate I_total')
+      lines.push('   (multiple interferers summed in linear domain per Phase 17)')
+    }
   } else {
     lines.push('   No co-channel conflicts.')
   }
