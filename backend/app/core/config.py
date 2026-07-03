@@ -27,11 +27,13 @@ class Settings(BaseSettings):
 
     # Propagation model configs
     propagation_models: dict = {
-        "free_space": {"name": "Free Space Path Loss"},
-        "p452": {"name": "ITU-R P.452", "description": "Long-term interference prediction"},
-        "p526": {"name": "ITU-R P.526", "description": "Diffraction loss"},
-        "p530": {"name": "ITU-R P.530", "description": "FS link reliability"},
-        "hata": {"name": "Hata Model", "description": "Urban/suburban mobile"},
+        "free_space": {"name": "Free Space Path Loss", "params": [], "reference": "ITU-R P.525"},
+        "p452": {"name": "ITU-R P.452 Interference", "params": ["time_pct", "clutter_class"], "reference": "ITU-R P.452"},
+        "p2108": {"name": "ITU-R P.2108 Clutter", "params": ["clutter_type", "percentage_locations"], "reference": "ITU-R P.2108"},
+        "p1411": {"name": "ITU-R P.1411 Short-Range", "params": ["environment", "street_width_m", "building_height_m"], "reference": "ITU-R P.1411"},
+        "p526": {"name": "ITU-R P.526", "description": "Diffraction loss", "params": []},
+        "p530": {"name": "ITU-R P.530", "description": "FS link reliability", "params": []},
+        "hata": {"name": "Hata Model", "description": "Urban/suburban mobile", "params": ["environment"]},
     }
 
     model_config = {"env_prefix": "PAFC_"}

@@ -686,13 +686,14 @@ export default function IMTManager() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Max EIRP (dBm)
+                      Max EIRP — รวม TX Power + Antenna Gain (dBm)
                     </label>
                     <input
                       type="number"
                       value={form.max_eirp}
                       onChange={(e) => handleFieldChange('max_eirp', Number(e.target.value))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      title="Total EIRP = Transmitter Power + Antenna Gain — ไม่ต้องบวก antenna_gain ซ้ำ"
                     />
                   </div>
                 </div>

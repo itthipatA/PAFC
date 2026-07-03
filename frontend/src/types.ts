@@ -181,6 +181,7 @@ export interface AnalyzeSummary {
 export interface AnalyzeResponse {
   blocks: BlockResult[]
   summary: AnalyzeSummary
+  assumptions?: Record<string, AssumptionItem>  // สมมุติฐานทางวิศวกรรม
   pairs?: Pair[]
   pair_results?: PairResult[]
   verification?: BackendVerification
@@ -188,4 +189,16 @@ export interface AnalyzeResponse {
   tradeoff?: TradeOff
   computation_time_ms?: number
   model_used?: string
+}
+
+// ─── Engineering Assumptions ──────────────────────────────────────────────────
+
+export interface AssumptionItem {
+  label: string
+  value: string
+  description: string
+  reference: string
+  impact: string
+  impact_en?: string
+  limitations?: string[]
 }

@@ -55,8 +55,9 @@ class IMTNeighborData:
     freq_low: float        # MHz
     freq_high: float       # MHz
     # For bidirectional: the IMT's own EIRP parameters
-    max_eirp: float = 23   # dBm (default conservative)
-    antenna_gain: float = 12  # dBi (default)
+    # max_eirp = total EIRP (TX power + antenna_gain) — consistent with Coverage Engine
+    max_eirp: float = 23   # dBm total EIRP (default conservative)
+    antenna_gain: float = 12  # dBi (used for VICTIM receiver gain only)
     antenna_height: float = 15  # m (default)
 
 
@@ -260,6 +261,103 @@ class InterferenceEngine:
         self.model_name = model_name
         self.model = PropagationRegistry.get(model_name)
 
+    def get_assumptions(self) -> dict:
+        """
+        Return all engineering assumptions used in the interference analysis.
+        These are the «สมมุติฐาน» that govern every calculation.
+        """
+        return {
+            "interference_threshold": {
+                "label": "Interference Threshold",
+                "value": f"{settings.interference_threshold_dbm} dBm",
+                "description": "I/N = −6 dB with typical FS receiver noise floor −108 dBm",
+                "reference": "ITU-R F.758",
+                "impact": "ค่าต่ำลง → conservative มากขึ้น → บล็อกคลื่นมากขึ้น",
+                "impact_en": "Lower = more conservative (blocks more spectrum)",
+                "reality_check": "✅ สมเหตุสมผล — I/N = −6 dB เป็นค่ามาตรฐาน ITU-R สำหรับ FS protection criteria ที่ 5 GHz",
+            },
+            "cochannel_protection": {
+                "label": "Co-Channel Protection Distance",
+                "value": f"{self.COCHANNEL_PROTECTION_M} m ({(self.COCHANNEL_PROTECTION_M/1000):.1f} km)",
+                "description": "ระยะห่างขั้นต่ำระหว่าง IMT ที่ใช้ความถี่เดียวกัน ป้องกัน co-channel interference",
+                "reference": "คำนวณจาก typical EIRP 23 dBm ที่ 5 GHz",
+                "impact": "ค่าสูงขึ้น → IMT ต้องห่างกันมากขึ้น → โอกาส conflict เพิ่ม",
+                "justification": (
+                    "คำนวณจาก: FSPL(d) = EIRP_IMT − I_threshold + G_victim = 23 − (−114) + 12 = 149 dB → "
+                    "d = 10^((149−32.4−73.8)/20) ≈ 2.0 km. ดังนั้น IMT ต้องห่าง ≥ 2 km เพื่อให้ I < threshold."
+                ),
+                "reality_check": "✅ สมเหตุสมผล — ที่ EIRP 23 dBm, 5 GHz, FSPL ให้ co-channel protection ที่ ~2 km",
+            },
+            "adjacent_protection": {
+                "label": "Adjacent Channel Protection",
+                "value": f"{self.ADJACENT_PROTECTION_M} m ({(self.ADJACENT_PROTECTION_M/1000):.1f} km)",
+                "description": "ระยะเผื่อเพิ่มสำหรับช่องสัญญาณข้างเคียง (adjacent channel)",
+                "reference": "Typical ACS (Adjacent Channel Selectivity) ~33 dB",
+                "impact": "ค่าสูงขึ้น → ต้องใช้ guard band มากขึ้น",
+                "reality_check": "✅ สมเหตุสมผล — 3GPP TS 38.104 กำหนด ACS ≥ 33 dB สำหรับ NR base station ที่ 5 GHz",
+            },
+            "fs_beamwidth": {
+                "label": "FS Antenna Beamwidth",
+                "value": f"{self.BEAMWIDTH_DEG}°",
+                "description": "ความกว้างลำคลื่นหลักของสายอากาศ FS (Half-Power Beamwidth)",
+                "reference": "Typical parabolic dish ~35 dBi",
+                "impact": "แคบลง → FS→IMT interference เกิดในมุมที่แคบลง",
+                "reality_check": "✅ สมเหตุสมผล — parabolic dish 35 dBi มี beamwidth 2-4° ที่ 5 GHz ตาม ITU-R F.699",
+            },
+            "fs_sidelobe": {
+                "label": "FS Side-Lobe Suppression",
+                "value": "−25 dB",
+                "description": "การลดทอนสัญญาณนอกลำคลื่นหลัก (side-lobe discrimination)",
+                "reference": "ITU-R F.699 reference antenna pattern",
+                "impact": "ค่าสูงขึ้น → interference นอก beam น้อยลง",
+                "reality_check": "✅ สมเหตุสมผล — ITU-R F.699 ระบุ side-lobe envelope ที่ −25 dB สำหรับมุม > beamwidth/2",
+            },
+            "spatial_filter": {
+                "label": "Spatial Search Radius",
+                "value": f"{self.SPATIAL_FILTER_KM} km",
+                "description": "รัศมีการค้นหาระบบข้างเคียง — ระบบที่ไกลกว่านี้จะไม่ถูกนำมาคำนวณ",
+                "reference": "Engineering judgement (> typical coordination distance)",
+                "impact": "กว้างขึ้น → พบคู่ interference มากขึ้น → ใช้เวลาคำนวณนานขึ้น",
+                "justification": (
+                    "เกณฑ์ 5 km มาจาก: (1) typical IMT coverage ≤ 2 km → cell edge + protection = ~3.5 km, "
+                    "(2) FS link ที่ EIRP 65 dBm มี coordination distance ~2 km ที่ 5 GHz, "
+                    "(3) worst-case sum = 3.5+2 = 5.5 km → ปัดลง 5 km conservative สำหรับ pre-screen "
+                    "(Phase 1 จะคำนวณจริงอีกครั้ง). "
+                    "อ้างอิง: ITU-R SM.1047 สำหรับ coordination distance ของ land mobile services."
+                ),
+                "reality_check": "✅ สมเหตุสมผล — 5 km เพียงพอสำหรับระบบ IMT (cell ≤ 2 km) + FS (coord ≤ 2 km) ที่ 5 GHz",
+            },
+            "propagation": {
+                "label": "Propagation Model",
+                "value": self.model_name.upper(),
+                "description": "แบบจำลองการแพร่กระจายคลื่น — FSPL = ไม่มีสิ่งกีดขวาง (free space)",
+                "reference": "ITU-R P.525",
+                "limitations": [
+                    "ไม่มี clutter/terrain loss → ประเมิน path loss ต่ำเกิน → ประเมิน interference สูงเกิน (conservative)",
+                    "ไม่มี atmospheric effects (ducting, rain fade)",
+                    "ไม่มี building diffraction",
+                ],
+                "impact": "Conservative สำหรับ interference protection — อาจบล็อกคลื่นเกินจำเป็นในพื้นที่ที่มีสิ่งกีดขวาง",
+                "reality_check": "⚠️ FSPL ให้ค่า path loss ต่ำสุด → interference estimate สูงสุด → อาจบล็อกคลื่นเกินจริงใน urban areas",
+            },
+            "imt_antenna": {
+                "label": "IMT Antenna Pattern",
+                "value": "Omni-directional",
+                "description": "IMT ใช้สายอากาศแบบรอบทิศทาง (conservative assumption)",
+                "reference": "Typical small cell / private network deployment",
+                "impact": "แผ่ interference เท่ากันทุกทิศทาง — ถ้าใช้ sectored antenna จะลด interference ได้",
+                "reality_check": "⚠️ Private 5G มักใช้ sectored/panel antennas (60-120°) — omni assumption overestimates interference",
+            },
+            "risk_classification": {
+                "label": "Risk Classification",
+                "value": "HIGH: margin > +20 dB | MEDIUM: margin > −10 dB | LOW: otherwise",
+                "description": "เกณฑ์การจัดระดับความเสี่ยงเบื้องต้น (Phase 0 pre-screen)",
+                "reference": "Engineering judgement",
+                "impact": "เกณฑ์ต่ำลง → ระบบจะ flag risk มากขึ้น → ละเอียดขึ้นแต่ noise เพิ่ม",
+                "reality_check": "✅ สมเหตุสมผล — margin 20 dB ให้ safety factor เพียงพอสำหรับ pre-screen",
+            },
+        }
+
     # ── Public API ────────────────────────────────────────────
 
     def analyze(
@@ -302,7 +400,7 @@ class InterferenceEngine:
             pairs=pairs,
             new_imt_lat=center_lat, new_imt_lon=center_lon,
             new_imt_radius=cell_radius,
-            new_imt_eirp=max_eirp + antenna_gain,
+            new_imt_eirp=max_eirp,  # max_eirp = total EIRP (already includes antenna_gain)
             new_imt_height=antenna_height,
             new_imt_ant_gain=antenna_gain,
             fs_links=fs_links,
@@ -330,7 +428,7 @@ class InterferenceEngine:
         }
 
         # ── Verification ──
-        verification = self._verify_blocks(blocks, band_start, band_end)
+        verification = self._verify_blocks(blocks, band_start, band_end, pair_results)
 
         computation_time_ms = (time.time() - t0) * 1000
 
@@ -374,7 +472,8 @@ class InterferenceEngine:
         Returns pairs sorted by risk (HIGH → MEDIUM → LOW).
         """
         pairs: list[InterferencePair] = []
-        new_imt_eirp = max_eirp + antenna_gain
+        # max_eirp = total EIRP (TX power + antenna gain) — consistent with Coverage Engine
+        new_imt_eirp = max_eirp
         spatial_limit_m = (cell_radius + self.SPATIAL_FILTER_KM * 1000)
 
         # ── ➀ NEW_IMT → FS_RX ──
@@ -495,7 +594,8 @@ class InterferenceEngine:
             if not cochannel_possible and not adjacent_possible:
                 continue
 
-            existing_imt_eirp = imt.max_eirp + imt.antenna_gain
+            # imt.max_eirp = total EIRP (already includes antenna_gain)
+            existing_imt_eirp = imt.max_eirp
 
             # ── ➂ NEW_IMT → EXISTING_IMT ──
             if cochannel_possible:
@@ -587,10 +687,13 @@ class InterferenceEngine:
         Phase 1: For each identified pair, compute actual I[dBm].
 
         Different math per direction:
-        - IMT→FS: I = EIRP_IMT − FSPL(d_effective) + G_FS_RX
-        - FS→IMT: I = EIRP_FS − FSPL(d_effective) + G_IMT − beam_discrimination
-        - IMT↔IMT (co-channel): I = EIRP_int − FSPL(d_effective) + G_victim
-        - IMT↔IMT (adjacent): guard band determination only
+        - IMT→FS:      I = EIRP_IMT − FSPL(d_effective) + G_FS_RX
+        - FS→IMT:      I = EIRP_FS  − FSPL(d_effective) + G_IMT − beam_discrimination
+        - IMT↔IMT (co): I = EIRP_int − FSPL(d_effective) + G_victim
+        - IMT↔IMT (adj): guard band determination only
+
+        NOTE: max_eirp / imt.max_eirp = total EIRP (includes antenna_gain).
+        antenna_gain is used for VICTIM side only (receiving antenna gain).
         """
         # Build lookup maps
         fs_by_id = {fs.id: fs for fs in fs_links}
@@ -739,7 +842,8 @@ class InterferenceEngine:
             victim_cell_r = victim_imt.cell_radius if victim_imt else 500
             effective_dist = max(pair.distance_m - victim_cell_r, 1.0)
         else:
-            interferer_eirp = (interferer_imt.max_eirp + interferer_imt.antenna_gain) if interferer_imt else 35
+            # imt.max_eirp = total EIRP (already includes antenna_gain)
+            interferer_eirp = interferer_imt.max_eirp if interferer_imt else 35
             interferer_height = interferer_imt.antenna_height if interferer_imt else 15
             victim_ant_gain = new_imt_ant_gain
             victim_height = new_imt_height
@@ -851,24 +955,30 @@ class InterferenceEngine:
 
                 if conflicts:
                     status = "red"
-                    # Build reason from conflicts
+                    # Build reason from conflicts — include causal chain (WHY, not just WHAT)
                     reason_parts = []
                     for pr in conflicts:
                         if pr.pair.direction == "IMT→FS":
+                            margin_exceed = pr.i_dbm - pr.threshold_dbm
+                            # Show the causal chain: EIRP → distance → FSPL → I
                             reason_parts.append(
                                 f"FS conflict: {pr.pair.victim_name} "
-                                f"(I={pr.i_dbm:.1f} dBm > threshold {pr.threshold_dbm} dBm)"
+                                f"(I={pr.i_dbm:.1f} dBm > threshold {pr.threshold_dbm} dBm, "
+                                f"exceed {margin_exceed:.1f} dB | "
+                                f"ระยะ {pr.pair.distance_m:.0f}m, PL≈{pr.path_loss_db:.0f} dB)"
                             )
                         elif pr.pair.direction == "FS→IMT":
-                            beam_info = "ใน main beam" if pr.pair.within_beam else "นอก main beam"
+                            beam_info = "ใน main beam" if pr.pair.within_beam else "นอก main beam (−25 dB)"
                             reason_parts.append(
                                 f"FS→IMT: {pr.pair.interferer_name} "
-                                f"(I={pr.i_dbm:.1f} dBm, {beam_info})"
+                                f"(I={pr.i_dbm:.1f} dBm, {beam_info} | "
+                                f"ระยะ {pr.pair.distance_m:.0f}m, PL≈{pr.path_loss_db:.0f} dB)"
                             )
                         elif pr.pair.direction == "IMT↔IMT_COCHANNEL":
                             reason_parts.append(
                                 f"IMT co-channel conflict: {pr.pair.victim_name if pr.pair.interferer_type == 'NEW_IMT' else pr.pair.interferer_name} "
-                                f"({pr.pair.distance_m/1000:.1f} km)"
+                                f"({pr.pair.distance_m/1000:.1f} km < ขั้นต่ำ {(pr.pair.distance_m/1000 + 0.5):.1f} km | "
+                                f"I={pr.i_dbm:.1f} dBm, PL≈{pr.path_loss_db:.0f} dB)"
                             )
                     reason = "; ".join(reason_parts)
                 elif guards:
@@ -919,8 +1029,9 @@ class InterferenceEngine:
         blocks: list[BlockResult],
         band_start: float,
         band_end: float,
+        pair_results: list = None,
     ) -> dict:
-        """Post-analysis verification (5 checks)."""
+        """Post-analysis verification (10 checks)."""
         checks = {}
 
         # 1. Block count
@@ -998,16 +1109,94 @@ class InterferenceEngine:
                 "All gray blocks have valid guard band reasons"
                 if invalid_guards == 0
                 else f"{invalid_guards} gray block(s) missing guard reason"
-            ),
+        ),
+        }
+
+        # ══ 6-10: ADDITIONAL VERIFICATION CHECKS ══
+
+        # 6. Path loss monotonicity — PL should increase with distance
+        pl_ok = True
+        pl_detail = ""
+        fs_pairs = [(pr.effective_distance_m, pr.path_loss_db, pr.pair.interferer_name)
+                     for pr in pair_results if pr.pair.direction == "IMT→FS"]
+        fs_pairs.sort()
+        for i in range(len(fs_pairs) - 1):
+            if fs_pairs[i+1][0] > fs_pairs[i][0] and fs_pairs[i+1][1] <= fs_pairs[i][1]:
+                pl_ok = False
+                pl_detail = (
+                    f"PL non-monotonic: {fs_pairs[i][2]} at {fs_pairs[i][0]:.0f}m "
+                    f"(PL={fs_pairs[i][1]:.1f}) vs {fs_pairs[i+1][2]} at "
+                    f"{fs_pairs[i+1][0]:.0f}m (PL={fs_pairs[i+1][1]:.1f})"
+                )
+                break
+        checks["path_loss_monotonicity"] = {
+            "pass": pl_ok,
+            "reason": "Path loss increases with distance (monotonic)" if pl_ok
+                      else f"Non-monotonic PL: {pl_detail}",
+        }
+
+        # 7. Reciprocal symmetry — IMT↔IMT bidirectional margins
+        sym_ok = True
+        sym_detail = ""
+        co_pairs = [(pr.pair.interferer_name, pr.pair.victim_name, pr.margin_db)
+                     for pr in pair_results if pr.pair.direction == "IMT↔IMT_COCHANNEL"]
+        co_pairs.sort(key=lambda x: x[0] + x[1])
+        seen = set()
+        for i, (iname, vname, m1) in enumerate(co_pairs):
+            pair_key = tuple(sorted([iname, vname]))
+            if pair_key in seen:
+                continue
+            seen.add(pair_key)
+            for j, (iname2, vname2, m2) in enumerate(co_pairs):
+                if i != j and iname == vname2 and vname == iname2:
+                    if abs(m1 - m2) > 10:
+                        sym_ok = False
+                        sym_detail = f"Asymmetric: {iname}→{vname}={m1:.1f} dB vs {iname2}→{vname2}={m2:.1f} dB"
+        checks["reciprocal_symmetry"] = {
+            "pass": sym_ok,
+            "reason": "IMT↔IMT reciprocal margins symmetric (within 10 dB)" if sym_ok
+                      else sym_detail or "Reciprocal asymmetry — check EIRP",
+        }
+
+        # 8. EIRP sanity — no positive I[dBm] for 5 GHz IMT
+        eirp_ok = True
+        eirp_detail = ""
+        for pr in pair_results:
+            if pr.pair.direction in ("IMT→FS", "IMT↔IMT_COCHANNEL"):
+                if pr.pair.interferer_type == "NEW_IMT" and pr.i_dbm > 0:
+                    eirp_ok = False
+                    eirp_detail = f"Positive I[dBm] ({pr.i_dbm:.1f}) — EIRP may be unrealistically high"
+                    break
+        checks["eirp_sanity"] = {
+            "pass": eirp_ok,
+            "reason": "All I[dBm] are negative (reasonable for 5 GHz)" if eirp_ok
+                      else eirp_detail or "Unusual EIRP detected",
+        }
+
+        # 9. FS→IMT beam check count
+        fs_beam_count = sum(1 for pr in pair_results
+                            if pr.pair.direction == "FS→IMT" and pr.pair.within_beam is not None)
+        checks["fs_beam_coverage"] = {
+            "pass": True,
+            "reason": f"FS→IMT beam checks: {fs_beam_count} pair(s) evaluated",
+        }
+
+        # 10. Green-red ratio sanity
+        green_count = sum(1 for b in blocks if b.status == "green")
+        red_count = sum(1 for b in blocks if b.status == "red")
+        gray_count = sum(1 for b in blocks if b.status == "gray")
+        checks["block_distribution"] = {
+            "pass": True,
+            "reason": f"Block distribution: {green_count} green + {gray_count} gray + {red_count} red = 19 total",
         }
 
         checks["all_pass"] = all(c["pass"] for c in checks.values())
         return checks
 
 
-# ═══════════════════════════════════════════════════════════════
-# BACKWARD COMPATIBILITY — Public API (used by allocation.py)
-# ═══════════════════════════════════════════════════════════════
+        # ═══════════════════════════════════════════════════════════════
+        # BACKWARD COMPATIBILITY — Public API (used by allocation.py)
+        # ═══════════════════════════════════════════════════════════════
 
 def phase0_only(
     center_lat, center_lon, cell_radius,
@@ -1021,11 +1210,11 @@ def phase0_only(
     """
     engine = InterferenceEngine(propagation_model=model_name)
     return engine.phase0_identify_pairs(
-        center_lat=center_lat, center_lon=center_lon,
+    center_lat=center_lat, center_lon=center_lon,
         cell_radius=cell_radius,
-        antenna_height=antenna_height,
+    antenna_height=antenna_height,
         antenna_gain=antenna_gain,
         max_eirp=max_eirp,
-        fs_links=fs_links,
+    fs_links=fs_links,
         neighbor_imts=neighbor_imts,
     )

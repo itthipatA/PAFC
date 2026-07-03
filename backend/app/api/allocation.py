@@ -150,6 +150,9 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     )
 
     return {
+        # Engineering assumptions (สมมุติฐาน)
+        "assumptions": engine.get_assumptions(),
+
         # Phase 0: Identified pairs
         "pairs": [
             {

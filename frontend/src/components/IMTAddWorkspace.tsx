@@ -4,7 +4,7 @@ import { circle } from '@turf/turf'
 import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
-import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff } from '../types'
+import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff, AssumptionItem } from '../types'
 
 interface IMTAddWorkspaceProps {
   onBack: () => void
@@ -39,23 +39,51 @@ interface ParsedReason {
 function parseReason(reason: string): ParsedReason {
   const raw = reason || ''
 
-  // FS conflict: "FS conflict: BKK-01-Link (I=-54.4 dBm > threshold -114.0 dBm)"
-  const fsMatch = raw.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm\)/)
+  // FS conflict: "FS conflict: BKK-01-Link (I=-54.4 dBm > threshold -114.0 dBm, exceed 59.6 dB | ...)"
+  const fsMatch = raw.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm/)
   if (fsMatch) {
     const linkName = fsMatch[1].trim()
     const iValue = fsMatch[2]
     const threshold = fsMatch[3]
     const exceedDb = (parseFloat(iValue) - parseFloat(threshold)).toFixed(1)
-    return { conflictType: 'FS', linkName, iValue, threshold, exceedDb, raw }
+
+    // Extract causal info if present (exceed, distance, PL)
+    const exceedMatch = raw.match(/exceed\s*([-\d.]+)\s*dB/)
+    const distMatch = raw.match(/ระยะ\s*([\d.]+)\s*m/)
+    const plMatch = raw.match(/PL≈?([\d.]+)\s*dB/)
+
+    return {
+      conflictType: 'FS',
+      linkName,
+      iValue,
+      threshold,
+      exceedDb: exceedMatch ? exceedMatch[1] : exceedDb,
+      imtDistance: distMatch ? (parseFloat(distMatch[1]) / 1000).toFixed(1) : undefined,
+      neededSeparation: plMatch ? `PL≈${plMatch[1]} dB` : undefined,
+      raw,
+    }
   }
 
-  // IMT co-channel: "IMT co-channel conflict: TEST-IMT-01 (0.6 km < 3.0 km)"
-  const imtMatch = raw.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*([\d.]+)\s*km\)/)
+  // IMT co-channel: "IMT co-channel conflict: TEST-IMT-01 (1.2 km < 3.0 km)" 
+  // or new format: "...(1.2 km < ขั้นต่ำ 1.7 km | I=-45.0 dBm, PL≈110 dB)"
+  const imtMatch = raw.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*(?:ขั้นต่ำ\s*)?([\d.]+)\s*km/)
   if (imtMatch) {
     const linkName = imtMatch[1].trim()
     const imtDistance = imtMatch[2]
     const neededSeparation = imtMatch[3]
-    return { conflictType: 'IMT_COCHANNEL', linkName, imtDistance, neededSeparation, raw }
+
+    // Extract extra causal info
+    const iMatch = raw.match(/I=([-\d.]+)\s*dBm/)
+    const plMatch = raw.match(/PL≈?([\d.]+)\s*dB/)
+
+    return {
+      conflictType: 'IMT_COCHANNEL',
+      linkName,
+      imtDistance,
+      neededSeparation,
+      iValue: iMatch ? iMatch[1] : undefined,
+      raw,
+    }
   }
 
   // Guard band: "Guard band: adjacent to TEST-IMT-01 (0.6 km < 1.5 km)"
@@ -132,18 +160,39 @@ function verifyResults(blocks: BlockResult[]): VerificationResult {
   }
 }
 
-const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: string }> = {
+const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: string; params?: { name: string; label: string; unit: string; defaultValue: any }[] }> = {
   free_space: {
     label: 'Free Space',
-    description: 'คำนวณการสูญเสียสัญญาณในพื้นที่ว่าง (Free Space Path Loss) เหมาะสำหรับพื้นที่โล่งไม่มีสิ่งกีดขวาง',
+    description: 'ITU-R P.525 — Free Space Path Loss ไม่มีสิ่งกีดขวาง (conservative upper bound)',
+    params: [],
   },
   p452: {
     label: 'ITU-R P.452',
-    description: 'แบบจำลองการแพร่กระจายคลื่นตามมาตรฐาน ITU-R P.452 คำนึงถึงผลกระทบจากสภาพอากาศและภูมิประเทศ',
+    description: 'ITU-R P.452 — Clear-air basic transmission loss คำนึงถึง % เวลา + clutter environment',
+    params: [
+      { name: 'time_pct', label: 'Time %', unit: '%', defaultValue: 50 },
+    ],
+  },
+  p2108: {
+    label: 'ITU-R P.2108 Clutter',
+    description: 'ITU-R P.2108 — Clutter loss จากสิ่งกีดขวาง (อาคาร/ต้นไม้) สำคัญเมื่อ terminal อยู่ต่ำกว่า rooftop',
+    params: [
+      { name: 'clutter_type', label: 'สภาพแวดล้อม', unit: '', defaultValue: 'urban' },
+    ],
+  },
+  p1411: {
+    label: 'ITU-R P.1411',
+    description: 'ITU-R P.1411 — Short-range outdoor สำหรับ IMT-to-IMT ระดับถนน (street canyon)',
+    params: [
+      { name: 'environment', label: 'สภาพแวดล้อม', unit: '', defaultValue: 'urban' },
+    ],
   },
   hata: {
-    label: 'Hata',
-    description: 'แบบจำลอง Okumura-Hata สำหรับพื้นที่เมือง เหมาะสำหรับความถี่ 150-1500 MHz ในสภาพแวดล้อมเมือง',
+    label: 'Hata/COST-231',
+    description: 'Okumura-Hata COST-231 extension สำหรับ IMT coverage ในพื้นที่เมือง',
+    params: [
+      { name: 'environment', label: 'สภาพแวดล้อม', unit: '', defaultValue: 'urban' },
+    ],
   },
 }
 
@@ -153,7 +202,7 @@ function coverageClassificationThai(cls: string): string {
   const labels: Record<string, string> = {
     OUTDOOR_GOOD: 'ครอบคลุมดีเยี่ยม',
     OUTDOOR_BASIC: 'ครอบคลุมพื้นฐาน',
-    MARGINAL: 'สัญญาณก้ำกึ่ง',
+    MARGINAL: 'ครอบคลุมขั้นต่ำ',
     INADEQUATE: 'สัญญาณไม่เพียงพอ',
   }
   return labels[cls] || cls
@@ -203,6 +252,7 @@ function generateNarrativeLog(
   pairResults: PairResultType[],
   backendVerification: BackendVerification | null,
   coverage: CoverageInfo | null,
+  assumptions: Record<string, AssumptionItem> | null,
 ): string[] {
   const lines: string[] = []
   const blocks = response.blocks || []
@@ -231,14 +281,43 @@ function generateNarrativeLog(
   lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks x 10 MHz)`)
   lines.push('')
 
+  // Section 1.2: Engineering Assumptions (สมมุติฐาน)
+  if (assumptions && Object.keys(assumptions).length > 0) {
+    lines.push('─── 1.2 KEY ENGINEERING ASSUMPTIONS (สมมุติฐาน) ──────────────────')
+    lines.push('   These assumptions govern every calculation result.')
+    lines.push('')
+    const order = ['interference_threshold', 'cochannel_protection', 'adjacent_protection',
+                   'fs_beamwidth', 'fs_sidelobe', 'spatial_filter',
+                   'propagation', 'imt_antenna', 'risk_classification']
+    for (const key of order) {
+      const a = assumptions[key]
+      if (!a) continue
+      lines.push(`   ${a.label}:`)
+      lines.push(`     Value      : ${a.value}`)
+      lines.push(`     อธิบาย      : ${a.description}`)
+      lines.push(`     Reference  : ${a.reference}`)
+      lines.push(`     Impact     : ${a.impact}`)
+      if (a.limitations && a.limitations.length > 0) {
+        lines.push(`     ข้อจำกัด   :`)
+        a.limitations.forEach((lim: string) => lines.push(`       • ${lim}`))
+      }
+      lines.push('')
+    }
+  }
+
   // Section 1.5: Phase 0 — Victim/Interferer Identification
   if (pairs.length > 0) {
     lines.push('─── 1.5 VICTIM/INTERFERER IDENTIFICATION ───────────────────────')
+    lines.push('   Search criteria: 5 km spatial radius + frequency overlap')
+    lines.push('   เกณฑ์: cell_radius + 5 km buffer — อ้างอิง ITU-R SM.1047')
+    lines.push('   (typical IMT coverage ≤ 2 km + FS coordination ≤ 2 km)')
+    lines.push(`   Systems checked : ${(response.fs_links_checked || 0)} FS links + ${(response.neighbor_imts_checked || 0)} IMT blocks`)
     lines.push(`   Pairs identified : ${pairs.length} total`)
     const highRisk = pairs.filter(p => p.preliminary_risk === 'HIGH')
     const medRisk = pairs.filter(p => p.preliminary_risk === 'MEDIUM')
     const lowRisk = pairs.filter(p => p.preliminary_risk === 'LOW')
     lines.push(`   Risk distribution: ${highRisk.length} HIGH, ${medRisk.length} MEDIUM, ${lowRisk.length} LOW`)
+    lines.push('   (เกณฑ์: margin > +20 dB = HIGH, > −10 dB = MEDIUM)')
     lines.push('')
     if (highRisk.length > 0) {
       lines.push('   === HIGH RISK PAIRS ===')
@@ -372,12 +451,29 @@ function generateNarrativeLog(
       }
     })
     lines.push('')
-    lines.push('   Guard bands prevent adjacent-channel interference between')
-    lines.push('   different IMT networks operating in close proximity.')
+    lines.push('   Guard bands (ย่านป้องกัน) ป้องกันการรบกวนระหว่างช่องความถี่ข้างเคียง')
+    lines.push('   เกณฑ์: ระยะห่าง < cell_radius + 500m + 500m → ต้องการ guard band')
+    lines.push('   อ้างอิง: 3GPP TS 38.104 ACS ≥ 33 dB → adjacent channel isolation')
   } else {
     lines.push('   No guard bands required.')
   }
   lines.push('')
+
+  // Section 5.5: Trade-off Results (when EIRP reduction applied)
+  if (response.tradeoff) {
+    const t = response.tradeoff
+    lines.push('─── 5.5 TRADE-OFF ANALYSIS ─────────────────────────────────────')
+    lines.push(`   Resolution type : ${t.resolution_type}`)
+    if (t.resolution_type !== 'relocation_required') {
+      lines.push(`   EIRP            : ${t.original_eirp_dbm} → ${t.suggested_eirp_dbm} dBm`)
+      lines.push(`   รัศมี           : ${t.original_radius_m}m → ${t.suggested_radius_m}m (${t.radius_reduction_pct > 0 ? '-' : ''}${t.radius_reduction_pct}%)`)
+      if (t.conflicting_systems?.length) {
+        lines.push(`   ระบบที่ขัดแย้ง   : ${t.conflicting_systems.join(', ')}`)
+      }
+    }
+    lines.push(`   ${t.message}`)
+    lines.push('')
+  }
 
   // Section 6: Final Results with ASCII bar
   lines.push('─── 6. FINAL BLOCK ALLOCATION ──────────────────────────────────')
@@ -585,6 +681,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         data.pair_results || [],
         data.verification || null,
         data.coverage || null,
+        data.assumptions || null,
       ))
     } catch (err) {
       console.error('Analysis failed:', err)
@@ -792,7 +889,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Max EIRP (dBm)
+                    Max EIRP — รวม TX Power + Antenna Gain (dBm)
                   </label>
                   <div className="relative">
                     <input
@@ -843,10 +940,41 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   onChange={(e) => setPropagationModel(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                 >
-                  <option value="free_space">Free Space</option>
-                  <option value="p452">ITU-R P.452</option>
-                  <option value="hata">Hata</option>
+                  <option value="free_space">Free Space (ITU-R P.525)</option>
+                  <option value="p452">ITU-R P.452 (Interference)</option>
+                  <option value="p2108">ITU-R P.2108 (Clutter Loss)</option>
+                  <option value="p1411">ITU-R P.1411 (Short-Range)</option>
+                  <option value="hata">Hata/COST-231</option>
                 </select>
+                {/* Model description */}
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  {PROPAGATION_MODEL_INFO[propagationModel]?.description}
+                </p>
+                {/* Model-specific params */}
+                {PROPAGATION_MODEL_INFO[propagationModel]?.params?.map((p: any) => (
+                  <div key={p.name} className="mt-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      {p.label} {p.unit && `(${p.unit})`}
+                    </label>
+                    {p.name === 'clutter_type' || p.name === 'environment' ? (
+                      <select
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                        defaultValue={p.defaultValue}
+                      >
+                        <option value="urban">Urban (เมือง)</option>
+                        <option value="suburban">Suburban (ชานเมือง)</option>
+                        <option value="rural">Rural (ชนบท)</option>
+                        <option value="water">Water (พื้นน้ำ)</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="number"
+                        defaultValue={p.defaultValue}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      />
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1378,7 +1506,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                               ? 'bg-green-100 text-green-800'
                               : 'bg-red-100 text-red-800'
                           }`}>
-                            {bv.all_pass ? 'All 5 verification checks passed' : 'Some verification checks failed'}
+                            {bv.all_pass ? 'All 10 verification checks passed' : 'Some verification checks need review'}
                           </div>
                         </div>
                       )
