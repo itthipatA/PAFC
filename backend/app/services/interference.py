@@ -595,6 +595,7 @@ class InterferenceEngine:
         # Phase 29: building loss from indoor %
         MAX_BUILDING_LOSS_DB = 20
         building_loss_db = (indoor_pct / 100) * MAX_BUILDING_LOSS_DB
+        self.building_loss_db = building_loss_db  # Expose for Phase 1 methods
         effective_eirp = max_eirp - building_loss_db
         effective_eirp = max(effective_eirp, 0)  # Floor at 0 dBm
         import time
@@ -1209,7 +1210,7 @@ class InterferenceEngine:
         else:
             beam_disc = 0 if pair.within_beam else 25
 
-        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc
+        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc - getattr(self, 'building_loss_db', 0)
         margin = i_dbm - threshold
         verdict = "CONFLICT" if i_dbm > threshold else "CLEAR"
 
@@ -1266,6 +1267,9 @@ class InterferenceEngine:
         )
 
         i_dbm = interferer_eirp - path_loss + victim_ant_gain
+        # Phase 29: building loss shields indoor NEW_IMT when it's the victim
+        if pair.victim_type == "NEW_IMT":
+            i_dbm -= getattr(self, 'building_loss_db', 0)
 
         # Sector antenna discrimination for interferer (both directions)
         sector_disc = 0.0
@@ -1346,6 +1350,9 @@ class InterferenceEngine:
         guard_mhz = max(pair.guard_band_mhz, 0)
         total_iso = self.guard_band_isolation_db(guard_mhz) + self.ACS_DB + self.ACLR_DB
         i_dbm = int_eirp - pl + vic_gain - total_iso
+        # Phase 29: building loss shields indoor NEW_IMT when it's the victim
+        if pair.victim_type == "NEW_IMT":
+            i_dbm -= getattr(self, 'building_loss_db', 0)
         margin = i_dbm - threshold
         df = 10 ** (total_iso / 20)
         req_sep = max(self.COCHANNEL_PROTECTION_M / df, 1)
@@ -1398,7 +1405,7 @@ class InterferenceEngine:
         
         guard_mhz = max(pair.guard_band_mhz, 0)
         total_adj = self.guard_band_isolation_db(guard_mhz) + self.ACS_DB + self.ACLR_DB
-        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc - total_adj
+        i_dbm = fs_eirp - path_loss + imt_ant_gain - beam_disc - getattr(self, 'building_loss_db', 0) - total_adj
         margin = i_dbm - threshold
         verdict = "CONFLICT" if i_dbm > threshold else "CLEAR"
         
