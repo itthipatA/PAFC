@@ -72,7 +72,7 @@ export default {
         checkmarkDraw: { '0%': { strokeDashoffset: '24' }, '40%': { strokeDashoffset: '24' }, '100%': { strokeDashoffset: '0' } },
         shakeError: { '0%,100%': { transform: 'translateX(0)' }, '20%': { transform: 'translateX(-4px)' }, '40%': { transform: 'translateX(4px)' }, '60%': { transform: 'translateX(-3px)' }, '80%': { transform: 'translateX(3px)' } },
         flashHighlight: { '0%': { backgroundColor: 'rgba(22,163,74,0.2)' }, '100%': { backgroundColor: 'transparent' } },
-        markerDrop: { '0%': { opacity: '0', transform: 'translateY(-30px)' }, '60%': { opacity: '1', transform: 'translateY(3px)' }, '80%': { transform: 'translateY(-2px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+        markerDrop: { '0%': { opacity: '0' }, '50%': { opacity: '1' }, '75%': { opacity: '0.7' }, '100%': { opacity: '1' } },
         radialExpand: { '0%': { transform: 'scale(0)', opacity: '0' }, '100%': { transform: 'scale(1)', opacity: '1' } },
         lineDraw: { '0%': { strokeDashoffset: '1000' }, '100%': { strokeDashoffset: '0' } },
         colorWave: { '0%': { backgroundPosition: '0% 50%' }, '50%': { backgroundPosition: '100% 50%' }, '100%': { backgroundPosition: '0% 50%' } },
