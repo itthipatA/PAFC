@@ -193,7 +193,9 @@ function AggregateRow({ row, thresholdDbm, marginDb, trendIsWorse, buildFormula 
         </td>
         <td className="py-2 pr-3 font-mono text-gray-600">{row.uniqueNames.length}</td>
         <td className="py-2 pr-3 font-medium text-gray-700">
-          {row.worst ? row.worst.interferer.replace(/\(.*\)$/, '').trim() : '—'}
+          {row.worst
+            ? `${row.worst.interferer.replace(/\(.*\)$/, '').trim()} → ${row.worst.victim.replace(/\(.*\)$/, '').trim()}`
+            : '—'}
         </td>
         <td className="py-2 pr-3">
           {trendIsWorse ? (
@@ -260,7 +262,7 @@ function AggregateRow({ row, thresholdDbm, marginDb, trendIsWorse, buildFormula 
                         }
                         return (
                           <tr key={idx} className="text-gray-700">
-                            <td className="py-1 pr-2">{pr.interferer.replace(/\(.*\)$/, '').trim()}</td>
+                            <td className="py-1 pr-2">{pr.interferer.replace(/\(.*\)$/, '').trim()} → {pr.victim.replace(/\(.*\)$/, '').trim()}</td>
                             <td className="py-1 pr-2 font-mono">{pr.i_dbm.toFixed(1)}</td>
                             <td className="py-1 pr-2 font-mono">{(pr.effective_distance_m / 1000).toFixed(1)} km</td>
                             <td className="py-1 text-gray-500">{typeLabel[pr.direction] || pr.direction}</td>
@@ -1245,8 +1247,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   <label className="block text-xs font-medium text-gray-500 mb-1">Latitude</label>
                   <input
                     type="number"
-                    step="0.0000001"
-                    value={lat.toFixed(7)}
+                    step="any"
+                    value={lat}
                     onChange={(e) => {
                       const newLat = parseFloat(e.target.value)
                       if (!isNaN(newLat)) {
@@ -1261,8 +1263,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   <label className="block text-xs font-medium text-gray-500 mb-1">Longitude</label>
                   <input
                     type="number"
-                    step="0.0000001"
-                    value={lon.toFixed(7)}
+                    step="any"
+                    value={lon}
                     onChange={(e) => {
                       const newLon = parseFloat(e.target.value)
                       if (!isNaN(newLon)) {

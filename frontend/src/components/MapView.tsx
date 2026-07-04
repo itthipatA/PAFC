@@ -376,28 +376,34 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       // Search in FS links
       if (station.type === 'fs_tx' || station.type === 'fs_rx') {
         for (const link of fsLinks) {
-          if (!link.name || link.name.toLowerCase() !== nameLower) continue
+          if (!link.name) continue
+          const linkNameLower = link.name.toLowerCase()
+          // Use includes for fuzzy match — backend may return names with suffixes
+          if (linkNameLower !== nameLower && !linkNameLower.includes(nameLower) && !nameLower.includes(linkNameLower)) continue
           const lon = station.type === 'fs_tx' ? (link.tx?.lon ?? link.tx_lon) : (link.rx?.lon ?? link.rx_lon)
           const lat = station.type === 'fs_tx' ? (link.tx?.lat ?? link.tx_lat) : (link.rx?.lat ?? link.rx_lat)
           if (lon != null && lat != null) {
             bounds.extend([lon, lat])
             targetCoords.push({ lon, lat })
             found = true
+            break // found the link, stop searching
           }
-          break
         }
       }
 
       // Search in IMT allocations
       if (!found && station.type === 'imt') {
         for (const alloc of imtAllocs) {
-          if (!alloc.name || alloc.name.toLowerCase() !== nameLower) continue
+          if (!alloc.name) continue
+          const allocNameLower = alloc.name.toLowerCase()
+          // Use includes for fuzzy match
+          if (allocNameLower !== nameLower && !allocNameLower.includes(nameLower) && !nameLower.includes(allocNameLower)) continue
           if (alloc.center_lon != null && alloc.center_lat != null) {
             bounds.extend([alloc.center_lon, alloc.center_lat])
             targetCoords.push({ lon: alloc.center_lon, lat: alloc.center_lat })
             found = true
+            break
           }
-          break
         }
       }
     }
