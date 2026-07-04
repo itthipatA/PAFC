@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
 import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react'
@@ -160,6 +160,121 @@ function verifyResults(blocks: BlockResult[]): VerificationResult {
     warnings,
     errors,
   }
+}
+
+// ─── Aggregate Row Component (collapsible) ──────────────────────────────
+
+function AggregateRow({ row, thresholdDbm, marginDb, trendIsWorse, buildFormula }: {
+  row: { label: string; iTotal: number | undefined; interferers: PairResultType[]; uniqueNames: string[]; worst: PairResultType | null; conflict: boolean }
+  thresholdDbm: number
+  marginDb: number | undefined
+  trendIsWorse: boolean
+  buildFormula: (interferers: PairResultType[], iTotal: number) => string
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <>
+      <tr
+        className={`cursor-pointer ${row.conflict ? 'bg-red-50/30' : 'bg-green-50/30'} hover:bg-gray-50`}
+        onClick={() => setExpanded(!expanded)}
+      >
+        <td className="py-2 text-gray-400">
+          {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </td>
+        <td className="py-2 pr-3 font-medium text-[#1A1A2E]">{row.label}</td>
+        <td className="py-2 pr-3 font-mono text-gray-700">{row.iTotal?.toFixed(1) ?? '—'}</td>
+        <td className="py-2 pr-3 font-mono">
+          <span className={marginDb != null ? (marginDb > 0 ? 'text-red-600' : 'text-green-600') : 'text-gray-400'}>
+            {marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'}
+          </span>
+        </td>
+        <td className="py-2 pr-3 font-mono text-gray-600">{row.uniqueNames.length}</td>
+        <td className="py-2 pr-3 font-medium text-gray-700">
+          {row.worst ? row.worst.interferer.replace(/\(.*\)$/, '').trim() : '—'}
+        </td>
+        <td className="py-2 pr-3">
+          {trendIsWorse ? (
+            <span className="text-red-600 font-bold flex items-center gap-0.5">
+              <ChevronUp className="w-3.5 h-3.5" /> แย่ลง
+            </span>
+          ) : (
+            <span className="text-green-600 font-bold flex items-center gap-0.5">
+              <ChevronDown className="w-3.5 h-3.5" /> ดีขึ้น
+            </span>
+          )}
+        </td>
+        <td className="py-2">
+          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+            row.conflict ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+          }`}>
+            {row.conflict ? 'CONFLICT' : 'CLEAR'}
+          </span>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={8} className="p-0">
+            <div className="mx-4 my-2 p-3 bg-gray-50 rounded border border-gray-200 space-y-2">
+              {/* I_total formula */}
+              {row.iTotal != null && (
+                <div className="text-xs">
+                  <span className="font-semibold text-gray-700">สูตร I_total:</span>{' '}
+                  <span className="font-mono text-gray-600">{buildFormula(row.interferers, row.iTotal)}</span>
+                </div>
+              )}
+              {/* Margin vs threshold */}
+              {marginDb != null && (
+                <div className="text-xs">
+                  <span className="font-semibold text-gray-700">Margin vs Threshold:</span>{' '}
+                  <span className={`font-mono ${marginDb > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    I_total ({row.iTotal?.toFixed(1)} dBm) − threshold ({thresholdDbm} dBm) = {marginDb > 0 ? '+' : ''}{marginDb.toFixed(1)} dB
+                  </span>
+                  <span className="text-gray-400 ml-1">
+                    ({marginDb > 0 ? 'เกิน threshold' : 'ต่ำกว่า threshold'})
+                  </span>
+                </div>
+              )}
+              {/* List all interferers */}
+              {row.interferers.length > 0 && (
+                <div className="text-xs">
+                  <div className="font-semibold text-gray-700 mb-1">Interferers ทั้งหมด ({row.interferers.length}):</div>
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-left text-gray-500">
+                        <th className="py-1 pr-2 font-medium">Interferer</th>
+                        <th className="py-1 pr-2 font-medium">I (dBm)</th>
+                        <th className="py-1 pr-2 font-medium">ระยะทาง</th>
+                        <th className="py-1 font-medium">ประเภท</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {row.interferers.map((pr, idx) => {
+                        const typeLabel: Record<string, string> = {
+                          'IMT→FS': 'IMT → FS',
+                          'FS→IMT': 'FS → IMT',
+                          'IMT↔IMT_COCHANNEL': 'IMT ↔ IMT (co)',
+                          'IMT↔IMT_ADJACENT': 'IMT ↔ IMT (adj)',
+                        }
+                        return (
+                          <tr key={idx} className="text-gray-700">
+                            <td className="py-1 pr-2">{pr.interferer.replace(/\(.*\)$/, '').trim()}</td>
+                            <td className="py-1 pr-2 font-mono">{pr.i_dbm.toFixed(1)}</td>
+                            <td className="py-1 pr-2 font-mono">{(pr.effective_distance_m / 1000).toFixed(1)} km</td>
+                            <td className="py-1 text-gray-500">{typeLabel[pr.direction] || pr.direction}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
 }
 
 const PROPAGATION_MODEL_INFO: Record<string, { label: string; description: string; params?: { name: string; label: string; unit: string; defaultValue: any }[] }> = {
@@ -881,6 +996,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       return
     }
     
+    // Sync marker to exact user-input lat/lon before saving
+    onConfirmLocation?.(lat, lon, cellRadius)
+    
     // Filter only selected green blocks
     const selectedGreenBlocks = blocks.filter(
       (b) => b.status === 'green' && selectedBlocks.has(b.freq_low.toString())
@@ -939,7 +1057,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     } finally {
       setSaving(false)
     }
-  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, blocks, selectedBlocks, antennaType, sectorBeamwidth, sectorAzimuth, propagationModel, coverageInfo, fetchWithAuth, onBack])
+  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, blocks, selectedBlocks, antennaType, sectorBeamwidth, sectorAzimuth, propagationModel, coverageInfo, onConfirmLocation, fetchWithAuth, onBack])
 
   // Spectrum summary
   const statusCounts = {
@@ -1054,12 +1172,14 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   <label className="block text-xs font-medium text-gray-500 mb-1">Latitude</label>
                   <input
                     type="number"
-                    step="0.0001"
-                    value={lat}
+                    step="0.0000001"
+                    value={lat.toFixed(7)}
                     onChange={(e) => {
-                      const newLat = Number(e.target.value)
-                      setLat(newLat)
-                      sync.syncLatLon(newLat, lon)
+                      const newLat = parseFloat(e.target.value)
+                      if (!isNaN(newLat)) {
+                        setLat(newLat)
+                        sync.syncLatLon(newLat, lon)
+                      }
                     }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
@@ -1068,12 +1188,14 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   <label className="block text-xs font-medium text-gray-500 mb-1">Longitude</label>
                   <input
                     type="number"
-                    step="0.0001"
-                    value={lon}
+                    step="0.0000001"
+                    value={lon.toFixed(7)}
                     onChange={(e) => {
-                      const newLon = Number(e.target.value)
-                      setLon(newLon)
-                      sync.syncLatLon(lat, newLon)
+                      const newLon = parseFloat(e.target.value)
+                      if (!isNaN(newLon)) {
+                        setLon(newLon)
+                        sync.syncLatLon(lat, newLon)
+                      }
                     }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
@@ -1513,7 +1635,25 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             const hasAnyAggregate = iTotalFs != null || iTotalNewImt != null || iTotalExistingImt != null
             
             if (!hasAnyAggregate) return null
-            
+
+            // Collapsible state per victim row
+            const aggregateRows: { label: string; iTotal: number | undefined; interferers: typeof pairResults; uniqueNames: string[]; worst: typeof worstFs; conflict: boolean }[] = [
+              { label: 'FS Links', iTotal: iTotalFs, interferers: fsInterferers, uniqueNames: uniqueFsInterferers, worst: worstFs, conflict: (iTotalFs ?? -200) >= thresholdDbm },
+              { label: 'IMT ใหม่ (NEW IMT)', iTotal: iTotalNewImt, interferers: newImtInterferers, uniqueNames: uniqueNewImtInterferers, worst: worstNewImt, conflict: (iTotalNewImt ?? -200) >= thresholdDbm },
+              { label: 'IMT เดิม (Existing IMT)', iTotal: iTotalExistingImt, interferers: existingImtInterferers, uniqueNames: uniqueExistingImtInterferers, worst: worstExistingImt, conflict: (iTotalExistingImt ?? -200) >= thresholdDbm },
+            ].filter(r => r.iTotal != null)
+
+            const totalAffected = aggregateRows.filter(r => r.conflict).length
+            const margins = aggregateRows.map(r => r.iTotal != null ? r.iTotal - thresholdDbm : -999)
+            const worstMargin = Math.max(...margins)
+
+            // Build I_total formula string from interferers
+            const buildFormula = (interferers: typeof pairResults, iTotal: number) => {
+              if (interferers.length === 0) return 'ไม่มี interferer'
+              const terms = interferers.map(pr => `10^(${pr.i_dbm.toFixed(1)}/10)`).join(' + ')
+              return `I_total = 10·log₁₀( ${terms} ) = ${iTotal.toFixed(1)} dBm`
+            }
+
             return (
               <>
                 <div className="flex items-center gap-3 my-1">
@@ -1523,75 +1663,54 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 </div>
 
                 <section className="bg-white rounded-xl border border-gray-200 overflow-hidden animate-fade-in-up">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <h3 className="text-sm font-bold text-[#1A1A2E]">ผลรวมสัญญาณรบกวน (I_total) แยกตามประเภท Victim</h3>
+                  {/* Summary header */}
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <div className="flex flex-wrap items-center gap-4 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-[#1A1A2E]">Victims ที่ได้รับผลกระทบ:</span>
+                        <span className={`font-bold ${totalAffected > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {totalAffected} / {aggregateRows.length}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-[#1A1A2E]">Worst-Case Margin:</span>
+                        <span className={`font-bold font-mono ${worstMargin > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {worstMargin > 0 ? '+' : ''}{worstMargin.toFixed(1)} dB
+                        </span>
+                        <span className="text-gray-400">(threshold {thresholdDbm} dBm)</span>
+                      </div>
+                    </div>
                   </div>
+
                   <div className="px-4 pb-4 overflow-x-auto">
                     <table className="w-full text-xs border-collapse">
                       <thead>
                         <tr className="border-b-2 border-gray-200 text-left text-gray-500">
+                          <th className="py-2 w-6"></th>
                           <th className="py-2 pr-3 font-semibold">Victim Type</th>
                           <th className="py-2 pr-3 font-semibold">I_total (dBm)</th>
+                          <th className="py-2 pr-3 font-semibold">Margin (dB)</th>
                           <th className="py-2 pr-3 font-semibold">จำนวน Interferer</th>
                           <th className="py-2 pr-3 font-semibold">Worst Interferer</th>
+                          <th className="py-2 pr-3 font-semibold">Trend</th>
                           <th className="py-2 font-semibold">Verdict</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {/* FS Links row */}
-                        {iTotalFs != null && (
-                          <tr className={`${(iTotalFs ?? -200) > thresholdDbm ? 'bg-red-50/30' : 'bg-green-50/30'} hover:bg-gray-50`}>
-                            <td className="py-2 pr-3 font-medium text-[#1A1A2E]">FS Links</td>
-                            <td className="py-2 pr-3 font-mono text-gray-700">{iTotalFs.toFixed(1)}</td>
-                            <td className="py-2 pr-3 font-mono text-gray-600">{uniqueFsInterferers.length}</td>
-                            <td className="py-2 pr-3 font-medium text-gray-700">
-                              {worstFs ? worstFs.interferer.replace(/\(.*\)$/, '').trim() : '—'}
-                            </td>
-                            <td className="py-2">
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                (iTotalFs ?? -200) < thresholdDbm ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                              }`}>
-                                {(iTotalFs ?? -200) < thresholdDbm ? 'CLEAR' : 'CONFLICT'}
-                              </span>
-                            </td>
-                          </tr>
-                        )}
-                        {/* NEW IMT row */}
-                        {iTotalNewImt != null && (
-                          <tr className={`${(iTotalNewImt ?? -200) > thresholdDbm ? 'bg-red-50/30' : 'bg-green-50/30'} hover:bg-gray-50`}>
-                            <td className="py-2 pr-3 font-medium text-[#1A1A2E]">IMT ใหม่ (NEW IMT)</td>
-                            <td className="py-2 pr-3 font-mono text-gray-700">{iTotalNewImt.toFixed(1)}</td>
-                            <td className="py-2 pr-3 font-mono text-gray-600">{uniqueNewImtInterferers.length}</td>
-                            <td className="py-2 pr-3 font-medium text-gray-700">
-                              {worstNewImt ? worstNewImt.interferer.replace(/\(.*\)$/, '').trim() : '—'}
-                            </td>
-                            <td className="py-2">
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                (iTotalNewImt ?? -200) < thresholdDbm ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                              }`}>
-                                {(iTotalNewImt ?? -200) < thresholdDbm ? 'CLEAR' : 'CONFLICT'}
-                              </span>
-                            </td>
-                          </tr>
-                        )}
-                        {/* Existing IMT row */}
-                        {iTotalExistingImt != null && (
-                          <tr className={`${(iTotalExistingImt ?? -200) > thresholdDbm ? 'bg-red-50/30' : 'bg-green-50/30'} hover:bg-gray-50`}>
-                            <td className="py-2 pr-3 font-medium text-[#1A1A2E]">IMT เดิม (Existing IMT)</td>
-                            <td className="py-2 pr-3 font-mono text-gray-700">{iTotalExistingImt.toFixed(1)}</td>
-                            <td className="py-2 pr-3 font-mono text-gray-600">{uniqueExistingImtInterferers.length}</td>
-                            <td className="py-2 pr-3 font-medium text-gray-700">
-                              {worstExistingImt ? worstExistingImt.interferer.replace(/\(.*\)$/, '').trim() : '—'}
-                            </td>
-                            <td className="py-2">
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                (iTotalExistingImt ?? -200) < thresholdDbm ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                              }`}>
-                                {(iTotalExistingImt ?? -200) < thresholdDbm ? 'CLEAR' : 'CONFLICT'}
-                              </span>
-                            </td>
-                          </tr>
-                        )}
+                        {aggregateRows.map((row, ri) => {
+                          const marginDb = row.iTotal != null ? row.iTotal - thresholdDbm : undefined
+                          // Trend: if I_total > threshold, getting worse (↑ conflict); if below, improving (↓)
+                          const trendIsWorse = marginDb != null && marginDb > 0
+                          return (
+                            <AggregateRow key={ri}
+                              row={row}
+                              thresholdDbm={thresholdDbm}
+                              marginDb={marginDb}
+                              trendIsWorse={trendIsWorse}
+                              buildFormula={buildFormula}
+                            />
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -2047,190 +2166,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 ))}
               </div>
 
-              {/* Selected block detail — ENHANCED */}
-              {selectedBlockIndex !== null && sorted[selectedBlockIndex] && (
-                (() => {
-                  const block = sorted[selectedBlockIndex]
-                  const parsed = parseReason(block.reason)
-                  return (
-                    <div
-                      className={`mb-3 p-3 rounded border shadow-sm ${
-                        block.status === 'green'
-                          ? 'bg-green-50 border-green-200'
-                          : block.status === 'red'
-                          ? 'bg-red-50 border-red-200'
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
-                      style={{
-                        borderLeftWidth: '4px',
-                        borderLeftColor:
-                          block.status === 'green' ? '#16A34A' :
-                          block.status === 'red' ? '#DC2626' : '#9CA3AF',
-                      }}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-mono font-bold text-[#1A1A2E]">
-                          {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz
-                        </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          block.status === 'green' ? 'bg-green-100 text-green-700' :
-                          block.status === 'gray' ? 'bg-gray-100 text-gray-600' :
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          {block.status === 'green' ? 'ว่าง' :
-                           block.status === 'gray' ? 'Guard Band' : 'ถูกจอง'}
-                        </span>
-                      </div>
-
-                      {block.status === 'green' && (
-                        <div className="text-xs text-green-700 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1 font-medium">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              สามารถจัดสรรได้
-                            </div>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); toggleBlockSelection(block.freq_low); }}
-                              className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                                selectedBlocks.has(block.freq_low.toString())
-                                  ? 'bg-green-200 text-green-800 hover:bg-green-300'
-                                  : 'bg-green-100 text-green-700 hover:bg-green-200'
-                              }`}
-                            >
-                              {selectedBlocks.has(block.freq_low.toString()) ? (
-                                <>✓ เลือกแล้ว (คลิกยกเลิก)</>
-                              ) : (
-                                <>+ เลือกบล็อกนี้</>
-                              )}
-                            </button>
-                          </div>
-                          {/* Explain why green is safe when adjacent to red blocks */}
-                          {(() => {
-                            const idx = blocks.indexOf(block)
-                            const prevBlock = idx > 0 ? blocks[idx - 1] : null
-                            const nextBlock = idx < blocks.length - 1 ? blocks[idx + 1] : null
-                            const prevIsFsRed = prevBlock?.status === 'red' && prevBlock?.reason?.includes('FS conflict')
-                            const nextIsFsRed = nextBlock?.status === 'red' && nextBlock?.reason?.includes('FS conflict')
-                            if (prevIsFsRed || nextIsFsRed) {
-                              const adjacentFsName = (prevIsFsRed && nextIsFsRed)
-                                ? `FS links บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} และ ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
-                                : prevIsFsRed
-                                  ? `FS link ที่บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} MHz`
-                                  : `FS link ที่บล็อก ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
-                              return (
-                                <div className="text-xs text-green-600 bg-green-100/50 rounded p-1.5 mt-1 leading-relaxed">
-                                  บล็อก {block.freq_low.toFixed(0)} MHz — อยู่นอกย่านความถี่ของ {adjacentFsName} {'\n'}
-                                  Adjacent Channel Protection (ACS 33 dB + ACLR 45 dB = 78 dB isolation) เพียงพอ {'\n'}
-                                  จัดสรรได้โดยไม่ต้องใช้ Guard Band กับ FS
-                                </div>
-                              )
-                            }
-                            return null
-                          })()}
-                        </div>
-                      )}
-
-                      {block.status === 'red' && parsed.conflictType === 'FS' && (
-                        <div className="text-xs space-y-1.5">
-                          <div className="flex items-center gap-1 font-medium text-red-700">
-                            <XCircle className="w-3.5 h-3.5" />
-                            ไม่สามารถจัดสรรได้
-                          </div>
-                          <div className="text-red-700 pl-5">
-                            สาเหตุ: ทับซ้อนกับ Fixed Service Link
-                          </div>
-                          <div className="text-red-700 pl-5 space-y-0.5">
-                            <div className="font-medium">รายละเอียดสัญญาณรบกวน:</div>
-                            <div>&nbsp;&nbsp;&nbsp;• ชื่อ FS Link: {parsed.linkName}</div>
-                            {parsed.imtDistance && (
-                              <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจาก IMT ถึง FS: {parsed.imtDistance} km</div>
-                            )}
-                            <div>&nbsp;&nbsp;&nbsp;• กำลังสัญญาณรบกวน (I): {parsed.iValue} dBm</div>
-                            <div>&nbsp;&nbsp;&nbsp;• Threshold ที่ยอมรับได้: {parsed.threshold} dBm</div>
-                            <div>&nbsp;&nbsp;&nbsp;• เกิน Threshold: {parsed.exceedDb} dB</div>
-                            {parsed.neededSeparation && (
-                              <div>&nbsp;&nbsp;&nbsp;• {parsed.neededSeparation}</div>
-                            )}
-                          </div>
-                          <div className="text-xs text-red-600 bg-red-100/50 rounded p-2 mt-1 leading-relaxed">
-                            FS Link {parsed.linkName} ส่งสัญญาณในช่วงความถี่ที่ทับซ้อน
-                            กับบล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz{parsed.imtDistance ? ` อยู่ห่างจาก IMT ${parsed.imtDistance} km` : ''} กำลังสัญญาณรบกวนที่คำนวณได้
-                            ({parsed.iValue} dBm) สูงกว่า threshold การป้องกัน ({parsed.threshold} dBm)
-                            อยู่ {parsed.exceedDb} dB จึงไม่สามารถจัดสรรคลื่นความถี่บล็อกนี้ให้กับ IMT ได้
-                            {parsed.imtDistance && (
-                              <span className="block mt-1">
-                                หมายเหตุ: บล็อกข้างเคียงที่อยู่นอกย่านความถี่ของ FS นี้ อาจจัดสรรได้โดยไม่ต้องมี Guard Band กับ FS
-                                หากผ่าน Adjacent Channel check (ACS 33 dB)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {block.status === 'red' && parsed.conflictType === 'IMT_COCHANNEL' && (
-                        <div className="text-xs space-y-1.5">
-                          <div className="flex items-center gap-1 font-medium text-red-700">
-                            <XCircle className="w-3.5 h-3.5" />
-                            ไม่สามารถจัดสรรได้
-                          </div>
-                          <div className="text-red-700 pl-5">
-                            สาเหตุ: ทับซ้อนกับ IMT เครือข่ายอื่น (Co-Channel)
-                          </div>
-                          <div className="text-red-700 pl-5 space-y-0.5">
-                            <div className="font-medium">รายละเอียด:</div>
-                            <div>&nbsp;&nbsp;&nbsp;• ชื่อ IMT: {parsed.linkName}</div>
-                            <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>
-                            <div>&nbsp;&nbsp;&nbsp;• ระยะห่างขั้นต่ำที่ต้องการ: {parsed.neededSeparation} km</div>
-                          </div>
-                          <div className="text-xs text-red-600 bg-red-100/50 rounded p-2 mt-1 leading-relaxed">
-                            IMT "{parsed.linkName}" ใช้ความถี่เดียวกันกับบล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz
-                            และอยู่ห่างเพียง {parsed.imtDistance} km ซึ่งน้อยกว่าระยะห่างขั้นต่ำ {parsed.neededSeparation} km
-                            ที่ต้องการสำหรับ Co-Channel protection จึงไม่สามารถใช้บล็อกนี้ได้
-                          </div>
-                        </div>
-                      )}
-
-                      {block.status === 'gray' && parsed.conflictType === 'GUARD' && parsed.linkName && (
-                        <div className="text-xs space-y-1.5">
-                          <div className="flex items-center gap-1 font-medium text-gray-700">
-                            <Shield className="w-3.5 h-3.5" />
-                            Guard Band
-                          </div>
-                          <div className="text-gray-600 pl-5 space-y-0.5">
-                            <div>&nbsp;&nbsp;&nbsp;• ช่องว่างป้องกันระหว่าง IMT: {parsed.linkName}</div>
-                            <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>
-                            <div>&nbsp;&nbsp;&nbsp;• ระยะขั้นต่ำ: {parsed.neededSeparation} km</div>
-                          </div>
-                          <div className="text-xs text-gray-600 bg-gray-100 rounded p-2 mt-1 leading-relaxed">
-                            บล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz อยู่ติดกับความถี่ของ IMT "{parsed.linkName}"
-                            (Adjacent Channel) ระยะห่าง {parsed.imtDistance} km ต่ำกว่าระยะขั้นต่ำ {parsed.neededSeparation} km
-                            จึงต้องเว้นเป็น Guard Band เพื่อป้องกันสัญญาณรบกวนระหว่างช่องความถี่
-                          </div>
-                        </div>
-                      )}
-
-                      {block.status === 'gray' && (!parsed.linkName) && (
-                        <div className="text-xs text-gray-600">
-                          <div className="flex items-center gap-1 font-medium">
-                            <Shield className="w-3.5 h-3.5" />
-                            Guard Band — {block.reason}
-                          </div>
-                        </div>
-                      )}
-
-                      {block.status === 'red' && parsed.conflictType !== 'FS' && (
-                        <div className="text-xs text-red-700">
-                          <div className="flex items-center gap-1 font-medium">
-                            <XCircle className="w-3.5 h-3.5" />
-                            ไม่สามารถจัดสรรได้ — {block.reason}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()
-              )}
-
               {/* Legend */}
               <div className="flex gap-3 text-xs text-gray-500 mb-2">
                 <div className="flex items-center gap-1">
@@ -2247,11 +2182,12 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 </div>
               </div>
 
-              {/* RESULTS TABLE — like Pairs Report */}
+              {/* RESULTS TABLE — collapsible inline expand */}
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="border-b-2 border-gray-200 text-left text-gray-500">
+                      <th className="py-2 w-6"></th>
                       <th className="py-2 pr-3 font-semibold">บล็อก (MHz)</th>
                       <th className="py-2 pr-3 font-semibold">สถานะ</th>
                       <th className="py-2 pr-3 font-semibold">I_total (dBm)</th>
@@ -2262,215 +2198,309 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {sorted.map((b, i) => {
+                      const isExpanded = selectedBlockIndex === i
                       const statusThai = b.status === 'green' ? 'จัดสรรได้' : b.status === 'red' ? 'จัดสรรไม่ได้' : 'ต้องเว้นระยะ'
                       const rowBg = b.status === 'green' ? '#16A34A' : b.status === 'red' ? '#DC2626' : '#9CA3AF'
                       const statusLabelBg = b.status === 'green' ? 'bg-green-100 text-green-700' : b.status === 'red' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
                       const thresholdDbm = -114.0
                       const iTotal = (b.i_total_dbm != null && b.i_total_dbm !== undefined && b.i_total_dbm > -200) ? b.i_total_dbm : undefined
                       const marginDb = iTotal != null ? (iTotal - thresholdDbm) : undefined
-                      const shortReason = b.reason.length > 60 ? b.reason.substring(0, 60) + '...' : b.reason
-                      
+                      const parsed = parseReason(b.reason)
+
+                      // Build type-prefixed reason
+                      const typePrefix = (() => {
+                        if (b.status === 'green') {
+                          // Check if adjacent to FS red — then it's "Adjacent Channel"
+                          const idx = blocks.indexOf(b)
+                          const prevBlock = idx > 0 ? blocks[idx - 1] : null
+                          const nextBlock = idx < blocks.length - 1 ? blocks[idx + 1] : null
+                          const prevIsFsRed = prevBlock?.status === 'red' && prevBlock?.reason?.includes('FS conflict')
+                          const nextIsFsRed = nextBlock?.status === 'red' && nextBlock?.reason?.includes('FS conflict')
+                          if (prevIsFsRed || nextIsFsRed) return 'Adjacent Channel:'
+                          return ''
+                        }
+                        if (b.status === 'gray') return 'Guard Band:'
+                        if (parsed.conflictType === 'FS') return 'Co-channel:'
+                        if (parsed.conflictType === 'IMT_COCHANNEL') return 'Co-channel (IMT):'
+                        return ''
+                      })()
+                      const prefixedReason = typePrefix
+                        ? `${typePrefix} ${b.reason}`
+                        : (b.status === 'green' ? 'ว่าง — จัดสรรได้' : b.reason)
+
+                      // Find matching pairs for this block's frequency range
+                      const blockPairs = pairs.filter(p =>
+                        p.freq_overlap_low <= b.freq_high && p.freq_overlap_high >= b.freq_low
+                      )
+
                       return (
-                        <tr key={i} className="group cursor-pointer hover:brightness-95" 
-                          style={{ backgroundColor: rowBg + '15' }}
-                          onClick={() => setSelectedBlockIndex(selectedBlockIndex === i ? null : i)}
-                        >
-                          <td className="py-2 pr-3 font-mono font-bold text-[#1A1A2E]" style={{ borderLeft: `3px solid ${rowBg}` }}>
-                            {b.freq_low.toFixed(0)}-{b.freq_high.toFixed(0)}
-                          </td>
-                          <td className="py-2 pr-3">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusLabelBg}`}>
-                              {statusThai}
-                            </span>
-                          </td>
-                          <td className="py-2 pr-3 font-mono text-gray-700">
-                            {iTotal != null ? iTotal.toFixed(1) : '—'}
-                          </td>
-                          <td className="py-2 pr-3 font-mono text-gray-500">
-                            {iTotal != null ? thresholdDbm.toFixed(1) : '—'}
-                          </td>
-                          <td className="py-2 pr-3 font-mono">
-                            <span className={marginDb != null ? (marginDb > 0 ? 'text-red-600' : 'text-green-600') : 'text-gray-400'}>
-                              {marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'}
-                            </span>
-                          </td>
-                          <td className="py-2 text-gray-600 max-w-[300px] truncate" title={b.reason}>
-                            {b.status === 'green' ? 'ว่าง — จัดสรรได้' : shortReason}
-                          </td>
-                        </tr>
+                        <React.Fragment key={i}>
+                          <tr
+                            className={`cursor-pointer ${isExpanded ? 'bg-gray-100' : ''} hover:brightness-95`}
+                            style={{ backgroundColor: b.status === 'green' ? '#16A34A08' : b.status === 'red' ? '#DC262608' : '#9CA3AF08' }}
+                            onClick={() => setSelectedBlockIndex(isExpanded ? null : i)}
+                          >
+                            <td className="py-2 text-gray-400">
+                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </td>
+                            <td className="py-2 pr-3 font-mono font-bold text-[#1A1A2E]" style={{ borderLeft: `3px solid ${rowBg}` }}>
+                              {b.freq_low.toFixed(0)}-{b.freq_high.toFixed(0)}
+                            </td>
+                            <td className="py-2 pr-3">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusLabelBg}`}>
+                                {statusThai}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-3 font-mono text-gray-700">
+                              {iTotal != null ? iTotal.toFixed(1) : '—'}
+                            </td>
+                            <td className="py-2 pr-3 font-mono text-gray-500">
+                              {iTotal != null ? thresholdDbm.toFixed(1) : '—'}
+                            </td>
+                            <td className="py-2 pr-3 font-mono">
+                              <span className={marginDb != null ? (marginDb > 0 ? 'text-red-600' : 'text-green-600') : 'text-gray-400'}>
+                                {marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'}
+                              </span>
+                            </td>
+                            <td className="py-2 text-gray-600 max-w-[300px] truncate" title={prefixedReason}>
+                              {prefixedReason.length > 70 ? prefixedReason.substring(0, 70) + '...' : prefixedReason}
+                            </td>
+                          </tr>
+                          {/* Inline expanded detail row */}
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={7} className="p-0 bg-gray-50/50">
+                                <div
+                                  className="mx-1 my-1 p-3 rounded border shadow-sm"
+                                  style={{
+                                    borderLeftWidth: '4px',
+                                    borderLeftColor: rowBg,
+                                    backgroundColor: b.status === 'green' ? '#F0FDF4' : b.status === 'red' ? '#FEF2F2' : '#F9FAFB',
+                                    borderColor: b.status === 'green' ? '#BBF7D0' : b.status === 'red' ? '#FECACA' : '#E5E7EB',
+                                  }}
+                                >
+                                  {/* Header bar */}
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-sm font-mono font-bold text-[#1A1A2E]">
+                                      {b.freq_low.toFixed(0)}-{b.freq_high.toFixed(0)} MHz
+                                    </span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                      b.status === 'green' ? 'bg-green-100 text-green-700' :
+                                      b.status === 'gray' ? 'bg-gray-100 text-gray-600' :
+                                      'bg-red-100 text-red-700'
+                                    }`}>
+                                      {b.status === 'green' ? 'จัดสรรได้' :
+                                       b.status === 'gray' ? 'ต้องเว้นระยะ' : 'จัดสรรไม่ได้'}
+                                    </span>
+                                    {iTotal != null && (
+                                      <span className="text-xs font-mono text-gray-500 ml-auto">
+                                        I_total={iTotal.toFixed(1)} dBm | Threshold={thresholdDbm} dBm | Margin={marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'} dB
+                                      </span>
+                                    )}
+                                    {b.status === 'green' && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleBlockSelection(b.freq_low); }}
+                                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                          selectedBlocks.has(b.freq_low.toString())
+                                            ? 'bg-green-200 text-green-800 hover:bg-green-300'
+                                            : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                        }`}
+                                      >
+                                        {selectedBlocks.has(b.freq_low.toString()) ? '✓ เลือกแล้ว' : '+ เลือก'}
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* I_total breakdown per victim type */}
+                                  {(b.i_total_to_fs_dbm != null || b.i_total_to_new_imt_dbm != null || b.i_total_to_existing_imt_dbm != null) && (
+                                    <div className="mb-2 space-y-0.5">
+                                      <div className="text-xs font-semibold text-gray-600">I_total แยกตามประเภท Victim:</div>
+                                      {b.i_total_to_fs_dbm != null && b.i_total_to_fs_dbm > -200 && (
+                                        <div className="text-xs text-gray-600 ml-3">
+                                          <span className="font-medium">→ FS:</span>{' '}
+                                          <span className="font-mono">{b.i_total_to_fs_dbm.toFixed(1)} dBm</span>
+                                        </div>
+                                      )}
+                                      {b.i_total_to_new_imt_dbm != null && b.i_total_to_new_imt_dbm > -200 && (
+                                        <div className="text-xs text-gray-600 ml-3">
+                                          <span className="font-medium">→ IMT ใหม่:</span>{' '}
+                                          <span className="font-mono">{b.i_total_to_new_imt_dbm.toFixed(1)} dBm</span>
+                                        </div>
+                                      )}
+                                      {b.i_total_to_existing_imt_dbm != null && b.i_total_to_existing_imt_dbm > -200 && (
+                                        <div className="text-xs text-gray-600 ml-3">
+                                          <span className="font-medium">→ IMT อื่น:</span>{' '}
+                                          <span className="font-mono">{b.i_total_to_existing_imt_dbm.toFixed(1)} dBm</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Individual interfering sources (pairs matching this block) */}
+                                  {blockPairs.length > 0 && (
+                                    <div className="mb-2">
+                                      <div className="text-xs font-semibold text-gray-600 mb-1">
+                                        Interfering Sources ({blockPairs.length}):
+                                      </div>
+                                      <table className="w-full text-[11px] border-collapse">
+                                        <thead>
+                                          <tr className="border-b border-gray-200 text-left text-gray-500">
+                                            <th className="py-0.5 pr-2 font-medium">Interferer</th>
+                                            <th className="py-0.5 pr-2 font-medium">Victim</th>
+                                            <th className="py-0.5 pr-2 font-medium">ประเภท</th>
+                                            <th className="py-0.5 pr-2 font-medium">ระยะทาง</th>
+                                            <th className="py-0.5 pr-2 font-medium">I (dBm)</th>
+                                            <th className="py-0.5 font-medium">PL (dB)</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                          {blockPairs.map((pair, pidx) => {
+                                            const pr = pairResults.find(r =>
+                                              r.direction === pair.direction &&
+                                              r.interferer.includes(pair.interferer_name) &&
+                                              r.victim.includes(pair.victim_name))
+                                            const typeLabel: Record<string, string> = {
+                                              'IMT→FS': 'IMT → FS',
+                                              'FS→IMT': 'FS → IMT',
+                                              'IMT↔IMT_COCHANNEL': 'IMT ↔ IMT (co)',
+                                              'IMT↔IMT_ADJACENT': 'IMT ↔ IMT (adj)',
+                                            }
+                                            return (
+                                              <tr key={pidx} className="text-gray-700">
+                                                <td className="py-0.5 pr-2">{pair.interferer_name.replace(/\(.*\)$/, '').trim()}</td>
+                                                <td className="py-0.5 pr-2">{pair.victim_name.replace(/\(.*\)$/, '').trim()}</td>
+                                                <td className="py-0.5 pr-2 text-gray-500">{typeLabel[pair.direction] || pair.direction}</td>
+                                                <td className="py-0.5 pr-2 font-mono">{(pair.distance_m / 1000).toFixed(1)} km</td>
+                                                <td className="py-0.5 pr-2 font-mono">{pair.estimated_i_dbm.toFixed(1)}</td>
+                                                <td className="py-0.5 font-mono">{pr?.path_loss_db?.toFixed(1) ?? '—'}</td>
+                                              </tr>
+                                            )
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+
+                                  {/* Verification results for this block */}
+                                  {backendVerification && (
+                                    <div className="mb-2 pt-2 border-t border-gray-200">
+                                      <div className="text-xs font-semibold text-gray-600 mb-1">Verification:</div>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {Object.entries(backendVerification).filter(([k]) => k !== 'all_pass').map(([k, v]) => {
+                                          const check = v as any
+                                          return (
+                                            <span key={k} className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full ${
+                                              check.pass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                            }`}>
+                                              {check.pass ? <CheckCircle className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
+                                              {k}
+                                            </span>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Block-specific detail from parsed reason */}
+                                  {b.status === 'green' && (
+                                    <div className="text-xs text-green-700 space-y-1 mt-2 pt-2 border-t border-green-200">
+                                      <div className="flex items-center gap-1 font-medium">
+                                        <CheckCircle className="w-3.5 h-3.5" />
+                                        สามารถจัดสรรได้
+                                      </div>
+                                      {(() => {
+                                        const idx = blocks.indexOf(b)
+                                        const prevBlock = idx > 0 ? blocks[idx - 1] : null
+                                        const nextBlock = idx < blocks.length - 1 ? blocks[idx + 1] : null
+                                        const prevIsFsRed = prevBlock?.status === 'red' && prevBlock?.reason?.includes('FS conflict')
+                                        const nextIsFsRed = nextBlock?.status === 'red' && nextBlock?.reason?.includes('FS conflict')
+                                        if (prevIsFsRed || nextIsFsRed) {
+                                          const adjacentFsName = (prevIsFsRed && nextIsFsRed)
+                                            ? `FS links บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} และ ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
+                                            : prevIsFsRed
+                                              ? `FS link ที่บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} MHz`
+                                              : `FS link ที่บล็อก ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
+                                          return (
+                                            <div className="text-xs text-green-600 bg-green-100/50 rounded p-1.5 leading-relaxed">
+                                              บล็อก {b.freq_low.toFixed(0)} MHz — อยู่นอกย่านความถี่ของ {adjacentFsName} {'\n'}
+                                              Adjacent Channel Protection (ACS 33 dB + ACLR 45 dB = 78 dB isolation) เพียงพอ {'\n'}
+                                              จัดสรรได้โดยไม่ต้องใช้ Guard Band กับ FS
+                                            </div>
+                                          )
+                                        }
+                                        return null
+                                      })()}
+                                    </div>
+                                  )}
+
+                                  {b.status === 'red' && parsed.conflictType === 'FS' && (
+                                    <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-red-200">
+                                      <div className="flex items-center gap-1 font-medium text-red-700">
+                                        <XCircle className="w-3.5 h-3.5" />
+                                        ไม่สามารถจัดสรรได้
+                                      </div>
+                                      <div className="text-red-700">สาเหตุ: ทับซ้อนกับ Fixed Service Link</div>
+                                      <div className="text-red-700 space-y-0.5">
+                                        {parsed.linkName && <div>&nbsp;&nbsp;&nbsp;• ชื่อ FS Link: {parsed.linkName}</div>}
+                                        {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจาก IMT ถึง FS: {parsed.imtDistance} km</div>}
+                                        {parsed.iValue && <div>&nbsp;&nbsp;&nbsp;• กำลังสัญญาณรบกวน (I): {parsed.iValue} dBm</div>}
+                                        {parsed.threshold && <div>&nbsp;&nbsp;&nbsp;• Threshold: {parsed.threshold} dBm</div>}
+                                        {parsed.exceedDb && <div>&nbsp;&nbsp;&nbsp;• เกิน Threshold: {parsed.exceedDb} dB</div>}
+                                        {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• {parsed.neededSeparation}</div>}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {b.status === 'red' && parsed.conflictType === 'IMT_COCHANNEL' && (
+                                    <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-red-200">
+                                      <div className="flex items-center gap-1 font-medium text-red-700">
+                                        <XCircle className="w-3.5 h-3.5" />
+                                        ไม่สามารถจัดสรรได้
+                                      </div>
+                                      <div className="text-red-700">สาเหตุ: ทับซ้อนกับ IMT เครือข่ายอื่น (Co-Channel)</div>
+                                      <div className="text-red-700 space-y-0.5">
+                                        {parsed.linkName && <div>&nbsp;&nbsp;&nbsp;• ชื่อ IMT: {parsed.linkName}</div>}
+                                        {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>}
+                                        {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างขั้นต่ำ: {parsed.neededSeparation} km</div>}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {b.status === 'gray' && parsed.conflictType === 'GUARD' && parsed.linkName && (
+                                    <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-gray-200">
+                                      <div className="flex items-center gap-1 font-medium text-gray-700">
+                                        <Shield className="w-3.5 h-3.5" />
+                                        Guard Band
+                                      </div>
+                                      <div className="text-gray-600 space-y-0.5">
+                                        <div>&nbsp;&nbsp;&nbsp;• ช่องว่างป้องกันระหว่าง IMT: {parsed.linkName}</div>
+                                        {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>}
+                                        {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• ระยะขั้นต่ำ: {parsed.neededSeparation} km</div>}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {b.status === 'gray' && (!parsed.linkName) && (
+                                    <div className="text-xs text-gray-600 mt-2 pt-2 border-t border-gray-200">
+                                      Guard Band — {b.reason}
+                                    </div>
+                                  )}
+
+                                  {b.status === 'red' && parsed.conflictType !== 'FS' && parsed.conflictType !== 'IMT_COCHANNEL' && (
+                                    <div className="text-xs text-red-700 mt-2 pt-2 border-t border-red-200">
+                                      ไม่สามารถจัดสรรได้ — {b.reason}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       )
                     })}
                   </tbody>
                 </table>
               </div>
-
-              {/* Expanded block detail — shown when a row is clicked */}
-              {selectedBlockIndex !== null && sorted[selectedBlockIndex] && (
-                (() => {
-                  const block = sorted[selectedBlockIndex]
-                  const parsed = parseReason(block.reason)
-                  const rowBg = block.status === 'green' ? '#16A34A' : block.status === 'red' ? '#DC2626' : '#9CA3AF'
-                  const thresholdDbm = -114.0
-                  const iTotal = (block.i_total_dbm != null && block.i_total_dbm !== undefined && block.i_total_dbm > -200) ? block.i_total_dbm : undefined
-                  const marginDb = iTotal != null ? (iTotal - thresholdDbm) : undefined
-                  
-                  return (
-                    <div
-                      className="mt-3 p-3 rounded border shadow-sm"
-                      style={{
-                        borderLeftWidth: '4px',
-                        borderLeftColor: rowBg,
-                        backgroundColor: block.status === 'green' ? '#F0FDF4' : block.status === 'red' ? '#FEF2F2' : '#F9FAFB',
-                        borderColor: block.status === 'green' ? '#BBF7D0' : block.status === 'red' ? '#FECACA' : '#E5E7EB',
-                      }}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-mono font-bold text-[#1A1A2E]">
-                          {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz
-                        </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          block.status === 'green' ? 'bg-green-100 text-green-700' :
-                          block.status === 'gray' ? 'bg-gray-100 text-gray-600' :
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          {block.status === 'green' ? 'จัดสรรได้' :
-                           block.status === 'gray' ? 'ต้องเว้นระยะ' : 'จัดสรรไม่ได้'}
-                        </span>
-                        {iTotal != null && (
-                          <span className="text-xs font-mono text-gray-500 ml-auto">
-                            I_total={iTotal.toFixed(1)} dBm | Threshold={thresholdDbm} dBm | Margin={marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'} dB
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Aggregate interference per victim type */}
-                      {block.i_total_to_fs_dbm != null && block.i_total_to_fs_dbm > -200 && (
-                        <div className="text-xs text-gray-600 mb-1">
-                          <span className="font-medium">I_total → FS:</span>{' '}
-                          <span className="font-mono">{block.i_total_to_fs_dbm.toFixed(1)} dBm</span>
-                        </div>
-                      )}
-                      {block.i_total_to_new_imt_dbm != null && block.i_total_to_new_imt_dbm > -200 && (
-                        <div className="text-xs text-gray-600 mb-1">
-                          <span className="font-medium">I_total → IMT ใหม่:</span>{' '}
-                          <span className="font-mono">{block.i_total_to_new_imt_dbm.toFixed(1)} dBm</span>
-                        </div>
-                      )}
-                      {block.i_total_to_existing_imt_dbm != null && block.i_total_to_existing_imt_dbm > -200 && (
-                        <div className="text-xs text-gray-600 mb-1">
-                          <span className="font-medium">I_total → ITM อื่น:</span>{' '}
-                          <span className="font-mono">{block.i_total_to_existing_imt_dbm.toFixed(1)} dBm</span>
-                        </div>
-                      )}
-
-                      {/* Block-specific detail from parsed reason */}
-                      {block.status === 'green' && (
-                        <div className="text-xs text-green-700 space-y-1 mt-2 pt-2 border-t border-green-200">
-                          <div className="flex items-center gap-1 font-medium">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            สามารถจัดสรรได้
-                          </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); toggleBlockSelection(block.freq_low); }}
-                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                              selectedBlocks.has(block.freq_low.toString())
-                                ? 'bg-green-200 text-green-800 hover:bg-green-300'
-                                : 'bg-green-100 text-green-700 hover:bg-green-200'
-                            }`}
-                          >
-                            {selectedBlocks.has(block.freq_low.toString()) ? (
-                              <>✓ เลือกแล้ว (คลิกยกเลิก)</>
-                            ) : (
-                              <>+ เลือกบล็อกนี้</>
-                            )}
-                          </button>
-                          {(() => {
-                            const idx = blocks.indexOf(block)
-                            const prevBlock = idx > 0 ? blocks[idx - 1] : null
-                            const nextBlock = idx < blocks.length - 1 ? blocks[idx + 1] : null
-                            const prevIsFsRed = prevBlock?.status === 'red' && prevBlock?.reason?.includes('FS conflict')
-                            const nextIsFsRed = nextBlock?.status === 'red' && nextBlock?.reason?.includes('FS conflict')
-                            if (prevIsFsRed || nextIsFsRed) {
-                              const adjacentFsName = (prevIsFsRed && nextIsFsRed)
-                                ? `FS links บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} และ ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
-                                : prevIsFsRed
-                                  ? `FS link ที่บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} MHz`
-                                  : `FS link ที่บล็อก ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
-                              return (
-                                <div className="text-xs text-green-600 bg-green-100/50 rounded p-1.5 mt-1 leading-relaxed">
-                                  บล็อก {block.freq_low.toFixed(0)} MHz — อยู่นอกย่านความถี่ของ {adjacentFsName} {'\n'}
-                                  Adjacent Channel Protection (ACS 33 dB + ACLR 45 dB = 78 dB isolation) เพียงพอ {'\n'}
-                                  จัดสรรได้โดยไม่ต้องใช้ Guard Band กับ FS
-                                </div>
-                              )
-                            }
-                            return null
-                          })()}
-                        </div>
-                      )}
-
-                      {block.status === 'red' && parsed.conflictType === 'FS' && (
-                        <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-red-200">
-                          <div className="flex items-center gap-1 font-medium text-red-700">
-                            <XCircle className="w-3.5 h-3.5" />
-                            ไม่สามารถจัดสรรได้
-                          </div>
-                          <div className="text-red-700">สาเหตุ: ทับซ้อนกับ Fixed Service Link</div>
-                          <div className="text-red-700 space-y-0.5">
-                            {parsed.linkName && <div>&nbsp;&nbsp;&nbsp;• ชื่อ FS Link: {parsed.linkName}</div>}
-                            {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจาก IMT ถึง FS: {parsed.imtDistance} km</div>}
-                            {parsed.iValue && <div>&nbsp;&nbsp;&nbsp;• กำลังสัญญาณรบกวน (I): {parsed.iValue} dBm</div>}
-                            {parsed.threshold && <div>&nbsp;&nbsp;&nbsp;• Threshold: {parsed.threshold} dBm</div>}
-                            {parsed.exceedDb && <div>&nbsp;&nbsp;&nbsp;• เกิน Threshold: {parsed.exceedDb} dB</div>}
-                            {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• {parsed.neededSeparation}</div>}
-                          </div>
-                        </div>
-                      )}
-
-                      {block.status === 'red' && parsed.conflictType === 'IMT_COCHANNEL' && (
-                        <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-red-200">
-                          <div className="flex items-center gap-1 font-medium text-red-700">
-                            <XCircle className="w-3.5 h-3.5" />
-                            ไม่สามารถจัดสรรได้
-                          </div>
-                          <div className="text-red-700">สาเหตุ: ทับซ้อนกับ IMT เครือข่ายอื่น (Co-Channel)</div>
-                          <div className="text-red-700 space-y-0.5">
-                            {parsed.linkName && <div>&nbsp;&nbsp;&nbsp;• ชื่อ IMT: {parsed.linkName}</div>}
-                            {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>}
-                            {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างขั้นต่ำ: {parsed.neededSeparation} km</div>}
-                          </div>
-                        </div>
-                      )}
-
-                      {block.status === 'gray' && parsed.conflictType === 'GUARD' && parsed.linkName && (
-                        <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-gray-200">
-                          <div className="flex items-center gap-1 font-medium text-gray-700">
-                            <Shield className="w-3.5 h-3.5" />
-                            Guard Band
-                          </div>
-                          <div className="text-gray-600 space-y-0.5">
-                            <div>&nbsp;&nbsp;&nbsp;• ช่องว่างป้องกันระหว่าง IMT: {parsed.linkName}</div>
-                            {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>}
-                            {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• ระยะขั้นต่ำ: {parsed.neededSeparation} km</div>}
-                          </div>
-                        </div>
-                      )}
-
-                      {block.status === 'gray' && (!parsed.linkName) && (
-                        <div className="text-xs text-gray-600 mt-2 pt-2 border-t border-gray-200">
-                          Guard Band — {block.reason}
-                        </div>
-                      )}
-
-                      {block.status === 'red' && parsed.conflictType !== 'FS' && parsed.conflictType !== 'IMT_COCHANNEL' && (
-                        <div className="text-xs text-red-700 mt-2 pt-2 border-t border-red-200">
-                          ไม่สามารถจัดสรรได้ — {block.reason}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()
-              )}
 
               {/* Save button — inside Section 4 at bottom */}
               <div className="mt-4 pt-4 border-t border-gray-200">
