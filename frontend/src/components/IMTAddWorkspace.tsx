@@ -1301,8 +1301,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       const newLat = parseFloat(e.target.value)
                       if (!isNaN(newLat)) {
                         setLat(newLat)
-                        // Auto-sync marker position immediately — no need to wait for "ตกลง"
-                        onConfirmLocation?.(newLat, lon, cellRadius)
                         sync.syncLatLon(newLat, lon)
                       }
                     }}
@@ -1319,8 +1317,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       const newLon = parseFloat(e.target.value)
                       if (!isNaN(newLon)) {
                         setLon(newLon)
-                        // Auto-sync marker position immediately — no need to wait for "ตกลง"
-                        onConfirmLocation?.(lat, newLon, cellRadius)
                         sync.syncLatLon(lat, newLon)
                       }
                     }}
@@ -1404,7 +1400,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               ))}
             </div>
 
-            {/* Step 3-7: Radio params — reordered */}
+            {/* Step 3-7: Radio params — EIRP auto-calculated from all inputs, placed LAST */}
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
                 พารามิเตอร์วิทยุ
@@ -1427,10 +1423,81 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
                 </div>
-                {/* 4. Auto EIRP */}
+                {/* 4. ความสูงเสาอากาศ */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    4. กำลังส่ง
+                    4. ความสูงเสาอากาศ (m AGL)
+                  </label>
+                  <input
+                    type="number"
+                    value={antennaHeight}
+                    onChange={(e) => setAntennaHeight(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                {/* 5. Antenna Gain — only when auto EIRP OFF */}
+                {!autoEirp && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    5. Antenna Gain (dBi)
+                  </label>
+                  <input
+                    type="number"
+                    value={antennaGain}
+                    onChange={(e) => setAntennaGain(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                )}
+                {/* 6. สายอากาศ IMT */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    {autoEirp ? '5.' : '6.'} สายอากาศ IMT
+                  </label>
+                  <select
+                    value={antennaType}
+                    onChange={(e) => {
+                      const newType = e.target.value
+                      setAntennaType(newType)
+                      sync.syncAntenna(newType as 'omni' | 'sector')
+                      setSyncAntennaType(newType as 'omni' | 'sector')
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  >
+                    <option value="omni">Omni — รอบทิศทาง</option>
+                    <option value="sector">Sector — แบบเซกเตอร์</option>
+                  </select>
+                </div>
+                {antennaType === 'sector' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Sector Beamwidth (deg)
+                      </label>
+                      <input
+                        type="number"
+                        value={sectorBeamwidth}
+                        onChange={(e) => setSectorBeamwidth(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Sector Azimuth (deg จาก True North)
+                      </label>
+                      <input
+                        type="number"
+                        value={sectorAzimuth}
+                        onChange={(e) => setSectorAzimuth(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      />
+                    </div>
+                  </>
+                )}
+                {/* 7. กำลังส่ง — LAST, auto-calculated from all inputs above */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    {autoEirp ? '6.' :  antennaType === 'sector' ? '8.' : '7.'} กำลังส่ง
                   </label>
                   <div className="flex items-center gap-2">
                     <button
@@ -1482,77 +1549,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     </div>
                   )}
                 </div>
-                {/* 5. ความสูงเสาอากาศ */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    5. ความสูงเสาอากาศ (m AGL)
-                  </label>
-                  <input
-                    type="number"
-                    value={antennaHeight}
-                    onChange={(e) => setAntennaHeight(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                  />
-                </div>
-                {/* 6. Antenna Gain — only when auto EIRP OFF */}
-                {!autoEirp && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    6. Antenna Gain (dBi)
-                  </label>
-                  <input
-                    type="number"
-                    value={antennaGain}
-                    onChange={(e) => setAntennaGain(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                  />
-                </div>
-                )}
-                {/* 7. สายอากาศ IMT — last */}
-                <div className={autoEirp ? '' : ''}>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    {autoEirp ? '6.' : '7.'} สายอากาศ IMT
-                  </label>
-                  <select
-                    value={antennaType}
-                    onChange={(e) => {
-                      const newType = e.target.value
-                      setAntennaType(newType)
-                      sync.syncAntenna(newType as 'omni' | 'sector')
-                      setSyncAntennaType(newType as 'omni' | 'sector')
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                  >
-                    <option value="omni">Omni — รอบทิศทาง</option>
-                    <option value="sector">Sector — แบบเซกเตอร์</option>
-                  </select>
-                </div>
-                {antennaType === 'sector' && (
-                  <>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Sector Beamwidth (deg)
-                      </label>
-                      <input
-                        type="number"
-                        value={sectorBeamwidth}
-                        onChange={(e) => setSectorBeamwidth(Number(e.target.value))}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Sector Azimuth (deg จาก True North)
-                      </label>
-                      <input
-                        type="number"
-                        value={sectorAzimuth}
-                        onChange={(e) => setSectorAzimuth(Number(e.target.value))}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                      />
-                    </div>
-                  </>
-                )}
               </div>
             </div>
 

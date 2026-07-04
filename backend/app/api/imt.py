@@ -176,7 +176,11 @@ def _block_to_dict(b: SpectrumBlock) -> dict:
 
 
 def _extract_center_from_wkt(wkt: str) -> tuple:
-    """Extract center lat/lon from WKT POLYGON string."""
+    """Extract center lat/lon from WKT POLYGON string.
+    
+    The polygon has 5 vertices (4 corners + closing point).
+    Skip the closing vertex since it duplicates the first point.
+    """
     try:
         coords_str = wkt.replace("POLYGON", "").replace("(", "").replace(")", "").strip()
         pairs = coords_str.split(",")
@@ -187,7 +191,11 @@ def _extract_center_from_wkt(wkt: str) -> tuple:
                 lons.append(float(parts[0]))
                 lats.append(float(parts[1]))
         if lats and lons:
-            return sum(lats) / len(lats), sum(lons) / len(lons)
+            # POLYGON has closing vertex (last == first) — skip it for centroid
+            n = len(lats)
+            if n > 1 and abs(lats[-1] - lats[0]) < 1e-9 and abs(lons[-1] - lons[0]) < 1e-9:
+                n -= 1
+            return sum(lats[:n]) / n, sum(lons[:n]) / n
     except Exception:
         pass
     return 13.75, 100.5
