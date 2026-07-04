@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Search, MapPin, X, Radio } from 'lucide-react'
+import { Button } from './Button'
+import { useReducedMotion } from '../hooks/useReducedMotion'
 
 interface AllocationFormProps {
   lat: number
@@ -22,6 +24,7 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose, 
   const [antennaGain, setAntennaGain] = useState(12)
   const [maxEirp, setMaxEirp] = useState(23)
   const [logLines, setLogLines] = useState<string[]>([])
+  const reduced = useReducedMotion()
 
   // ESC key listener
   useEffect(() => {
@@ -60,11 +63,11 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose, 
   }, [loading])
 
   return (
-    <div className="relative">
+    <div className={`relative ${!reduced ? 'animate-slide-in-right' : ''}`}>
       {/* Close button */}
       <button
         onClick={onClose}
-        className="absolute top-0 right-0 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+        className="absolute top-0 right-0 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors active:animate-press"
         title="ปิด"
       >
         <X className="w-4 h-4" />
@@ -141,7 +144,8 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose, 
       </div>
 
       <div className="flex gap-2">
-        <button
+        <Button
+          variant="primary"
           onClick={() =>
             onAnalyze({
               cell_radius: cellRadius,
@@ -150,12 +154,12 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose, 
               max_eirp: maxEirp,
             })
           }
-          disabled={loading}
-          className="flex-1 bg-[#C00000] hover:bg-[#8B0000] text-white font-medium py-2 rounded text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          loading={loading}
+          pulse
+          className="flex-1"
         >
-          <Search className="w-4 h-4" />
           {loading ? 'กำลังวิเคราะห์...' : 'วิเคราะห์คลื่นความถี่'}
-        </button>
+        </Button>
         <button
           onClick={onClose}
           className="px-4 py-2 rounded text-sm font-medium text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors"
@@ -167,7 +171,7 @@ export default function AllocationForm({ lat, lon, onAnalyze, loading, onClose, 
       {logLines.length > 0 && (
         <div className="mt-3 p-2 bg-gray-50 rounded border border-gray-100 text-xs font-mono text-gray-600 max-h-24 overflow-y-auto">
           {logLines.map((line, i) => (
-            <div key={i} className="py-0.5 transition-opacity duration-300" style={{ opacity: 1 }}>
+            <div key={i} className={`py-0.5 transition-opacity duration-300 ${!reduced ? `animate-fade-in-left stagger-${Math.min(i + 1, 10)}` : ''}`} style={{ opacity: 1 }}>
               [{i + 1}/4] {line}
             </div>
           ))}

@@ -14,6 +14,8 @@ import {
   Shield,
   XCircle,
 } from 'lucide-react'
+import { Button } from './Button'
+import { ScaleIn } from './AnimatePresence'
 import { useAuth } from '../contexts/AuthContext'
 import type { IMTAllocation, IMTAllocationCreate } from '../types'
 
@@ -364,21 +366,13 @@ export default function IMTManager() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={fetchAllocations}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            title="รีเฟรช"
-          >
+          <Button variant="ghost" onClick={fetchAllocations} title="รีเฟรช">
             <RefreshCw className="w-4 h-4" />
             รีเฟรช
-          </button>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
-          >
-            <PlusCircle className="w-4 h-4" />
+          </Button>
+          <Button variant="primary" onClick={openCreate} pulse>
             เพิ่ม IMT
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -427,10 +421,10 @@ export default function IMTManager() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {displayed.map((alloc) => (
+                {displayed.map((alloc, index) => (
                   <React.Fragment key={alloc.id}>
                     <tr
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      className={`hover:bg-gray-50 transition-colors cursor-pointer animate-fade-in-up stagger-${Math.min(index + 1, 10)}`}
                       onClick={() => setExpandedId(expandedId === alloc.id ? null : alloc.id)}
                     >
                       <td className="px-4 py-3 font-medium text-[#1A1A2E]">
@@ -559,6 +553,7 @@ export default function IMTManager() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <ScaleIn>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white rounded-t-xl">
@@ -819,6 +814,7 @@ export default function IMTManager() {
               </div>
             </form>
           </div>
+          </ScaleIn>
         </div>
       )}
 
@@ -826,7 +822,8 @@ export default function IMTManager() {
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
-          <div className="relative bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 p-6 animate-fade-in-up">
+          <ScaleIn>
+          <div className="relative bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 p-6">
             <div className="flex items-start gap-3 mb-4">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
                 <Trash2 className="w-5 h-5 text-red-600" />
@@ -842,21 +839,20 @@ export default function IMTManager() {
               </div>
             </div>
             <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors"
-              >
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)} className="flex-1">
                 ยกเลิก
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
                 onClick={handleDelete}
-                disabled={deleting === deleteTarget.id}
-                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
+                loading={deleting === deleteTarget.id}
+                className="flex-1"
               >
                 {deleting === deleteTarget.id ? 'กำลังลบ...' : 'ลบ'}
-              </button>
+              </Button>
             </div>
           </div>
+          </ScaleIn>
         </div>
       )}
     </div>

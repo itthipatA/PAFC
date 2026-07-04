@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { LogIn, Shield, User, Key } from 'lucide-react'
+import { Button } from './Button'
+import { useReducedMotion } from '../hooks/useReducedMotion'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function LoginPage() {
@@ -8,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const reduced = useReducedMotion()
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -70,7 +73,7 @@ export default function LoginPage() {
           </div>
 
           {/* Login Card */}
-          <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-10">
+          <div className={`bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-10 ${!reduced ? 'animate-scale-in' : ''}`}>
             {/* Header */}
             <div className="flex items-center gap-3 mb-7 pb-5 border-b border-gray-100">
               <div className="w-11 h-11 bg-gradient-to-br from-[#C00000]/10 to-[#C00000]/5 rounded-xl flex items-center justify-center">
@@ -88,7 +91,7 @@ export default function LoginPage() {
 
             {/* Error message */}
             {error && (
-              <div className="mb-5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-start gap-2.5">
+              <div className={`mb-5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-start gap-2.5 ${!reduced ? 'animate-shake' : ''}`}>
                 <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center shrink-0 mt-px">
                   <svg
                     className="w-3 h-3 text-red-500"
@@ -159,39 +162,14 @@ export default function LoginPage() {
               </div>
 
               {/* Submit button */}
-              <button
+              <Button
                 type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-[#C00000] to-[#D42020] hover:from-[#A00000] hover:to-[#B01010] text-white font-semibold py-3 rounded-xl text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#C00000]/20 hover:shadow-xl hover:shadow-[#C00000]/30 hover:-translate-y-0.5 active:translate-y-0"
+                variant="primary"
+                loading={loading}
+                className="w-full"
               >
-                <LogIn className="w-4 h-4" />
-                {loading ? (
-                  <>
-                    <svg
-                      className="animate-spin w-4 h-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    กำลังเข้าสู่ระบบ...
-                  </>
-                ) : (
-                  'เข้าสู่ระบบ'
-                )}
-              </button>
+                {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+              </Button>
             </form>
           </div>
 

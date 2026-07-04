@@ -7,6 +7,8 @@ import {
   X,
   Map,
 } from 'lucide-react'
+import { Button } from './Button'
+import { ScaleIn } from './AnimatePresence'
 import { useAuth } from '../contexts/AuthContext'
 import type { FSLink, FSLinkCreate } from '../types'
 
@@ -194,21 +196,13 @@ export default function FSLinkManager() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={fetchLinks}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            title="รีเฟรช"
-          >
+          <Button variant="ghost" onClick={fetchLinks} title="รีเฟรช">
             <RefreshCw className="w-4 h-4" />
             รีเฟรช
-          </button>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
+          </Button>
+          <Button variant="primary" onClick={openCreate}>
             เพิ่ม FS Link
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -255,8 +249,8 @@ export default function FSLinkManager() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {displayed.map((link) => (
-                  <tr key={link.id} className="hover:bg-gray-50 transition-colors">
+                {displayed.map((link, index) => (
+                  <tr key={link.id} className={`hover:bg-gray-50 transition-colors animate-fade-in-up stagger-${Math.min(index + 1, 10)}`}>
                     <td className="px-4 py-3 font-medium text-[#1A1A2E]">{link.name}</td>
                     <td className="px-4 py-3 text-gray-600">{link.operator}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">
@@ -361,6 +355,7 @@ export default function FSLinkManager() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <ScaleIn>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white rounded-t-xl">
@@ -662,6 +657,7 @@ export default function FSLinkManager() {
               </div>
             </form>
           </div>
+          </ScaleIn>
         </div>
       )}
     </div>

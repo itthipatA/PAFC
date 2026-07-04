@@ -5,6 +5,8 @@ import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapP
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
 import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff, AssumptionItem } from '../types'
+import { useSyncAnimation } from '../hooks/useSyncAnimation'
+import { MiniMap, getCoverageColorForModel } from './MiniMap'
 
 interface IMTAddWorkspaceProps {
   onBack: () => void
@@ -644,6 +646,43 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [name, setName] = useState('')
   const [operator, setOperator] = useState('')
 
+  // ─── Sync Animation ──────────────────────────────────────────
+  const [syncCoverageColor, setSyncCoverageColor] = useState<'inner' | 'mid' | 'outer'>('inner')
+  const [syncAntennaType, setSyncAntennaType] = useState<'omni' | 'sector'>('omni')
+
+  const sync = useSyncAnimation({
+    onSyncLatLon: (latVal, lonVal) => {
+      // Update map fly-to
+      if (miniMapRef.current) {
+        miniMapRef.current.flyTo({ center: [lonVal, latVal], zoom: 12, duration: 800 })
+        // Update marker
+        if (miniMarkerRef.current) miniMarkerRef.current.remove()
+        miniMarkerRef.current = new maplibregl.Marker({ color: '#C00000' })
+          .setLngLat([lonVal, latVal])
+          .addTo(miniMapRef.current)
+        drawMiniCellRadius(miniMapRef.current, latVal, lonVal, cellRadius)
+      }
+    },
+    onSyncRadius: (r) => {
+      // Update coverage circle on mini map
+      if (miniMapRef.current) {
+        drawMiniCellRadius(miniMapRef.current, lat, lon, r)
+      }
+    },
+    onSyncAntenna: (type) => {
+      setSyncAntennaType(type)
+    },
+    onSyncModel: (model) => {
+      setSyncCoverageColor(getCoverageColorForModel(model))
+    },
+    onSyncAnalyze: () => {
+      // MiniMap pulse wave is triggered by analyzePhase change
+    },
+    onSyncResults: (_count) => {
+      // Results panels stagger is handled by CSS animation classes
+    },
+  })
+
   // Calculation state
   const [loading, setLoading] = useState(false)
   const [logLines, setLogLines] = useState<string[]>([])
@@ -753,6 +792,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   }, [showCloseConfirm])
 
   const handleCalculate = useCallback(async () => {
+    // Trigger analyze animation
+    sync.syncAnalyze()
+
     const startTime = performance.now()
     setLoading(true)
     setBlocks([])
@@ -812,6 +854,10 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         data.coverage || null,
         data.assumptions || null,
       ))
+
+      // Trigger result reveal animation with stagger
+      const resultCount = (data.blocks?.length || 0) + (data.pairs?.length || 0)
+      sync.syncResults(resultCount)
     } catch (err) {
       console.error('Analysis failed:', err)
       setLogLines((prev) => [...prev, '', 'ERROR: การวิเคราะห์ล้มเหลว กรุณาลองใหม่'])
@@ -900,10 +946,29 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const isPanel = mode === 'panel'
 
   return (
-    <div className="h-full flex bg-[#F5F5F0]">
+    <div className="h-full flex bg-[#F5F5F0] animate-slide-in-right">
       {!isPanel && (
-        /* Left 20% — Mini Map (full mode only) */
+        /* Left 20% — Mini Map + Sync Viz (full mode only) */
         <div className="w-[20%] min-w-[240px] flex flex-col border-r border-gray-300 bg-white">
+          {/* Sync Animation MiniMap (SVG-based) */}
+          <div className="h-[45%] min-h-[180px]">
+            <MiniMap
+              lat={lat}
+              lon={lon}
+              radius={cellRadius}
+              antennaType={syncAntennaType}
+              coverageColor={syncCoverageColor}
+              isAnalyzing={loading}
+              analyzePhase={sync.analyzePhase}
+              isAnimating={sync.isAnimating}
+              sectorBeamwidth={sectorBeamwidth}
+              sectorAzimuth={sectorAzimuth}
+              className="h-full"
+            />
+          </div>
+          {/* Divider */}
+          <div className="border-t border-gray-200" />
+          {/* MapLibre Mini Map */}
           <div ref={miniMapContainerRef} className="flex-1" />
           <div className="p-2 text-xs text-gray-500 bg-gray-50 border-t border-gray-200 font-mono">
             {lat.toFixed(4)}, {lon.toFixed(4)}
@@ -953,7 +1018,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     type="number"
                     step="0.0001"
                     value={lat}
-                    onChange={(e) => setLat(Number(e.target.value))}
+                    onChange={(e) => {
+                      const newLat = Number(e.target.value)
+                      setLat(newLat)
+                      sync.syncLatLon(newLat, lon)
+                    }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
                 </div>
@@ -963,7 +1032,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     type="number"
                     step="0.0001"
                     value={lon}
-                    onChange={(e) => setLon(Number(e.target.value))}
+                    onChange={(e) => {
+                      const newLon = Number(e.target.value)
+                      setLon(newLon)
+                      sync.syncLatLon(lat, newLon)
+                    }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
                 </div>
@@ -971,7 +1044,18 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               <div className="mt-2">
                 <button
                   type="button"
-                  onClick={() => onConfirmLocation?.(lat, lon, cellRadius)}
+                  onClick={() => {
+                    onConfirmLocation?.(lat, lon, cellRadius)
+                    // Fire map pin drop animation — immediate (not debounced)
+                    if (miniMapRef.current) {
+                      miniMapRef.current.flyTo({ center: [lon, lat], zoom: 14, duration: 500 })
+                      if (miniMarkerRef.current) miniMarkerRef.current.remove()
+                      miniMarkerRef.current = new maplibregl.Marker({ color: '#C00000' })
+                        .setLngLat([lon, lat])
+                        .addTo(miniMapRef.current)
+                      drawMiniCellRadius(miniMapRef.current, lat, lon, cellRadius)
+                    }
+                  }}
                   className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border bg-[#C00000] text-white border-[#C00000] hover:bg-[#8B0000] transition-colors"
                 >
                   <MapPin className="w-3.5 h-3.5" />
@@ -993,7 +1077,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   <input
                     type="number"
                     value={cellRadius}
-                    onChange={(e) => setCellRadius(Number(e.target.value))}
+                    onChange={(e) => {
+                      const r = Number(e.target.value)
+                      setCellRadius(r)
+                      sync.syncRadius(r)
+                    }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
                 </div>
@@ -1025,7 +1113,12 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   </label>
                   <select
                     value={antennaType}
-                    onChange={(e) => setAntennaType(e.target.value)}
+                    onChange={(e) => {
+                      const newType = e.target.value
+                      setAntennaType(newType)
+                      sync.syncAntenna(newType as 'omni' | 'sector')
+                      setSyncAntennaType(newType as 'omni' | 'sector')
+                    }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   >
                     <option value="omni">Omni — รอบทิศทาง</option>
@@ -1116,7 +1209,12 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 </label>
                 <select
                   value={propagationModel}
-                  onChange={(e) => setPropagationModel(e.target.value)}
+                  onChange={(e) => {
+                    const newModel = e.target.value
+                    setPropagationModel(newModel)
+                    sync.syncModel(newModel)
+                    setSyncCoverageColor(getCoverageColorForModel(newModel))
+                  }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                 >
                   <option value="free_space">Free Space (ITU-R P.525)</option>

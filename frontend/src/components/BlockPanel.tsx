@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { CheckCircle, Shield, XCircle, Info } from 'lucide-react'
+import { useReducedMotion } from '../hooks/useReducedMotion'
 import { BlockResult } from '../types'
 
 interface BlockPanelProps {
@@ -8,6 +9,7 @@ interface BlockPanelProps {
 
 export default function BlockPanel({ blocks }: BlockPanelProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const reduced = useReducedMotion()
 
   const statusCounts = {
     available: blocks.filter((b) => b.status === 'green').length,
@@ -69,7 +71,7 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
           <div
             key={i}
             title={`${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${b.reason}`}
-            className={`flex-1 ${statusBg(b.status)} cursor-pointer hover:brightness-110 relative`}
+            className={`flex-1 ${statusBg(b.status)} cursor-pointer hover:brightness-110 relative ${!reduced ? `animate-fade-in-up stagger-${Math.min(i + 1, 10)}` : ''}`}
             style={{
               backgroundColor: statusColor(b.status),
               minWidth: `${Math.max(100 / sorted.length, 1)}%`,
@@ -113,7 +115,7 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
 
       {/* Selected block detail */}
       {selectedIndex !== null && sorted[selectedIndex] && (
-        <div className="mb-3 p-3 bg-white rounded border border-gray-200 shadow-sm">
+        <div className={`mb-3 p-3 bg-white rounded border border-gray-200 shadow-sm ${!reduced ? 'animate-scale-in' : ''}`}>
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-mono font-bold text-[#1A1A2E]">
               {sorted[selectedIndex].freq_low.toFixed(0)}-{sorted[selectedIndex].freq_high.toFixed(0)} MHz

@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Search, MapPin, Radio, ArrowUpDown, RefreshCw } from 'lucide-react'
+import { useReducedMotion } from '../hooks/useReducedMotion'
+import { staggerDelay } from '../utils/animation'
 import { useAuth } from '../contexts/AuthContext'
 
 interface QueryPanelProps {
@@ -34,6 +36,7 @@ interface IMTResult {
 
 export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
   const { fetchWithAuth } = useAuth()
+  const reducedMotion = useReducedMotion()
   const [activeTab, setActiveTab] = useState<SearchTab>('fs')
   const [query, setQuery] = useState('')
   const [fsResults, setFsResults] = useState<FSResult[]>([])
@@ -200,10 +203,11 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredFS.map((r) => (
+              {filteredFS.map((r, idx) => (
                 <div
                   key={r.id}
-                  className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md hover:border-[#C00000]/30 transition-all cursor-pointer group"
+                  className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md hover:border-[#C00000]/30 transition-all cursor-pointer group animate-fade-in-up"
+                  style={reducedMotion ? undefined : { animationDelay: staggerDelay(idx) }}
                   onClick={() => onZoomTo(r.tx_lat, r.tx_lon)}
                 >
                   <div className="flex items-start justify-between">
@@ -243,10 +247,11 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredIMT.map((r) => (
+              {filteredIMT.map((r, idx) => (
                 <div
                   key={r.id}
-                  className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md hover:border-[#C00000]/30 transition-all cursor-pointer group"
+                  className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md hover:border-[#C00000]/30 transition-all cursor-pointer group animate-fade-in-up"
+                  style={reducedMotion ? undefined : { animationDelay: staggerDelay(idx) }}
                   onClick={() => onZoomTo(r.center_lat, r.center_lon)}
                 >
                   <div className="flex items-start justify-between">

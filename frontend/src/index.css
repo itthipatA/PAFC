@@ -2,6 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ══════════════════════════════════════════════════════════
+   PAFC Animation System — Foundation
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Custom Properties ──────────────────────────────────── */
+:root {
+  /* Easing curves (exponential — no bounce, no elastic) */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Durations */
+  --dur-micro: 150ms;
+  --dur-fast: 250ms;
+  --dur-normal: 400ms;
+  --dur-slow: 600ms;
+  --dur-sync: 500ms;       /* workspace↔map sync */
+  --dur-pulse: 1200ms;     /* analyze pulse wave */
+}
+
+/* ── Reduced Motion ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0s !important;
+  }
+}
+
+/* ── Base ───────────────────────────────────────────────── */
 body {
   margin: 0;
   font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
@@ -63,34 +96,19 @@ body {
 
 /* Smooth transitions */
 .nav-tab {
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 
 /* Scrollbar styling */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
-  border-radius: 3px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #9ca3af;
-}
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #d1d5db; border-radius: 3px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #9ca3af; }
 
 /* Status badges */
-.badge-active {
-  @apply bg-green-100 text-green-700;
-}
-.badge-pending {
-  @apply bg-yellow-100 text-yellow-700;
-}
-.badge-inactive {
-  @apply bg-gray-100 text-gray-600;
-}
+.badge-active { @apply bg-green-100 text-green-700; }
+.badge-pending { @apply bg-yellow-100 text-yellow-700; }
+.badge-inactive { @apply bg-gray-100 text-gray-600; }
 
 /* Input focus ring NBTC theme */
 .nbtc-focus:focus {
@@ -98,27 +116,167 @@ body {
   border-color: #C00000;
 }
 
-/* ─── Animations ─────────────────────────────────────────── */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in-up {
-  animation: fadeInUp 0.4s ease-out;
-}
+/* ══════════════════════════════════════════════════════════
+   ANIMATION KEYFRAMES
+   ══════════════════════════════════════════════════════════ */
 
+/* ── Entrance ─────────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
-.animate-fade-in {
-  animation: fadeIn 0.35s ease-out;
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInLeft {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes fadeInRight {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
+/* ── Slide overlays ───────────────────────────────────── */
 @keyframes slideInRight {
-  from { opacity: 0; transform: translateX(16px); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
 }
-.animate-slide-in-right {
-  animation: slideInRight 0.35s ease-out;
+@keyframes slideOutRight {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(100%); }
 }
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Micro-interactions ───────────────────────────────── */
+@keyframes pressScale {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+@keyframes rippleEffect {
+  0%   { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(4); opacity: 0; }
+}
+@keyframes borderGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 0, 0, 0.3); }
+  50%      { box-shadow: 0 0 0 3px rgba(192, 0, 0, 0.15); }
+}
+@keyframes numberBounce {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(1.04); }
+  50%  { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+
+/* ── Feedback ─────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pulseRing {
+  0%   { box-shadow: 0 0 0 0 rgba(192, 0, 0, 0.5); }
+  50%  { box-shadow: 0 0 0 12px rgba(192, 0, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(192, 0, 0, 0); }
+}
+@keyframes checkmarkDraw {
+  0%   { stroke-dashoffset: 24; }
+  40%  { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes shakeError {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-4px); }
+  40%      { transform: translateX(4px); }
+  60%      { transform: translateX(-3px); }
+  80%      { transform: translateX(3px); }
+}
+@keyframes flashHighlight {
+  0%   { background-color: rgba(22, 163, 74, 0.2); }
+  100% { background-color: transparent; }
+}
+
+/* ── Map / Data Viz ───────────────────────────────────── */
+@keyframes markerDrop {
+  0%   { opacity: 0; transform: translateY(-30px); }
+  60%  { opacity: 1; transform: translateY(3px); }
+  80%  { transform: translateY(-2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes radialExpand {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+@keyframes lineDraw {
+  from { stroke-dashoffset: 1000; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes colorWave {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes pulseBorder {
+  0%, 100% { border-color: rgba(156, 163, 175, 0.5); }
+  50%      { border-color: rgba(234, 179, 8, 0.8); }
+}
+
+/* ── Stagger delay utilities ──────────────────────────── */
+.stagger-1  { animation-delay: 0ms; }
+.stagger-2  { animation-delay: 50ms; }
+.stagger-3  { animation-delay: 100ms; }
+.stagger-4  { animation-delay: 150ms; }
+.stagger-5  { animation-delay: 200ms; }
+.stagger-6  { animation-delay: 250ms; }
+.stagger-7  { animation-delay: 300ms; }
+.stagger-8  { animation-delay: 350ms; }
+.stagger-9  { animation-delay: 400ms; }
+.stagger-10 { animation-delay: 450ms; }
+
+/* ══════════════════════════════════════════════════════════
+   ANIMATION UTILITY CLASSES
+   ══════════════════════════════════════════════════════════ */
+
+/* Entrance */
+.animate-fade-in         { animation: fadeIn var(--dur-normal) var(--ease-expo) both; }
+.animate-fade-in-up      { animation: fadeInUp var(--dur-normal) var(--ease-expo) both; }
+.animate-fade-in-down    { animation: fadeInDown var(--dur-normal) var(--ease-expo) both; }
+.animate-fade-in-left    { animation: fadeInLeft var(--dur-normal) var(--ease-expo) both; }
+.animate-fade-in-right   { animation: fadeInRight var(--dur-normal) var(--ease-expo) both; }
+.animate-scale-in        { animation: scaleIn var(--dur-normal) var(--ease-back) both; }
+
+/* Slide overlays */
+.animate-slide-in-right  { animation: slideInRight var(--dur-slow) var(--ease-expo) both; }
+.animate-slide-out-right { animation: slideOutRight var(--dur-slow) var(--ease-expo) both; }
+.animate-slide-in-up     { animation: slideInUp var(--dur-slow) var(--ease-expo) both; }
+
+/* Micro */
+.animate-press           { animation: pressScale var(--dur-micro) var(--ease-standard); }
+.animate-number-bounce   { animation: numberBounce var(--dur-fast) var(--ease-back); }
+.animate-border-glow     { animation: borderGlow var(--dur-slow) var(--ease-standard) infinite; }
+
+/* Feedback */
+.animate-shimmer         { animation: shimmer 1.5s linear infinite; }
+.animate-pulse-ring      { animation: pulseRing var(--dur-pulse) var(--ease-smooth); }
+.animate-shake           { animation: shakeError var(--dur-fast) var(--ease-standard); }
+.animate-flash-green     { animation: flashHighlight var(--dur-slow) ease-out; }
+.animate-checkmark       { animation: checkmarkDraw var(--dur-slow) var(--ease-expo) forwards; }
+
+/* Map / Data Viz */
+.animate-marker-drop     { animation: markerDrop var(--dur-sync) var(--ease-back) both; }
+.animate-radial-expand   { animation: radialExpand var(--dur-slow) var(--ease-expo) both; }
+.animate-line-draw       { animation: lineDraw var(--dur-slow) var(--ease-expo) forwards; }
+.animate-color-wave      { animation: colorWave 2s ease infinite; }
+.animate-pulse-border    { animation: pulseBorder 2s var(--ease-standard) infinite; }

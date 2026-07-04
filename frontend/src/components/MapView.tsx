@@ -177,6 +177,7 @@ function rxMarkerEl(): HTMLDivElement {
 function imtMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
   el.style.cssText = 'width:28px !important;height:36px !important;overflow:visible'
+  el.className = 'animate-marker-drop'
   el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36" style="display:block">
       <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
         <line x1="40" y1="38" x2="40" y2="112" stroke-width="3" />
@@ -297,7 +298,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   // Auto-pan when centerLat/centerLon change
   useEffect(() => {
     if (!mapRef.current || centerLat == null || centerLon == null) return
-    mapRef.current.flyTo({ center: [centerLon, centerLat], zoom: 12, duration: 800 })
+    mapRef.current.flyTo({ center: [centerLon, centerLat], zoom: 12, duration: 800, curve: 1.5 })
   }, [centerLat, centerLon])
 
   // Update selected-location marker
