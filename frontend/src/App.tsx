@@ -73,6 +73,8 @@ function AuthenticatedApp({
       // Clear the red placement marker when workspace closes
       setSelectedLat(null)
       setSelectedLon(null)
+      // Refresh map to show new IMT marker (if save happened)
+      setDashboardRefreshKey(k => k + 1)
     }, 600)
   }, [])
 
