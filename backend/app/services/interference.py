@@ -749,7 +749,7 @@ class InterferenceEngine:
             ):
                 continue
 
-            # Quick FSPL estimate
+            # Quick FSPL estimate with sector discrimination
             effective_dist = max(dist_to_rx - cell_radius, 1.0)
             est_path_loss = self.model.path_loss_db(
                 distance_m=effective_dist,
@@ -758,7 +758,16 @@ class InterferenceEngine:
                 rx_height_m=fs.rx_altitude or 0,
                 **mp,
             )
-            est_i = new_imt_eirp - est_path_loss + (fs.rx_antenna_gain or 0)
+            # Phase 0 sector discrimination (same as Phase 1)
+            sector_disc = 0.0
+            if antenna_type == "sector":
+                sector_disc = sector_antenna_discrimination_db(
+                    center_lat, center_lon, fs.rx_lat, fs.rx_lon,
+                    antenna_type=antenna_type,
+                    sector_azimuth_deg=sector_azimuth_deg,
+                    sector_beamwidth_deg=sector_beamwidth_deg,
+                )
+            est_i = new_imt_eirp - est_path_loss + (fs.rx_antenna_gain or 0) - sector_disc
 
             risk = self._classify_risk(est_i, settings.interference_threshold_dbm, dist_to_rx)
 
@@ -771,6 +780,23 @@ class InterferenceEngine:
                 within_beam=None,
                 estimated_i_dbm=est_i,
                 preliminary_risk=risk,
+            ))
+
+            # ── ➀b NEW_IMT → FS_RX ADJACENT ──
+            # IMT's out-of-band emission (ACLR 45 dB) can affect FS on adjacent channels
+            guard_range = settings.default_guard_band_mhz
+            pairs.append(InterferencePair(
+                interferer_type="NEW_IMT", interferer_id="new", interferer_name="IMT ใหม่",
+                victim_type="FS_RX", victim_id=fs.id, victim_name=fs.name,
+                direction="IMT→FS_ADJACENT",
+                freq_overlap_low=fs.freq_low - guard_range,
+                freq_overlap_high=fs.freq_high + guard_range,
+                distance_m=dist_to_rx,
+                within_beam=None,
+                guard_band_mhz=0,
+                estimated_i_dbm=est_i - self.ACS_DB - self.ACLR_DB,
+                preliminary_risk=self._classify_risk(est_i - self.ACS_DB,
+                    settings.interference_threshold_dbm, dist_to_rx),
             ))
 
         # ── ➁ FS_TX → NEW_IMT (NEW — previously missing) ──
@@ -884,7 +910,16 @@ class InterferenceEngine:
                     rx_height_m=imt.antenna_height,
                     **mp,
                 )
-                est_i = new_imt_eirp - est_path_loss + imt.antenna_gain
+                # Phase 0 sector discrimination
+                sector_disc_imt = 0.0
+                if antenna_type == "sector":
+                    sector_disc_imt = sector_antenna_discrimination_db(
+                        center_lat, center_lon, imt.center_lat, imt.center_lon,
+                        antenna_type=antenna_type,
+                        sector_azimuth_deg=sector_azimuth_deg,
+                        sector_beamwidth_deg=sector_beamwidth_deg,
+                    )
+                est_i = new_imt_eirp - est_path_loss + imt.antenna_gain - sector_disc_imt
                 risk = self._classify_risk(est_i, settings.interference_threshold_dbm, dist)
 
                 pairs.append(InterferencePair(
@@ -994,6 +1029,12 @@ class InterferenceEngine:
                                                   new_imt_radius, new_imt_eirp,
                                                   new_imt_height, fs, threshold,
                                                   antenna_type, sector_beamwidth_deg, sector_azimuth_deg)
+            elif pair.direction == "IMT→FS_ADJACENT":
+                fs = fs_by_id.get(pair.victim_id)
+                result = self._compute_imt_to_fs_adjacent(pair, new_imt_lat, new_imt_lon,
+                                                  new_imt_radius, new_imt_eirp,
+                                                  new_imt_height, fs, threshold,
+                                                  antenna_type, sector_beamwidth_deg, sector_azimuth_deg)
             elif pair.direction == "FS→IMT":
                 fs = fs_by_id.get(pair.interferer_id)
                 result = self._compute_fs_to_imt(pair,
@@ -1092,6 +1133,43 @@ class InterferenceEngine:
                    f"(margin={margin:+.1f} dB, dist={effective_dist:.0f}m, "
                    f"PL={path_loss:.1f} dB)"
         )
+
+    def _compute_imt_to_fs_adjacent(
+        self, pair: InterferencePair,
+        imt_lat, imt_lon, imt_radius, imt_eirp, imt_height,
+        fs: Optional[FSLinkData],
+        threshold: float,
+        antenna_type: str = "omni",
+        sector_beamwidth_deg: float = 120,
+        sector_azimuth_deg: float = 0,
+    ) -> PairResult:
+        """IMT → FS ADJACENT channel. ACLR+ACS+guard_iso isolation applied."""
+        effective_dist = max(pair.distance_m - imt_radius, 1.0)
+        rx_height = fs.rx_altitude if fs else 0
+        rx_gain = fs.rx_antenna_gain if fs else 0
+        fs_freq = (pair.freq_overlap_low + pair.freq_overlap_high) / 2
+        path_loss = self.model.path_loss_db(
+            distance_m=effective_dist, frequency_mhz=fs_freq,
+            tx_height_m=imt_height, rx_height_m=rx_height, **self.model_params)
+        sector_disc = 0.0
+        if antenna_type == "sector" and fs:
+            sector_disc = sector_antenna_discrimination_db(
+                imt_lat, imt_lon, fs.rx_lat, fs.rx_lon,
+                antenna_type=antenna_type, sector_azimuth_deg=sector_azimuth_deg,
+                sector_beamwidth_deg=sector_beamwidth_deg)
+        guard_mhz = abs((pair.freq_overlap_low - (fs.freq_low if fs else pair.freq_overlap_low)))
+        guard_iso = self.guard_band_isolation_db(guard_mhz) if guard_mhz > 0 else 0
+        total_adj_iso = self.ACS_DB + self.ACLR_DB + guard_iso
+        i_dbm = imt_eirp - path_loss + rx_gain - sector_disc - total_adj_iso
+        margin = i_dbm - threshold
+        verdict = "CONFLICT" if i_dbm > threshold else "CLEAR"
+        fs_name = fs.name if fs else pair.victim_name
+        return PairResult(
+            pair=pair, i_dbm=i_dbm, threshold_dbm=threshold, margin_db=margin,
+            path_loss_db=path_loss, effective_distance_m=effective_dist, verdict=verdict,
+            detail=f"IMT→FS_ADJ [{fs_name}]: I={i_dbm:.1f} dBm vs threshold {threshold} dBm "
+                   f"(margin={margin:+.1f} dB, dist={effective_dist:.0f}m, "
+                   f"PL={path_loss:.1f} dB, ACS+ACLR={total_adj_iso:.0f} dB)")
 
     def _compute_fs_to_imt(
         self, pair: InterferencePair,
@@ -1443,17 +1521,29 @@ class InterferenceEngine:
                     for pr in conflicts:
                         if pr.pair.direction == "IMT→FS":
                             margin_exceed = pr.i_dbm - pr.threshold_dbm
-                            # Show the causal chain: EIRP → distance → FSPL → I
                             reason_parts.append(
                                 f"FS conflict: {pr.pair.victim_name} "
                                 f"(I={pr.i_dbm:.1f} dBm > threshold {pr.threshold_dbm} dBm, "
                                 f"exceed {margin_exceed:.1f} dB | "
                                 f"ระยะ {pr.pair.distance_m:.0f}m, PL≈{pr.path_loss_db:.0f} dB)"
                             )
+                        elif pr.pair.direction == "IMT→FS_ADJACENT":
+                            reason_parts.append(
+                                f"FS adjacent (IMT ACLR): {pr.pair.victim_name} "
+                                f"(I={pr.i_dbm:.1f} dBm, out-of-band | "
+                                f"ระยะ {pr.pair.distance_m:.0f}m, PL≈{pr.path_loss_db:.0f} dB)"
+                            )
                         elif pr.pair.direction == "FS→IMT":
                             beam_info = "ใน main beam" if pr.pair.within_beam else "นอก main beam (−25 dB)"
                             reason_parts.append(
                                 f"FS→IMT: {pr.pair.interferer_name} "
+                                f"(I={pr.i_dbm:.1f} dBm, {beam_info} | "
+                                f"ระยะ {pr.pair.distance_m:.0f}m, PL≈{pr.path_loss_db:.0f} dB)"
+                            )
+                        elif pr.pair.direction == "FS→IMT_ADJACENT":
+                            beam_info = "ใน main beam" if pr.pair.within_beam else "นอก main beam (−25 dB)"
+                            reason_parts.append(
+                                f"FS→IMT adjacent: {pr.pair.interferer_name} "
                                 f"(I={pr.i_dbm:.1f} dBm, {beam_info} | "
                                 f"ระยะ {pr.pair.distance_m:.0f}m, PL≈{pr.path_loss_db:.0f} dB)"
                             )

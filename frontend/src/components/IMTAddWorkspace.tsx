@@ -256,7 +256,9 @@ function AggregateRow({ row, thresholdDbm, marginDb, trendIsWorse, buildFormula 
                       {row.interferers.map((pr, idx) => {
                         const typeLabel: Record<string, string> = {
                           'IMT→FS': 'IMT → FS',
+                          'IMT→FS_ADJACENT': 'IMT → FS (adj)',
                           'FS→IMT': 'FS → IMT',
+                          'FS→IMT_ADJACENT': 'FS → IMT (adj)',
                           'IMT↔IMT_COCHANNEL': 'IMT ↔ IMT (co)',
                           'IMT↔IMT_ADJACENT': 'IMT ↔ IMT (adj)',
                         }
@@ -377,10 +379,11 @@ function estimateEirp(cellRadiusM: number, model: string = 'free_space'): number
 
 function directionLabelForLog(direction: string): string {
   const labels: Record<string, string> = {
-    'IMT→FS': 'IMT→Fixed Service',
-    'FS→IMT': 'Fixed Service→IMT',
-    'FS→IMT_ADJACENT': 'Fixed Service→IMT (adjacent)',
-    'IMT↔IMT_COCHANNEL': 'IMT↔IMT (co-channel)',
+    'IMT→FS': '➀ IMT→Fixed Service (co-channel)',
+    'IMT→FS_ADJACENT': '➀b IMT→Fixed Service (adjacent/ACLR)',
+    'FS→IMT': '➁ Fixed Service→IMT (co-channel)',
+    'FS→IMT_ADJACENT': '➁b Fixed Service→IMT (adjacent)',
+    'IMT↔IMT_COCHANNEL': '➂/➃ IMT↔IMT (co-channel)',
     'IMT↔IMT_ADJACENT': 'IMT↔IMT (adjacent)',
   }
   return labels[direction] || direction
@@ -459,7 +462,15 @@ function generateNarrativeLog(
     const medRisk = pairs.filter(p => p.preliminary_risk === 'MEDIUM')
     const lowRisk = pairs.filter(p => p.preliminary_risk === 'LOW')
     lines.push(`   Risk distribution: ${highRisk.length} HIGH, ${medRisk.length} MEDIUM, ${lowRisk.length} LOW`)
-    lines.push('   (เกณฑ์: margin > +20 dB = HIGH, > −10 dB = MEDIUM)')
+    lines.push('')
+    // Direction breakdown
+    const dirs = ['IMT→FS', 'IMT→FS_ADJACENT', 'FS→IMT', 'FS→IMT_ADJACENT', 'IMT↔IMT_COCHANNEL', 'IMT↔IMT_ADJACENT']
+    const dirLabels = ['➀ IMT→FS (co)', '➀b IMT→FS (adj)', '➁ FS→IMT (co)', '➁b FS→IMT (adj)', '➂/➃ IMT↔IMT (co)', 'IMT↔IMT (adj)']
+    lines.push('   --- Direction Breakdown ---')
+    dirs.forEach((d, i) => {
+      const count = pairs.filter(p => p.direction === d).length
+      if (count > 0) lines.push(`   ${dirLabels[i]}: ${count} pairs`)
+    })
     lines.push('')
     if (highRisk.length > 0) {
       lines.push('   === HIGH RISK PAIRS ===')
