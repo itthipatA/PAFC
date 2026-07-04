@@ -281,10 +281,10 @@ body {
 .animate-color-wave      { animation: colorWave 2s ease infinite; }
 .animate-pulse-border    { animation: pulseBorder 2s var(--ease-standard) infinite; }
 
-/* Map Marker Pulse — highlight related stations */
+/* Map Marker Pulse — highlight related stations (red) */
 @keyframes pulseMap {
   0%, 100% { filter: brightness(1); }
-  50%      { filter: brightness(1.5) drop-shadow(0 0 8px currentColor); }
+  50%      { filter: brightness(1.3) drop-shadow(0 0 10px #C00000); }
 }
 .animate-pulse-map {
   animation: pulseMap 1s ease-in-out infinite;

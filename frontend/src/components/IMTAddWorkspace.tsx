@@ -343,14 +343,34 @@ function coverageStatusColor(cls: string): string {
  *  FSPL = 32.4 + 20*log10(d_km) + 20*log10(f_MHz)
  *  EIRP = target_RSS + FSPL - G_UE + shadow_margin
  *  default: target_RSS=-95 dBm, G_UE=0 dBi, shadow_margin=8 dB, f=4900 MHz */
-function estimateEirp(cellRadiusM: number): number {
+function estimateEirp(cellRadiusM: number, model: string = 'free_space'): number {
+  // Use the actual selected propagation model for consistent EIRP calculation
   const dKm = cellRadiusM / 1000
   if (dKm <= 0) return 0
-  const fspl = 32.4 + 20 * Math.log10(dKm) + 20 * Math.log10(4900)
+
+  // For each model, approximate path loss at cell edge
+  let pl: number
+  switch (model) {
+    case 'free_space':
+      pl = 32.4 + 20 * Math.log10(dKm) + 20 * Math.log10(4900)
+      break
+    case 'hata':
+      // COST-231 Hata for urban: 46.3 + 33.9*log10(f) - 13.82*log10(hb) - a(hm) + (44.9-6.55*log10(hb))*log10(d)
+      pl = 46.3 + 33.9 * Math.log10(4900) - 13.82 * Math.log10(15) + (44.9 - 6.55 * Math.log10(15)) * Math.log10(dKm)
+      break
+    case 'p452':
+    case 'p2108':
+    case 'p1411':
+    default:
+      // Default to FSPL for complex models as conservative estimate
+      pl = 32.4 + 20 * Math.log10(dKm) + 20 * Math.log10(4900)
+      break
+  }
+
   const targetRss = -95
   const gUe = 0
   const shadowMargin = 8
-  return targetRss + fspl - gUe + shadowMargin
+  return targetRss + pl - gUe + shadowMargin
 }
 
 // ─── Narrative ASCII Log Generator ────────────────────────────────────────
@@ -1094,7 +1114,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     try {
       // Use calculated EIRP when autoEirp is ON, else user-provided maxEirp
       const effectiveEirp = autoEirp 
-        ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius))
+        ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius, propagationModel))
         : maxEirp
 
       const res = await fetchWithAuth('/api/imt/', {
@@ -1417,7 +1437,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     <div className="mt-2 p-2 bg-[#C00000]/5 rounded-lg border border-[#C00000]/10">
                       <span className="text-xs text-gray-500">กำลังส่งที่คำนวณได้: </span>
                       <span className="text-sm font-mono font-bold text-[#C00000]">
-                        {(coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius)).toFixed(1)} dBm
+                        {(coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius, propagationModel)).toFixed(1)} dBm
                       </span>
                       <span className="text-xs text-gray-400 ml-1">(จากรัศมี {cellRadius}m)</span>
                     </div>
