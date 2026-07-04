@@ -2417,20 +2417,35 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                                 {marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'}
                               </span>
                             </td>
-                            <td className="py-2 pr-3 font-mono">
+                            <td className="py-2 pr-3">
                               {(() => {
                                 const lim = blockLimits.find(l => l.freq_low === b.freq_low)
-                                if (!lim) return <span className="text-gray-400">—</span>
-                                if (lim.status === 'green' && lim.max_eirp_dbm != null) {
-                                  return <span className="text-green-700 font-semibold">{lim.max_eirp_dbm.toFixed(1)} dBm</span>
+                                if (!lim) return <span className="text-gray-400 text-xs">—</span>
+                                if (lim.status === 'green') {
+                                  const req = lim.required_eirp_dbm ?? maxEirp
+                                  return (
+                                    <span className="flex items-center gap-1">
+                                      <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                                      <span className="text-green-700 font-semibold text-xs">
+                                        ≥{req.toFixed(1)} dBm
+                                      </span>
+                                    </span>
+                                  )
                                 }
                                 if (lim.status === 'red' && lim.reducible && lim.max_eirp_if_reduced_dbm != null) {
-                                  return <span className="text-amber-600">≤{lim.max_eirp_if_reduced_dbm.toFixed(1)} dBm</span>
+                                  return (
+                                    <span className="flex items-center gap-1">
+                                      <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                                      <span className="text-amber-700 font-semibold text-xs">
+                                        ≤{lim.max_eirp_if_reduced_dbm.toFixed(1)} dBm
+                                      </span>
+                                    </span>
+                                  )
                                 }
                                 if (lim.status === 'red' && !lim.reducible) {
-                                  return <span className="text-red-500 text-[10px]" title={lim.reason}>ลดเองไม่ช่วย</span>
+                                  return <span className="text-red-400 text-[10px]" title={lim.reason}>ลดเองไม่ช่วย</span>
                                 }
-                                return <span className="text-gray-400">—</span>
+                                return <span className="text-gray-400 text-xs">—</span>
                               })()}
                             </td>
                             <td className="py-2 text-gray-600 max-w-[300px] truncate" title={prefixedReason}>
@@ -2440,7 +2455,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                           {/* Inline expanded detail row */}
                           {isExpanded && (
                             <tr>
-                              <td colSpan={7} className="p-0 bg-gray-50/50">
+                              <td colSpan={8} className="p-0 bg-gray-50/50">
                                 <div
                                   className="mx-1 my-1 p-3 rounded border shadow-sm"
                                   style={{
@@ -2675,9 +2690,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
 
               {/* ── Assurance Summary (Phase 28) ── */}
               {blockLimits.length > 0 && (
-                <div className="mt-3 p-4 bg-gradient-to-r from-[#1A1A2E] to-[#2D2D44] rounded-lg text-white">
-                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-green-400" />
+                <div className="mt-3 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-[#C00000]" />
                     ผลการประเมิน — Assurance Summary
                   </h4>
                   {(() => {
@@ -2693,48 +2708,53 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       : null
                     
                     return (
-                      <div className="space-y-2 text-xs">
-                        {/* Green blocks summary */}
+                      <div className="space-y-2 text-xs text-gray-700">
                         {green.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+                          <div className="flex items-center gap-2 py-1">
+                            <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
                             <span>
-                              <span className="font-semibold text-green-400">{green.length} บล็อก</span>
+                              <span className="font-semibold text-green-700">{green.length} บล็อก</span>
                               {' '}จัดสรรได้ ({green.length * 10} MHz)
                               {bestGreen && (
-                                <> — กำลังส่งสูงสุด <span className="font-mono font-bold text-green-300">{bestGreen.max_eirp_dbm?.toFixed(1)} dBm</span></>
+                                <> — กำลังส่ง EIRP{' '}
+                                  <span className="font-mono font-bold text-green-700">
+                                    ≥{(bestGreen.required_eirp_dbm ?? maxEirp).toFixed(1)} dBm
+                                  </span>
+                                </>
                               )}
                               {worstMargin && (
-                                <> (margin ต่ำสุด <span className={`font-mono ${(worstMargin.margin_db ?? 0) < 6 ? 'text-amber-300' : 'text-green-300'}`}>{worstMargin.margin_db?.toFixed(1)} dB</span>)</>
+                                <span className="text-gray-500">
+                                  {' '}(margin ต่ำสุด{' '}
+                                  <span className={`font-mono ${(worstMargin.margin_db ?? 0) < 6 ? 'text-amber-600 font-semibold' : 'text-green-600'}`}>
+                                    {worstMargin.margin_db?.toFixed(1)} dB
+                                  </span>)
+                                </span>
                               )}
                             </span>
                           </div>
                         )}
-                        {/* Red-reducible */}
                         {redReducible.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                          <div className="flex items-center gap-2 py-1">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
                             <span>
-                              <span className="font-semibold text-amber-400">{redReducible.length} บล็อก</span>
+                              <span className="font-semibold text-amber-700">{redReducible.length} บล็อก</span>
                               {' '}จัดสรรได้ถ้าลดกำลังส่ง — สูงสุด{' '}
-                              <span className="font-mono font-bold text-amber-300">
+                              <span className="font-mono font-bold text-amber-700">
                                 {Math.min(...redReducible.map(l => l.max_eirp_if_reduced_dbm ?? 999)).toFixed(1)} dBm
                               </span>
                             </span>
                           </div>
                         )}
-                        {/* Red-non-reducible */}
                         {redNonReducible.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                          <div className="flex items-center gap-2 py-1">
+                            <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
                             <span>
-                              <span className="font-semibold text-red-400">{redNonReducible.length} บล็อก</span>
+                              <span className="font-semibold text-red-600">{redNonReducible.length} บล็อก</span>
                               {' '}จัดสรรไม่ได้ — ถูกรบกวนจากระบบอื่น (ลดกำลังส่งก็ไม่ช่วย)
                             </span>
                           </div>
                         )}
-                        {/* Bottom line */}
-                        <div className="pt-2 mt-2 border-t border-white/10 text-[10px] text-white/50">
+                        <div className="pt-2 mt-1 border-t border-gray-100 text-[10px] text-gray-500">
                           {green.length > 0 && redReducible.length === 0 && redNonReducible.length === 0 && (
                             <>✅ ตำแหน่งนี้ไม่มีผลกระทบต่อระบบอื่น — จัดสรรได้เต็มที่</>
                           )}

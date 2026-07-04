@@ -647,6 +647,8 @@ class InterferenceEngine:
             current_eirp=effective_eirp,  # Phase 29: limits based on effective EIRP
             band_start=band_start,
             band_end=band_end,
+            indoor_pct=indoor_pct,
+            required_eirp=max_eirp,  # Phase 28: coverage-needed EIRP (before building loss)
         )
 
         # ── Summary ──
@@ -1498,21 +1500,20 @@ class InterferenceEngine:
         current_eirp: float,
         band_start: float,
         band_end: float,
+        indoor_pct: float = 0,
+        required_eirp: Optional[float] = None,
     ) -> list[dict]:
         """Phase 3: Compute max achievable EIRP per block.
 
-        For GREEN blocks: max EIRP = current + min margin across NEW_IMT-as-interferer pairs.
-          Only pairs where NEW_IMT is the interferer depend on EIRP.
-          FS→IMT and EXISTING_IMT→NEW_IMT pairs are independent → they limit the block
-          regardless of EIRP (checked via i_total_to_new_imt_dbm).
-
-        For RED blocks: required EIRP reduction to bring block under threshold.
-          If i_total_to_new_imt > threshold, reducing own EIRP won't help
-          (interference comes from others).
-
-        Returns per-block dict with max_eirp_dbm, achievable_radius, limiting_factor.
+        Realistic EIRP caps: outdoor max 43 dBm, indoor max 24 dBm (small cell).
+        Returns per-block: max_eirp (capped), required_eirp, margin, limiting_factor.
         """
         threshold_dbm = settings.interference_threshold_dbm
+        # Realistic regulatory caps: outdoor=43 dBm, indoor=24 dBm (small cell typical)
+        cap_outdoor = 43  # dBm — typical outdoor small cell max
+        cap_indoor = 24   # dBm — typical indoor small cell max
+        realistic_max = cap_indoor + (cap_outdoor - cap_indoor) * (1 - indoor_pct / 100)
+        realistic_max = round(realistic_max, 1)
         limits = []
 
         for block in blocks:
@@ -1545,24 +1546,27 @@ class InterferenceEngine:
 
             if block.status == 'green':
                 if per_pair_margins:
-                    # Most restrictive pair = smallest margin
                     restrictive = min(per_pair_margins, key=lambda x: x['margin_db'])
                     max_eirp = current_eirp + restrictive['margin_db']
-                    max_eirp = max(max_eirp, 0)  # Floor at 0 dBm
+                    max_eirp = max(max_eirp, 0)
+                    # Cap at realistic regulatory max
+                    max_eirp = min(max_eirp, realistic_max)
                     margin_from_current = restrictive['margin_db']
                     limiting = f"{restrictive['victim_name']} ({restrictive['direction']}, margin={margin_from_current:.1f} dB)"
                 else:
-                    # No interfering pairs — unrestricted up to regulatory max
-                    max_eirp = 60  # dBm regulatory cap
-                    margin_from_current = 60 - current_eirp
-                    limiting = "ไม่มี interferer (unrestricted)"
+                    # No interfering pairs — use realistic max (not absurd 60 dBm)
+                    max_eirp = realistic_max
+                    margin_from_current = realistic_max - current_eirp
+                    limiting = "ไม่มี interferer"
 
                 limits.append({
                     'freq_low': freq_low,
                     'freq_high': freq_high,
                     'status': 'green',
                     'current_eirp_dbm': round(current_eirp, 1),
+                    'required_eirp_dbm': round(required_eirp, 1) if required_eirp else None,
                     'max_eirp_dbm': round(max_eirp, 1),
+                    'realistic_max_dbm': realistic_max,
                     'margin_db': round(margin_from_current, 1),
                     'limiting_factor': limiting,
                     'pairs_checked': len(per_pair_margins),

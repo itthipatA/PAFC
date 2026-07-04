@@ -289,3 +289,18 @@ body {
 .animate-pulse-map {
   animation: pulseMap 1s ease-in-out infinite;
 }
+
+/* ─── Table Row Expand ─── */
+@keyframes rowExpand {
+  from { max-height: 0; opacity: 0; }
+  to   { max-height: 500px; opacity: 1; }
+}
+.table-row-expand {
+  overflow: hidden;
+  animation: rowExpand 0.3s ease-out forwards;
+}
+.table-row-expand td {
+  max-width: none;
+  white-space: normal;
+  word-break: break-word;
+}

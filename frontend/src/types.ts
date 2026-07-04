@@ -211,14 +211,16 @@ export interface BlockEirpLimit {
   freq_high: number
   status: 'green' | 'red' | 'gray'
   current_eirp_dbm?: number
-  max_eirp_dbm?: number           // for green blocks: max allowed EIRP
-  margin_db?: number              // how much headroom from current EIRP
-  limiting_factor?: string        // which interferer/victim limits this block
-  pairs_checked?: number          // how many NEW_IMT-as-interferer pairs
-  reducible?: boolean             // for red blocks: can reducing EIRP help?
-  required_reduction_db?: number  // for red blocks: how much to reduce
-  max_eirp_if_reduced_dbm?: number // for reducible red blocks: max EIRP after reduction
-  reason?: string                 // explanation (gray blocks, non-reducible red)
+  required_eirp_dbm?: number        // coverage-needed EIRP from user input
+  max_eirp_dbm?: number             // max allowed EIRP (capped at realistic max)
+  realistic_max_dbm?: number        // regulatory cap (outdoor 43, indoor 24 dBm)
+  margin_db?: number                // headroom from current EIRP
+  limiting_factor?: string
+  pairs_checked?: number
+  reducible?: boolean
+  required_reduction_db?: number
+  max_eirp_if_reduced_dbm?: number
+  reason?: string
 }
 
 // ─── Engineering Assumptions ──────────────────────────────────────────────────
