@@ -43,6 +43,7 @@ function AuthenticatedApp({
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
   const [mapStyle, setMapStyle] = useState('voyager')
   const [showDashboardWorkspace, setShowDashboardWorkspace] = useState(false)
+  const [workspaceClosing, setWorkspaceClosing] = useState(false)
   const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
@@ -61,7 +62,11 @@ function AuthenticatedApp({
   }, [])
 
   const handleCloseWorkspace = useCallback(() => {
-    setShowDashboardWorkspace(false)
+    setWorkspaceClosing(true)
+    setTimeout(() => {
+      setShowDashboardWorkspace(false)
+      setWorkspaceClosing(false)
+    }, 600)
   }, [])
 
   const handleConfirmLocation = useCallback((lat: number, lon: number, cellRadius: number) => {
@@ -172,7 +177,6 @@ function AuthenticatedApp({
       {/* Tab Content */}
       {tab === 'dashboard' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Dashboard toolbar */}
           <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shadow-sm z-10">
             <h2 className="text-sm font-semibold text-[#1A1A2E]">
               แผนที่จัดสรรคลื่นความถี่ 4800-4990 MHz
@@ -188,9 +192,7 @@ function AuthenticatedApp({
             )}
           </div>
 
-          {/* Map + Workspace overlay — map ALWAYS mounted, never unmounts */}
           <div className="flex-1 relative overflow-hidden">
-            {/* Full-screen Map — stays mounted; workspace slides over it */}
             <MapView
               key={dashboardRefreshKey}
               onMapClick={handleMapClick}
@@ -202,11 +204,15 @@ function AuthenticatedApp({
               centerLat={selectedLat}
               centerLon={selectedLon}
               clickMode="pan"
+              workspaceOpen={showDashboardWorkspace}
             />
 
-            {/* Workspace overlay — slides in from right on top of map */}
-            {showDashboardWorkspace && (
-              <div className="absolute inset-y-0 right-0 w-[60%] min-w-[400px] bg-white border-l border-gray-300 shadow-2xl z-20 animate-slide-in-right">
+            {(showDashboardWorkspace || workspaceClosing) && (
+              <div
+                className={`absolute inset-y-0 right-0 w-[60%] min-w-[400px] bg-white border-l border-gray-300 shadow-2xl z-20 ${
+                  workspaceClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
+                }`}
+              >
                 <IMTAddWorkspace
                   onBack={handleCloseWorkspace}
                   mode="panel"
