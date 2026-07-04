@@ -180,7 +180,9 @@ function AuthenticatedApp({
         </div>
       </nav>
 
-      {/* Tab Content */}\n      <FadeIn key={tab}>\n      {tab === 'dashboard' ? (
+      {/* Tab Content */}
+      <FadeIn key={tab}>
+      {tab === 'dashboard' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Dashboard toolbar */}
           <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shadow-sm">
