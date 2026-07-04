@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
-import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal } from 'lucide-react'
+import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
 import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff, AssumptionItem } from '../types'
@@ -697,6 +697,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [savedMessage, setSavedMessage] = useState('')
   const [saveError, setSaveError] = useState('')
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  
+  // Block selection for allocation
+  const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set())
 
   // Mini map refs
   const miniMapContainerRef = useRef<HTMLDivElement>(null)
@@ -801,6 +804,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     setSavedMessage('')
     setSaveError('')
     setCoverageInfo(null)
+    setSelectedBlocks(new Set())  // Clear block selection on new analysis
     setLogLines([
       '═══════════════════════════════════════════════',
       '  Sending analysis request to backend...',
@@ -876,6 +880,16 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       setSaveError('กรุณาคำนวณคลื่นความถี่ก่อนบันทึก')
       return
     }
+    
+    // Filter only selected green blocks
+    const selectedGreenBlocks = blocks.filter(
+      (b) => b.status === 'green' && selectedBlocks.has(b.freq_low.toString())
+    )
+    
+    if (selectedGreenBlocks.length === 0) {
+      setSaveError('กรุณาเลือกอย่างน้อย 1 บล็อกที่ว่าง (สีเขียว) ก่อนบันทึก')
+      return
+    }
 
     setSaving(true)
     setSaveError('')
@@ -904,10 +918,10 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             propagation_model: propagationModel,
             coverage_classification: coverageInfo.coverage_classification,
           } : {}),
-          blocks: blocks.map((b) => ({
+          blocks: selectedGreenBlocks.map((b) => ({
             freq_low: b.freq_low,
             freq_high: b.freq_high,
-            status: b.status,
+            status: 'allocated',  // Always allocated when user explicitly saves
           })),
         }),
       })
@@ -925,7 +939,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     } finally {
       setSaving(false)
     }
-  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, blocks, coverageInfo, fetchWithAuth, onBack])
+  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, blocks, selectedBlocks, antennaType, sectorBeamwidth, sectorAzimuth, propagationModel, coverageInfo, fetchWithAuth, onBack])
 
   // Spectrum summary
   const statusCounts = {
@@ -936,6 +950,30 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const totalMhz = statusCounts.available * 10
   const sorted = [...blocks].sort((a, b) => a.freq_low - b.freq_low)
   const [selectedBlockIndex, setSelectedBlockIndex] = useState<number | null>(null)
+
+  // Toggle block selection for allocation
+  const toggleBlockSelection = useCallback((freqLow: number) => {
+    setSelectedBlocks(prev => {
+      const next = new Set(prev)
+      const key = freqLow.toString()
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }, [])
+
+  const selectAllGreenBlocks = useCallback(() => {
+    setSelectedBlocks(new Set(
+      blocks.filter(b => b.status === 'green').map(b => b.freq_low.toString())
+    ))
+  }, [blocks])
+
+  const deselectAllBlocks = useCallback(() => {
+    setSelectedBlocks(new Set())
+  }, [])
 
   const statusColor = (status: string): string => {
     if (status === 'green') return '#16A34A'
@@ -1325,7 +1363,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             </section>
           )}
 
-          {/* SECTION 2.5: Pairs Report — Victim/Interferer Analysis (compact) */}
+          {/* SECTION 2.5: Pairs Report — Victim/Interferer Analysis (table format) */}
           {(pairs.length > 0 || pairResults.length > 0) && (
             <>
               <div className="flex items-center gap-3 my-1">
@@ -1334,71 +1372,86 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, #C00000, #D1D5DB)' }} />
               </div>
 
-              <section className="bg-white rounded-xl border border-gray-200 p-4 font-serif animate-fade-in-up">
-                {/* Compact summary bar */}
-                <div className="flex items-center gap-4 text-xs mb-3 pb-3 border-b border-gray-100">
-                  <span className="text-gray-500">Pairs: <strong className="text-[#1A1A2E]">{pairs.length}</strong></span>
-                  <span className="text-red-600">HIGH: <strong>{pairs.filter(p => p.preliminary_risk === 'HIGH').length}</strong></span>
-                  <span className="text-amber-600">MED: <strong>{pairs.filter(p => p.preliminary_risk === 'MEDIUM').length}</strong></span>
-                  <span className="text-red-600 ml-auto">
-                    Conflicts: <strong>{pairResults.filter(pr => pr.verdict === 'CONFLICT').length}</strong>
-                  </span>
-                </div>
+              <section className="bg-white rounded-xl border border-gray-200 overflow-hidden animate-fade-in-up">
+                {/* Collapsed summary — always visible */}
+                <details className="group">
+                  <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 select-none list-none">
+                    <ChevronRight className="w-4 h-4 text-gray-400 group-open:hidden" />
+                    <ChevronDown className="w-4 h-4 text-gray-400 hidden group-open:block" />
+                    <span className="text-sm font-semibold text-[#1A1A2E]">
+                      ดูรายละเอียด Pairs ({pairs.length} คู่)
+                    </span>
+                    <span className="text-xs text-red-600 font-medium ml-2">
+                      HIGH: {pairs.filter(p => p.preliminary_risk === 'HIGH').length}
+                    </span>
+                    <span className="text-xs text-amber-600 font-medium">
+                      MED: {pairs.filter(p => p.preliminary_risk === 'MEDIUM').length}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      LOW: {pairs.filter(p => p.preliminary_risk === 'LOW').length}
+                    </span>
+                    <span className="text-xs text-red-600 font-medium ml-auto">
+                      CONFLICT: {pairResults.filter(pr => pr.verdict === 'CONFLICT').length}
+                    </span>
+                  </summary>
 
-                {/* HIGH risk pairs — expanded, with computed results */}
-                {pairs.filter(p => p.preliminary_risk === 'HIGH').map((pair, idx) => {
-                  const dirLabel: Record<string, string> = {
-                    'IMT→FS': 'IMT → FS', 'FS→IMT': 'FS → IMT',
-                    'IMT↔IMT_COCHANNEL': 'IMT ↔ IMT (co)', 'IMT↔IMT_ADJACENT': 'IMT ↔ IMT (adj)',
-                  }
-                  const pr = pairResults.find(r => r.direction === pair.direction &&
-                    r.interferer.includes(pair.interferer_name) && r.victim.includes(pair.victim_name))
-                  const isConflict = pr?.verdict === 'CONFLICT'
-                  const isGuard = pr?.verdict === 'GUARD_BAND'
-                  return (
-                    <div key={idx} className={`mb-2 p-2.5 rounded border ${isConflict ? 'border-red-300 bg-red-50/40' : isGuard ? 'border-gray-300 bg-gray-50' : 'border-green-300 bg-green-50/40'}`}
-                      style={{ borderLeftWidth: '3px', borderLeftColor: isConflict ? '#DC2626' : isGuard ? '#6B7280' : '#16A34A' }}>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="font-semibold text-[#1A1A2E]">{dirLabel[pair.direction] || pair.direction}</span>
-                        <span className="text-gray-500">|</span>
-                        <span>{pair.interferer_name}</span>
-                        <ArrowRight className="w-3 h-3 text-[#C00000]" />
-                        <span>{pair.victim_name}</span>
-                        <span className="text-gray-400 ml-auto font-mono">{pair.freq_overlap_low?.toFixed(0)}-{pair.freq_overlap_high?.toFixed(0)} MHz</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs mt-1 text-gray-600">
-                        <span>Dist: <strong className="font-mono text-gray-800">{(pair.distance_m / 1000).toFixed(1)} km</strong></span>
-                        <span>I est: <strong className="font-mono text-red-600">{pair.estimated_i_dbm.toFixed(1)} dBm</strong></span>
-                        {pair.within_beam !== null && (
-                          <span className={pair.within_beam ? 'text-red-600' : 'text-green-600'}>
-                            {pair.within_beam ? 'In beam' : 'Outside beam'}
-                          </span>
-                        )}
-                        {pr && (
-                          <span className={`ml-auto font-semibold ${isConflict ? 'text-red-600' : isGuard ? 'text-amber-600' : 'text-green-600'}`}>
-                            I={pr.i_dbm.toFixed(1)} dBm | margin={pr.margin_db > 0 ? '+' : ''}{pr.margin_db.toFixed(1)} | PL={pr.path_loss_db.toFixed(0)} dB | {isConflict ? 'CONFLICT' : isGuard ? 'GUARD' : 'CLEAR'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-
-                {/* MEDIUM/LOW — collapsed */}
-                {pairs.filter(p => p.preliminary_risk !== 'HIGH').length > 0 && (
-                  <details className="mt-2">
-                    <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-                      + {pairs.filter(p => p.preliminary_risk !== 'HIGH').length} MEDIUM/LOW pairs (click to expand)
-                    </summary>
-                    <div className="mt-2 space-y-1">
-                      {pairs.filter(p => p.preliminary_risk !== 'HIGH').map((pair, idx) => (
-                        <div key={idx} className="text-xs text-gray-500 p-1.5 bg-gray-50 rounded">
-                          {pair.direction}: {pair.interferer_name} → {pair.victim_name} @ {(pair.distance_m / 1000).toFixed(1)} km | I≈{pair.estimated_i_dbm.toFixed(1)} dBm
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
+                  {/* Table content — expanded */}
+                  <div className="px-4 pb-4 overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b-2 border-gray-200 text-left text-gray-500">
+                          <th className="py-2 pr-3 font-semibold w-8">#</th>
+                          <th className="py-2 pr-3 font-semibold">Interferer</th>
+                          <th className="py-2 pr-3 font-semibold">Victim</th>
+                          <th className="py-2 pr-3 font-semibold">Type</th>
+                          <th className="py-2 pr-3 font-semibold">Distance</th>
+                          <th className="py-2 pr-3 font-semibold">I[dBm]</th>
+                          <th className="py-2 font-semibold">Verdict</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {pairs
+                          .sort((a, b) => {
+                            const riskOrder: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 }
+                            return (riskOrder[a.preliminary_risk] ?? 9) - (riskOrder[b.preliminary_risk] ?? 9)
+                          })
+                          .map((pair, idx) => {
+                            const pr = pairResults.find(r =>
+                              r.direction === pair.direction &&
+                              r.interferer.includes(pair.interferer_name) &&
+                              r.victim.includes(pair.victim_name))
+                            const verdict = pr?.verdict || 'PENDING'
+                            const typeLabel: Record<string, string> = {
+                              'IMT→FS': 'IMT → FS',
+                              'FS→IMT': 'FS → IMT',
+                              'IMT↔IMT_COCHANNEL': 'IMT ↔ IMT (co)',
+                              'IMT↔IMT_ADJACENT': 'IMT ↔ IMT (adj)',
+                            }
+                            const verdictBg =
+                              verdict === 'CONFLICT' ? 'bg-red-100 text-red-700' :
+                              verdict === 'GUARD_BAND' ? 'bg-amber-100 text-amber-700' :
+                              'bg-green-100 text-green-700'
+                            const rowBg = pair.preliminary_risk === 'HIGH' ? 'bg-red-50/30' : ''
+                            return (
+                              <tr key={idx} className={`${rowBg} hover:bg-gray-50`}>
+                                <td className="py-1.5 pr-3 text-gray-400 font-mono">{idx + 1}</td>
+                                <td className="py-1.5 pr-3 font-medium text-[#1A1A2E]">{pair.interferer_name}</td>
+                                <td className="py-1.5 pr-3 text-gray-700">{pair.victim_name}</td>
+                                <td className="py-1.5 pr-3 text-gray-500">{typeLabel[pair.direction] || pair.direction}</td>
+                                <td className="py-1.5 pr-3 font-mono text-gray-700">{(pair.distance_m / 1000).toFixed(1)} km</td>
+                                <td className="py-1.5 pr-3 font-mono text-gray-700">{pair.estimated_i_dbm.toFixed(1)}</td>
+                                <td className="py-1.5">
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${verdictBg}`}>
+                                    {verdict}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
               </section>
             </>
           )}
@@ -1612,53 +1665,57 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     if (backendVerification) {
                       const bv = backendVerification
                       const checks = [
-                        { label: 'Block Count', key: 'block_count', val: bv.block_count },
-                        { label: 'Frequency Continuity', key: 'frequency_continuity', val: bv.frequency_continuity },
+                        { label: 'Block Count', key: 'block_count', val: bv.block_count,
+                          detail: `จำนวนบล็อกทั้งหมดต้องเป็น 19 บล็อก (4800-4990 MHz, ช่วงละ 10 MHz)\nผลลัพธ์: expected=${(bv.block_count as any)?.expected}, actual=${(bv.block_count as any)?.actual}` },
+                        { label: 'Frequency Continuity', key: 'frequency_continuity', val: bv.frequency_continuity,
+                          detail: `ตรวจสอบว่าความถี่เรียงต่อเนื่องกัน — แต่ละบล็อกต้องเริ่มที่ 4800 + i*10 MHz\nผลลัพธ์: ${bv.frequency_continuity?.reason || (bv.frequency_continuity?.pass ? 'PASS — ความถี่เรียงต่อเนื่องถูกต้อง' : 'FAIL — พบความถี่ไม่ต่อเนื่อง')}` },
                         { label: 'Guard Adjacency', key: 'guard_adjacency', val: bv.guard_adjacency,
-                          explain: bv.guard_adjacency?.pass ? '' : (
-                            'เกิดเมื่อ FS Link บล็อกเฉพาะความถี่ที่ทับซ้อน — บล็อกข้างเคียงอยู่นอกความถี่ FS จึงใช้ได้โดยไม่ต้องมี guard band (ผ่าน Adjacent Channel check ด้วย ACS 33 dB แล้ว)'
-                          )},
-                        { label: 'Total MHz', key: 'total_mhz', val: bv.total_mhz },
-                        { label: 'Guard Reasons', key: 'guard_reasons', val: bv.guard_reasons },
-                        { label: 'Path Loss Monotonicity', key: 'path_loss_monotonicity', val: (bv as any).path_loss_monotonicity },
+                          detail: `ตรวจสอบว่า Green/Red blocks ต้องมี Gray (Guard Band) คั่นกลาง\nwarnings: ${(bv.guard_adjacency as any)?.warnings ?? 0}\n${!bv.guard_adjacency?.pass ? 'หมายเหตุ: กรณีที่ FS Link บล็อกเฉพาะความถี่ที่ทับซ้อน — บล็อกข้างเคียงที่อยู่นอกความถี่ FS ผ่าน Adjacent Channel check (ACS 33 dB) แล้วจึงไม่ต้องมี guard band' : ''}` },
+                        { label: 'Total MHz', key: 'total_mhz', val: bv.total_mhz,
+                          detail: `ตรวจสอบผลรวมความถี่ — ต้องเท่ากับ 190 MHz (19 × 10 MHz)\nผลลัพธ์: expected=${(bv.total_mhz as any)?.expected}, actual=${(bv.total_mhz as any)?.actual}` },
+                        { label: 'Guard Reasons', key: 'guard_reasons', val: bv.guard_reasons,
+                          detail: `ตรวจสอบว่า Gray block ทุกอันมีคำอธิบายเกี่ยวกับ adjacency/guard band\ninvalid_count: ${(bv.guard_reasons as any)?.invalid_count ?? 0}` },
+                        { label: 'Path Loss Monotonicity', key: 'path_loss_monotonicity', val: (bv as any).path_loss_monotonicity,
+                          detail: `Path Loss ควรเพิ่มขึ้นตามระยะทาง — ตรวจสอบ monotonicity\nผลลัพธ์: ${(bv as any).path_loss_monotonicity?.reason || ((bv as any).path_loss_monotonicity?.pass ? 'PASS' : 'FAIL')}` },
                         { label: 'Reciprocal Symmetry', key: 'reciprocal_symmetry', val: (bv as any).reciprocal_symmetry,
-                          explain: (bv as any).reciprocal_symmetry?.pass ? '' : (
-                            'เมื่อใช้ Hata/P.1411 (height-dependent) — Path Loss ไม่เท่ากันเมื่อสลับฝั่ง tx/rx เพราะความสูงเสาต่างกัน นี่คือฟิสิกส์จริง ไม่ใช่บั๊ก'
-                          )},
-                        { label: 'EIRP Sanity', key: 'eirp_sanity', val: (bv as any).eirp_sanity },
-                        { label: 'FS Beam Coverage', key: 'fs_beam_coverage', val: (bv as any).fs_beam_coverage },
-                        { label: 'Block Distribution', key: 'block_distribution', val: (bv as any).block_distribution },
+                          detail: `Path Loss ไม่เท่ากันเมื่อสลับฝั่ง — Hata/P.1411 ใช้ความสูงเสาเป็นพารามิเตอร์ (tx_h=15m, rx_h=1.5m) การสะท้อนพื้นและ diffraction ใน Hata ไม่สมมาตรเมื่อความสูงต่างกัน นี่คือฟิสิกส์จริง ไม่ใช่ข้อผิดพลาด\nผลลัพธ์: ${(bv as any).reciprocal_symmetry?.reason || ((bv as any).reciprocal_symmetry?.pass ? 'PASS' : 'FAIL')}` },
+                        { label: 'EIRP Sanity', key: 'eirp_sanity', val: (bv as any).eirp_sanity,
+                          detail: `ตรวจสอบว่า I[dBm] ทั้งหมดเป็นค่าลบ (reasonable สำหรับ 5 GHz)\nผลลัพธ์: ${(bv as any).eirp_sanity?.reason || ((bv as any).eirp_sanity?.pass ? 'PASS' : 'FAIL')}` },
+                        { label: 'FS Beam Coverage', key: 'fs_beam_coverage', val: (bv as any).fs_beam_coverage,
+                          detail: `ตรวจสอบ FS→IMT beam — IMT อยู่ใน main beam หรือ sidelobe\nผลลัพธ์: ${(bv as any).fs_beam_coverage?.reason || 'PASS'}` },
+                        { label: 'Block Distribution', key: 'block_distribution', val: (bv as any).block_distribution,
+                          detail: `ตรวจสอบการกระจายตัวของบล็อก — green + gray + red ต้องรวมเป็น 19\nผลลัพธ์: ${(bv as any).block_distribution?.reason || 'PASS'}` },
                       ]
                       return (
                         <div className="mt-3 pt-3 border-t border-gray-200">
                           <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Verification</h4>
                           <div className="space-y-1.5">
-                            {checks.map(({ label, key, val, explain }) => (
-                              <div key={key}>
-                                <div className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded border ${
-                                  val?.pass ? 'bg-green-50 border-green-200 text-green-700' :
-                                  'bg-red-50 border-red-200 text-red-700'
+                            {checks.map(({ label, key, val, detail }) => (
+                              <details key={key} className="group">
+                                <summary className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded border cursor-pointer list-none ${
+                                  val?.pass ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' :
+                                  'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
                                 }`}>
-                                  {val?.pass ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                                  <span className="font-medium">{label}</span>
-                                  <span className="text-gray-500">
-                                    {(val as any)?.reason || (
+                                  {val?.pass ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" /> : <XCircle className="w-3.5 h-3.5 flex-shrink-0" />}
+                                  <span className="font-medium flex-1">{label}</span>
+                                  <span className="text-gray-500 text-[10px]">
+                                    {(val as any)?.reason ? `${((val as any)?.reason || '').substring(0, 50)}...` : (
                                       key === 'block_count' || key === 'total_mhz'
-                                        ? `(expected ${(val as any)?.expected}, actual ${(val as any)?.actual})`
+                                        ? `expected ${(val as any)?.expected}, actual ${(val as any)?.actual}`
                                         : key === 'guard_adjacency'
-                                          ? `(warnings: ${(val as any)?.warnings})`
+                                          ? `warnings: ${(val as any)?.warnings}`
                                           : key === 'guard_reasons'
-                                            ? `(invalid: ${(val as any)?.invalid_count})`
+                                            ? `invalid: ${(val as any)?.invalid_count}`
                                             : ''
                                     )}
                                   </span>
+                                  <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 group-open:hidden" />
+                                  <ChevronUp className="w-3.5 h-3.5 flex-shrink-0 hidden group-open:block" />
+                                </summary>
+                                <div className="text-xs text-gray-700 bg-white border border-gray-200 rounded px-3 py-2 mt-0.5 ml-5 whitespace-pre-wrap leading-relaxed">
+                                  {detail}
                                 </div>
-                                {!val?.pass && explain && (
-                                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-1 mt-0.5 ml-5">
-                                    {explain}
-                                  </div>
-                                )}
-                              </div>
+                              </details>
                             ))}
                           </div>
                           <div className={`mt-2 text-xs font-semibold px-3 py-1.5 rounded ${
@@ -1765,22 +1822,68 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 {totalMhz} MHz ว่าง จากทั้งหมด 190 MHz
               </div>
 
-              {/* Spectrum bar */}
-              <div className="mb-1 flex h-8 rounded overflow-hidden border border-gray-300">
+              {/* Spectrum bar with checkboxes for green blocks */}
+              <div className="mb-1 flex h-10 rounded overflow-hidden border border-gray-300 relative">
                 {sorted.map((b, i) => (
                   <div
                     key={i}
                     title={`${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${b.reason}`}
-                    className="flex-1 cursor-pointer hover:brightness-110 relative"
+                    className="flex-1 cursor-pointer hover:brightness-110 relative group"
                     style={{
                       backgroundColor: statusColor(b.status),
                       minWidth: `${Math.max(100 / sorted.length, 1)}%`,
                       border: '1px solid #000',
                     }}
                     onClick={() => setSelectedBlockIndex(selectedBlockIndex === i ? null : i)}
-                  />
+                  >
+                    {/* Checkbox overlay for green blocks */}
+                    {b.status === 'green' && (
+                      <div 
+                        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => { e.stopPropagation(); toggleBlockSelection(b.freq_low); }}
+                      >
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                          selectedBlocks.has(b.freq_low.toString()) 
+                            ? 'bg-white border-white' 
+                            : 'border-white bg-transparent'
+                        }`}>
+                          {selectedBlocks.has(b.freq_low.toString()) && (
+                            <CheckCircle className="w-3 h-3 text-[#16A34A]" />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {/* Always-visible checkmark if selected */}
+                    {b.status === 'green' && selectedBlocks.has(b.freq_low.toString()) && (
+                      <div className="absolute top-0.5 left-0.5 text-white text-[10px]">✓</div>
+                    )}
+                  </div>
                 ))}
               </div>
+
+              {/* Select/Deselect all green blocks */}
+              {statusCounts.available > 0 && (
+                <div className="flex items-center gap-2 mb-3 text-xs">
+                  <button
+                    onClick={selectAllGreenBlocks}
+                    className="text-[#16A34A] hover:underline font-medium"
+                  >
+                    เลือกทั้งหมด ({statusCounts.available})
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    onClick={deselectAllBlocks}
+                    className="text-gray-500 hover:underline"
+                  >
+                    ยกเลิก ({selectedBlocks.size})
+                  </button>
+                  <span className="ml-auto text-gray-400">
+                    {selectedBlocks.size > 0 
+                      ? `เลือกแล้ว ${selectedBlocks.size} บล็อก (${selectedBlocks.size * 10} MHz)` 
+                      : ''}
+                  </span>
+                </div>
+              )}
 
               {/* X-axis labels — one per 20MHz, aligned to block boundaries */}
               <div className="flex mb-4">
@@ -1837,11 +1940,27 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
 
                       {block.status === 'green' && (
                         <div className="text-xs text-green-700 space-y-1">
-                          <div className="flex items-center gap-1 font-medium">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            สามารถจัดสรรได้
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1 font-medium">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              สามารถจัดสรรได้
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleBlockSelection(block.freq_low); }}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                selectedBlocks.has(block.freq_low.toString())
+                                  ? 'bg-green-200 text-green-800 hover:bg-green-300'
+                                  : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
+                            >
+                              {selectedBlocks.has(block.freq_low.toString()) ? (
+                                <>✓ เลือกแล้ว (คลิกยกเลิก)</>
+                              ) : (
+                                <>+ เลือกบล็อกนี้</>
+                              )}
+                            </button>
                           </div>
-                          {/* Explain why green is safe when adjacent to FS-blocked red */}
+                          {/* Explain why green is safe when adjacent to red blocks */}
                           {(() => {
                             const idx = blocks.indexOf(block)
                             const prevBlock = idx > 0 ? blocks[idx - 1] : null
@@ -1849,11 +1968,16 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                             const prevIsFsRed = prevBlock?.status === 'red' && prevBlock?.reason?.includes('FS conflict')
                             const nextIsFsRed = nextBlock?.status === 'red' && nextBlock?.reason?.includes('FS conflict')
                             if (prevIsFsRed || nextIsFsRed) {
+                              const adjacentFsName = (prevIsFsRed && nextIsFsRed)
+                                ? `FS links บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} และ ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
+                                : prevIsFsRed
+                                  ? `FS link ที่บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} MHz`
+                                  : `FS link ที่บล็อก ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
                               return (
                                 <div className="text-xs text-green-600 bg-green-100/50 rounded p-1.5 mt-1 leading-relaxed">
-                                  บล็อกนี้อยู่นอกความถี่ของ FS Link{prevIsFsRed && nextIsFsRed ? 's' : ''}ที่บล็อกบล็อกข้างเคียง — 
-                                  ผ่านการตรวจสอบ Adjacent Channel แล้ว (ACS 33 dB + ACLR 45 dB = 78 dB isolation) 
-                                  จึงไม่ต้องมี Guard Band ระหว่าง FS
+                                  บล็อก {block.freq_low.toFixed(0)} MHz — อยู่นอกย่านความถี่ของ {adjacentFsName} {'\n'}
+                                  Adjacent Channel Protection (ACS 33 dB + ACLR 45 dB = 78 dB isolation) เพียงพอ {'\n'}
+                                  จัดสรรได้โดยไม่ต้องใช้ Guard Band กับ FS
                                 </div>
                               )
                             }
@@ -1885,12 +2009,15 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                             )}
                           </div>
                           <div className="text-xs text-red-600 bg-red-100/50 rounded p-2 mt-1 leading-relaxed">
-                            คำอธิบาย: FS Link {parsed.linkName} ส่งสัญญาณในช่วงความถี่ที่ทับซ้อน
+                            FS Link {parsed.linkName} ส่งสัญญาณในช่วงความถี่ที่ทับซ้อน
                             กับบล็อก {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz{parsed.imtDistance ? ` อยู่ห่างจาก IMT ${parsed.imtDistance} km` : ''} กำลังสัญญาณรบกวนที่คำนวณได้
                             ({parsed.iValue} dBm) สูงกว่า threshold การป้องกัน ({parsed.threshold} dBm)
                             อยู่ {parsed.exceedDb} dB จึงไม่สามารถจัดสรรคลื่นความถี่บล็อกนี้ให้กับ IMT ได้
                             {parsed.imtDistance && (
-                              <span className="block mt-1">บล็อกข้างเคียงที่อยู่นอกความถี่ของ FS นี้ ผ่านการตรวจสอบ Adjacent Channel (ACS 33 dB) แล้ว — สามารถจัดสรรได้โดยไม่ต้องมี Guard Band กับ FS</span>
+                              <span className="block mt-1">
+                                หมายเหตุ: บล็อกข้างเคียงที่อยู่นอกย่านความถี่ของ FS นี้ อาจจัดสรรได้โดยไม่ต้องมี Guard Band กับ FS
+                                หากผ่าน Adjacent Channel check (ACS 33 dB)
+                              </span>
                             )}
                           </div>
                         </div>
@@ -2011,7 +2138,21 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                           </div>
                         )}
 
-                        {parsed.conflictType !== 'FS' && (
+                        {parsed.conflictType === 'IMT_COCHANNEL' && (
+                          <div className="text-gray-600 space-y-0.5 pl-1">
+                            <div className="text-red-600">Co-channel กับ IMT: <span className="font-medium">{parsed.linkName}</span></div>
+                            <div className="text-red-600">ระยะห่าง {parsed.imtDistance} km {'<'} ขั้นต่ำ {parsed.neededSeparation} km</div>
+                          </div>
+                        )}
+
+                        {parsed.conflictType === 'GUARD' && (
+                          <div className="text-gray-600 space-y-0.5 pl-1">
+                            <div className="text-amber-600">Guard Band — ติดกับ: <span className="font-medium">{parsed.linkName}</span></div>
+                            <div className="text-amber-600">ระยะห่าง {parsed.imtDistance} km {'<'} ขั้นต่ำ {parsed.neededSeparation} km</div>
+                          </div>
+                        )}
+
+                        {!['FS', 'IMT_COCHANNEL', 'GUARD'].includes(parsed.conflictType) && (
                           <div className="text-gray-500">{b.reason}</div>
                         )}
                       </div>
@@ -2023,12 +2164,26 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <button
                   onClick={handleSave}
-                  disabled={saving}
-                  className="w-full bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                  disabled={saving || selectedBlocks.size === 0}
+                  className={`w-full font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm ${
+                    selectedBlocks.size > 0
+                      ? 'bg-[#16A34A] hover:bg-[#15803D] text-white'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
                 >
                   <Save className="w-4 h-4" />
-                  {saving ? 'กำลังบันทึก...' : 'บันทึก IMT'}
+                  {saving 
+                    ? 'กำลังบันทึก...' 
+                    : selectedBlocks.size > 0
+                      ? `บันทึก IMT (${selectedBlocks.size} บล็อก = ${selectedBlocks.size * 10} MHz)`
+                      : 'เลือกบล็อกสีก่อนบันทึก'}
                 </button>
+
+                {selectedBlocks.size === 0 && blocks.length > 0 && (
+                  <p className="text-xs text-gray-400 mt-1 text-center">
+                    คลิกที่บล็อกสีเขียวหรือกด "เลือกทั้งหมด" เพื่อเลือกบล็อกที่ต้องการจัดสรร
+                  </p>
+                )}
 
                 {savedMessage && (
                   <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">

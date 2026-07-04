@@ -157,8 +157,15 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     )
 
     return {
-        # Engineering assumptions (สมมุติฐาน)
-        "assumptions": engine.get_assumptions(),
+        # Engineering assumptions (สมมุติฐาน) — now dynamic based on user-selected values
+        "assumptions": engine.get_assumptions(
+            antenna_type=str(data.get("antenna_type", "omni") or "omni"),
+            sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
+            sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
+            cell_radius=cell_radius,
+            auto_eirp=auto_eirp,
+            model_params=data.get("model_params", {}) or {},
+        ),
 
         # Phase 0: Identified pairs
         "pairs": [

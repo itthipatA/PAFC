@@ -378,11 +378,83 @@ class InterferenceEngine:
         
         return max_imt_r_km + fs_coord_km + self.SPATIAL_MARGIN_KM
 
-    def get_assumptions(self) -> dict:
+    def get_assumptions(
+        self,
+        antenna_type: str = "omni",
+        sector_beamwidth_deg: float = 120,
+        sector_azimuth_deg: float = 0,
+        cell_radius: float = 500,
+        auto_eirp: bool = False,
+        model_params: Optional[dict] = None,
+    ) -> dict:
         """
         Return all engineering assumptions used in the interference analysis.
         These are the «สมมุติฐาน» that govern every calculation.
+
+        Now dynamically reflects user-selected propagation model, antenna type,
+        and model-specific parameters.
         """
+        mp = model_params or {}
+
+        # ── Propagation model description (model-specific) ──
+        model_descriptions = {
+            "free_space": "Free Space Path Loss — ไม่มีสิ่งกีดขวาง (conservative upper bound)",
+            "p452": f"ITU-R P.452 — Clear-air basic transmission loss (time_pct={mp.get('time_pct', 50)}%, clutter={mp.get('clutter_class', 'urban')})",
+            "p2108": f"ITU-R P.2108 — Clutter loss (clutter_type={mp.get('clutter_type', 'urban')})",
+            "p1411": f"ITU-R P.1411 — Short-range outdoor (environment={mp.get('environment', 'urban')})",
+            "hata": f"Hata/COST-231 — Okumura-Hata for urban/suburban (environment={mp.get('environment', 'urban')})",
+        }
+        model_limitations = {
+            "free_space": [
+                "ไม่มี clutter/terrain loss → ประเมิน path loss ต่ำเกิน → ประเมิน interference สูงเกิน (conservative)",
+                "ไม่มี atmospheric effects (ducting, rain fade)",
+                "ไม่มี building diffraction",
+            ],
+            "p452": [
+                "Simplified from full terrain-dependent model (no digital elevation data)",
+                "Assumes smooth earth — no obstacle diffraction computed",
+            ],
+            "p2108": [
+                "Clutter loss only — must be combined with another model for path loss",
+                "Terminal height below clutter height gets full loss",
+            ],
+            "p1411": [
+                "Valid for distances < 5 km",
+                "Assumes street canyon geometry (below rooftop)",
+            ],
+            "hata": [
+                "Valid for 150-1500 MHz (extended to ~2 GHz via COST-231)",
+                f"Frequency correction applied: +{max(0, 20 * math.log10(4900 / 2000)):.0f} dB at 4900 MHz",
+                "Assumes urban/suburban morphology",
+            ],
+        }
+        model_references = {
+            "free_space": "ITU-R P.525",
+            "p452": "ITU-R P.452-17",
+            "p2108": "ITU-R P.2108-1",
+            "p1411": "ITU-R P.1411-12",
+            "hata": "Okumura-Hata + COST-231 extension",
+        }
+        model_reality = {
+            "free_space": "⚠️ FSPL ให้ค่า path loss ต่ำสุด → interference estimate สูงสุด → อาจบล็อกคลื่นเกินจริงใน urban areas",
+            "p452": "✅ P.452 คำนึงถึง % เวลาและ clutter — เหมาะสำหรับ interference analysis ระหว่าง services",
+            "p2108": "⚠️ แยกคำนวณ clutter loss — ควรใช้ร่วมกับ propagation model หลัก",
+            "p1411": "✅ P.1411 ออกแบบสำหรับ IMT-to-IMT ระดับถนน — path loss สูงกว่า FSPL มาก",
+            "hata": "⚠️ Hata ถูกออกแบบสำหรับ <2 GHz — ใช้ frequency correction ที่ 5 GHz (ไม่ใช่ native range)",
+        }
+
+        # ── IMT antenna description (antenna-type-specific) ──
+        if antenna_type == "sector":
+            ant_value = f"Sector — {sector_beamwidth_deg}° beamwidth, azimuth {sector_azimuth_deg}° from True North"
+            ant_desc = f"IMT ใช้สายอากาศแบบเซกเตอร์ {sector_beamwidth_deg}° — แผ่ interference ในมุมแคบลง ลด interference กับระบบอื่นนอก beam"
+            ant_impact = "Sector pattern จำกัด interference ในมุมที่กำหนด — นอก beam จะได้ front-to-back ratio ~20 dB"
+            ant_reality = "✅ Private 5G มักใช้ sectored/panel antennas — สมเหตุสมผลกว่าการใช้ omni"
+        else:
+            ant_value = "Omni-directional"
+            ant_desc = "IMT ใช้สายอากาศแบบรอบทิศทาง (conservative assumption)"
+            ant_impact = "แผ่ interference เท่ากันทุกทิศทาง — ถ้าใช้ sectored antenna จะลด interference ได้"
+            ant_reality = "⚠️ Private 5G มักใช้ sectored/panel antennas (60-120°) — omni assumption overestimates interference"
+
         return {
             "interference_threshold": {
                 "label": "Interference Threshold",
@@ -449,24 +521,20 @@ class InterferenceEngine:
             },
             "propagation": {
                 "label": "Propagation Model",
-                "value": self.model_name.upper(),
-                "description": "แบบจำลองการแพร่กระจายคลื่น — FSPL = ไม่มีสิ่งกีดขวาง (free space)",
-                "reference": "ITU-R P.525",
-                "limitations": [
-                    "ไม่มี clutter/terrain loss → ประเมิน path loss ต่ำเกิน → ประเมิน interference สูงเกิน (conservative)",
-                    "ไม่มี atmospheric effects (ducting, rain fade)",
-                    "ไม่มี building diffraction",
-                ],
-                "impact": "Conservative สำหรับ interference protection — อาจบล็อกคลื่นเกินจำเป็นในพื้นที่ที่มีสิ่งกีดขวาง",
-                "reality_check": "⚠️ FSPL ให้ค่า path loss ต่ำสุด → interference estimate สูงสุด → อาจบล็อกคลื่นเกินจริงใน urban areas",
+                "value": f"{self.model_name.upper()} ({model_descriptions.get(self.model_name, 'Unknown')})",
+                "description": model_descriptions.get(self.model_name, "Unknown model"),
+                "reference": model_references.get(self.model_name, "N/A"),
+                "limitations": model_limitations.get(self.model_name, []),
+                "impact": "Model กำหนดค่า path loss — มีผลโดยตรงต่อ interference estimate",
+                "reality_check": model_reality.get(self.model_name, "⚠️ Unknown model"),
             },
             "imt_antenna": {
                 "label": "IMT Antenna Pattern",
-                "value": "Omni-directional",
-                "description": "IMT ใช้สายอากาศแบบรอบทิศทาง (conservative assumption)",
+                "value": ant_value,
+                "description": ant_desc,
                 "reference": "Typical small cell / private network deployment",
-                "impact": "แผ่ interference เท่ากันทุกทิศทาง — ถ้าใช้ sectored antenna จะลด interference ได้",
-                "reality_check": "⚠️ Private 5G มักใช้ sectored/panel antennas (60-120°) — omni assumption overestimates interference",
+                "impact": ant_impact,
+                "reality_check": ant_reality,
             },
             "risk_classification": {
                 "label": "Risk Classification",
@@ -610,6 +678,7 @@ class InterferenceEngine:
         new_imt_eirp = max_eirp
         spatial_filter_km = self._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts)
         spatial_limit_m = (cell_radius + spatial_filter_km * 1000)
+        mp = self.model_params  # model-specific params (time_pct, clutter_type, environment, etc.)
 
         # ── ➀ NEW_IMT → FS_RX ──
         for fs in fs_links:
@@ -639,6 +708,7 @@ class InterferenceEngine:
                 frequency_mhz=(fs.freq_low + fs.freq_high) / 2,
                 tx_height_m=antenna_height,
                 rx_height_m=fs.rx_altitude or 0,
+                **mp,
             )
             est_i = new_imt_eirp - est_path_loss + (fs.rx_antenna_gain or 0)
 
@@ -688,8 +758,8 @@ class InterferenceEngine:
                 frequency_mhz=(fs.freq_low + fs.freq_high) / 2,
                 tx_height_m=fs.tx_altitude or 30,
                 rx_height_m=antenna_height,
+                **mp,
             )
-
             # Apply beam discrimination if IMT is outside main beam
             beam_discrimination = 0 if in_beam else -25  # Side-lobe suppression ~25 dB
             est_i = fs_eirp - est_path_loss + antenna_gain + beam_discrimination
@@ -757,6 +827,7 @@ class InterferenceEngine:
                     frequency_mhz=(imt.freq_low + imt.freq_high) / 2,
                     tx_height_m=antenna_height,
                     rx_height_m=imt.antenna_height,
+                    **mp,
                 )
                 est_i = new_imt_eirp - est_path_loss + imt.antenna_gain
                 risk = self._classify_risk(est_i, settings.interference_threshold_dbm, dist)
@@ -779,6 +850,7 @@ class InterferenceEngine:
                     frequency_mhz=(imt.freq_low + imt.freq_high) / 2,
                     tx_height_m=imt.antenna_height,
                     rx_height_m=antenna_height,
+                    **mp,
                 )
                 est_i = existing_imt_eirp - est_path_loss + antenna_gain
                 risk = self._classify_risk(est_i, settings.interference_threshold_dbm, dist)
@@ -934,6 +1006,7 @@ class InterferenceEngine:
             frequency_mhz=fs_freq,
             tx_height_m=imt_height,
             rx_height_m=rx_height,
+            **self.model_params,
         )
 
         # Sector antenna discrimination: IMT transmit direction toward FS receiver
@@ -982,6 +1055,7 @@ class InterferenceEngine:
             frequency_mhz=fs_freq,
             tx_height_m=tx_height,
             rx_height_m=imt_height,
+            **self.model_params,
         )
 
         # FS EIRP from actual data or conservative estimate
@@ -1055,6 +1129,7 @@ class InterferenceEngine:
             frequency_mhz=freq_mhz,
             tx_height_m=interferer_height,
             rx_height_m=victim_height,
+            **self.model_params,
         )
 
         i_dbm = interferer_eirp - path_loss + victim_ant_gain
@@ -1172,6 +1247,7 @@ class InterferenceEngine:
             frequency_mhz=fs_freq,
             tx_height_m=tx_height,
             rx_height_m=imt_height,
+            **self.model_params,
         )
         
         if fs:
@@ -1513,8 +1589,10 @@ class InterferenceEngine:
             "reason": "IMT↔IMT reciprocal margins symmetric (within 10 dB)" if sym_ok
                       else (
                           f"{sym_detail} — "
-                          "height-dependent models (Hata, P.1411) produce asymmetric PL "
-                          "when tx_h != rx_h. Expected physics, not a bug."
+                          "Path Loss ไม่เท่ากันเมื่อสลับฝั่ง — Hata/P.1411 ใช้ความสูงเสาเป็นพารามิเตอร์ "
+                          "(tx_h, rx_h) การสะท้อนพื้นและ diffraction ในโมเดลไม่สมมาตรเมื่อความสูงต่างกัน "
+                          "นี่คือฟิสิกส์จริงของคลื่นวิทยุ ไม่ใช่ข้อผิดพลาดของซอฟต์แวร์ "
+                          "หากต้องการ symmetry แบบสมบูรณ์ ควรใช้ Free Space Path Loss (โมเดลไม่ขึ้นกับความสูง)"
                       ),
         }
 
