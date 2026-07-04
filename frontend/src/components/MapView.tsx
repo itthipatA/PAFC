@@ -132,12 +132,13 @@ function txMarkerEl(): HTMLDivElement {
       </g>
       <g stroke="#2D3748" stroke-width="2.5" stroke-linejoin="round">
         <line x1="50" y1="12" x2="50" y2="35" stroke-width="3.5" stroke-linecap="round" />
-        <ellipse cx="32" cy="30" rx="11" ry="15" fill="#CBD5E1" />
-        <path d="M 32,15 A 11,15 0 0,0 32,45 Z" fill="#94A3B8" />
+        <!-- TX dish: red family — interferer/transmitter = danger -->
+        <ellipse cx="32" cy="30" rx="11" ry="15" fill="#EF4444" />
+        <path d="M 32,15 A 11,15 0 0,0 32,45 Z" fill="#DC2626" />
         <line x1="32" y1="30" x2="43" y2="30" stroke-width="2.5" />
         <polygon points="43,28 48,30 43,32" fill="#2D3748" />
-        <ellipse cx="66" cy="42" rx="8" ry="11" fill="#E2E8F0" />
-        <path d="M 66,31 A 8,11 0 0,0 66,53 Z" fill="#CBD5E1" />
+        <ellipse cx="66" cy="42" rx="8" ry="11" fill="#FCA5A5" />
+        <path d="M 66,31 A 8,11 0 0,0 66,53 Z" fill="#F87171" />
         <line x1="66" y1="42" x2="55" y2="42" stroke-width="2" />
         <polygon points="55,40 51,42 55,44" fill="#2D3748" />
       </g>
@@ -168,12 +169,13 @@ function rxMarkerEl(): HTMLDivElement {
       </g>
       <g stroke="#2D3748" stroke-width="2.5" stroke-linejoin="round">
         <line x1="50" y1="12" x2="50" y2="35" stroke-width="3.5" stroke-linecap="round" />
-        <ellipse cx="32" cy="30" rx="11" ry="15" fill="#FECACA" />
-        <path d="M 32,15 A 11,15 0 0,0 32,45 Z" fill="#FCA5A5" />
+        <!-- RX dish: blue family — receiver/victim -->
+        <ellipse cx="32" cy="30" rx="11" ry="15" fill="#BFDBFE" />
+        <path d="M 32,15 A 11,15 0 0,0 32,45 Z" fill="#93C5FD" />
         <line x1="32" y1="30" x2="43" y2="30" stroke-width="2.5" />
         <polygon points="43,28 48,30 43,32" fill="#2D3748" />
-        <ellipse cx="66" cy="42" rx="8" ry="11" fill="#FEE2E2" />
-        <path d="M 66,31 A 8,11 0 0,0 66,53 Z" fill="#FECACA" />
+        <ellipse cx="66" cy="42" rx="8" ry="11" fill="#DBEAFE" />
+        <path d="M 66,31 A 8,11 0 0,0 66,53 Z" fill="#BFDBFE" />
         <line x1="66" y1="42" x2="55" y2="42" stroke-width="2" />
         <polygon points="55,40 51,42 55,44" fill="#2D3748" />
       </g>
@@ -719,7 +721,7 @@ function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
       source: LAYER_IDS.fsCoordInnerSource,
       paint: {
         'fill-color': '#EF4444',
-        'fill-opacity': 0.08,
+        'fill-opacity': 0.15,
       },
     })
   }

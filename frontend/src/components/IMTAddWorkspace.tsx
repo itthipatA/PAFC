@@ -1112,9 +1112,29 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     setSaving(true)
     setSaveError('')
     try {
+      // Fresh coverage calculation if autoEirp is ON and coverageInfo is stale
+      let freshCoverage = coverageInfo
+      if (autoEirp && !freshCoverage) {
+        const covRes = await fetchWithAuth('/api/coverage/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cell_radius: cellRadius,
+            antenna_height: antennaHeight,
+            antenna_gain: antennaGain,
+            model: propagationModel,
+            model_params: modelParams,
+          }),
+        })
+        if (covRes.ok) {
+          freshCoverage = await covRes.json()
+          setCoverageInfo(freshCoverage)
+        }
+      }
+
       // Use calculated EIRP when autoEirp is ON, else user-provided maxEirp
       const effectiveEirp = autoEirp 
-        ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius, propagationModel))
+        ? (freshCoverage?.used_eirp_dbm ?? estimateEirp(cellRadius, propagationModel))
         : maxEirp
 
       const res = await fetchWithAuth('/api/imt/', {
@@ -1133,12 +1153,12 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
           name: name.trim(),
           operator: operator.trim(),
           status: 'active',
-          ...(coverageInfo ? {
-            target_rss: coverageInfo.target_rss_dbm,
-            shadow_margin: coverageInfo.shadow_margin_db,
-            building_loss: coverageInfo.building_loss_db ?? 0,
+          ...(freshCoverage ? {
+            target_rss: freshCoverage.target_rss_dbm,
+            shadow_margin: freshCoverage.shadow_margin_db,
+            building_loss: freshCoverage.building_loss_db ?? 0,
             propagation_model: propagationModel,
-            coverage_classification: coverageInfo.coverage_classification,
+            coverage_classification: freshCoverage.coverage_classification,
           } : {}),
           blocks: selectedGreenBlocks.map((b) => ({
             freq_low: b.freq_low,
@@ -1160,7 +1180,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     } finally {
       setSaving(false)
     }
-  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, autoEirp, coverageInfo, blocks, selectedBlocks, antennaType, sectorBeamwidth, sectorAzimuth, propagationModel, onConfirmLocation, fetchWithAuth, onBack])
+  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, autoEirp, coverageInfo, blocks, selectedBlocks, antennaType, sectorBeamwidth, sectorAzimuth, propagationModel, modelParams, onConfirmLocation, fetchWithAuth, onBack])
 
   // Spectrum summary
   const statusCounts = {
@@ -1281,6 +1301,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       const newLat = parseFloat(e.target.value)
                       if (!isNaN(newLat)) {
                         setLat(newLat)
+                        // Auto-sync marker position immediately — no need to wait for "ตกลง"
+                        onConfirmLocation?.(newLat, lon, cellRadius)
                         sync.syncLatLon(newLat, lon)
                       }
                     }}
@@ -1297,6 +1319,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       const newLon = parseFloat(e.target.value)
                       if (!isNaN(newLon)) {
                         setLon(newLon)
+                        // Auto-sync marker position immediately — no need to wait for "ตกลง"
+                        onConfirmLocation?.(lat, newLon, cellRadius)
                         sync.syncLatLon(lat, newLon)
                       }
                     }}
@@ -1337,6 +1361,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 onChange={(e) => {
                   const newModel = e.target.value
                   setPropagationModel(newModel)
+                  setCoverageInfo(null)  // Invalidate stale coverage — model changed
                   sync.syncModel(newModel)
                   setSyncCoverageColor(getCoverageColorForModel(newModel))
                 }}
@@ -1396,6 +1421,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     onChange={(e) => {
                       const r = Number(e.target.value)
                       setCellRadius(r)
+                      setCoverageInfo(null)  // Invalidate stale coverage — radius changed
                       sync.syncRadius(r)
                     }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"

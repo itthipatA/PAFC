@@ -339,6 +339,20 @@ class InterferenceEngine:
         self.model_name = model_name
         self.model = PropagationRegistry.get(model_name)
 
+    def _fs_coordination_distance_km(self, fs_eirp_dbm: float) -> float:
+        """Compute coordination distance (km) for a specific FS EIRP using FSPL.
+        
+        Per-link approach: each FS link has its own coordination distance
+        based on its ACTUAL EIRP, not the system-wide max.
+        """
+        pre_screen_threshold = -80  # dBm — IMT receiver sensitivity
+        fs_pl_threshold = fs_eirp_dbm - pre_screen_threshold + 12
+        center_freq = (settings.band_start_mhz + settings.band_end_mhz) / 2
+        d_km = 10 ** (
+            (fs_pl_threshold - 32.4 - 20 * math.log10(center_freq)) / 20
+        )
+        return max(min(d_km, 10), 0.5)  # Cap at 10 km, min 500m
+
     def _compute_spatial_filter_km(
         self, cell_radius: float, fs_links: list, neighbor_imts: list
     ) -> float:
@@ -676,8 +690,16 @@ class InterferenceEngine:
         pairs: list[InterferencePair] = []
         # max_eirp = total EIRP (TX power + antenna gain) — consistent with Coverage Engine
         new_imt_eirp = max_eirp
-        spatial_filter_km = self._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts)
-        spatial_limit_m = (cell_radius + spatial_filter_km * 1000)
+        
+        # Global spatial filter — used as fallback/max cap only
+        # Per-link coordination distances replace it for FS links
+        global_spatial_filter_km = self._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts)
+        global_spatial_limit_m = (cell_radius + global_spatial_filter_km * 1000)
+        
+        # Per-link coordination distance for NEW_IMT as interferer
+        new_imt_coord_km = self._fs_coordination_distance_km(new_imt_eirp)
+        new_imt_spatial_limit_m = (cell_radius + new_imt_coord_km * 1000 + self.SPATIAL_MARGIN_KM * 1000)
+        
         mp = self.model_params  # model-specific params (time_pct, clutter_type, environment, etc.)
 
         # ── ➀ NEW_IMT → FS_RX ──
@@ -688,8 +710,9 @@ class InterferenceEngine:
                 fs.tx_lat, fs.tx_lon, fs.rx_lat, fs.rx_lon
             )
 
-            # Spatial filter
-            if dist_to_path > spatial_limit_m:
+            # Per-link spatial filter: can NEW_IMT's signal reach this FS RX?
+            # Uses NEW_IMT's own EIRP (interferer), not FS EIRP
+            if dist_to_path > new_imt_spatial_limit_m:
                 continue
 
             # Frequency filter — IMT could use any block in band
@@ -729,8 +752,12 @@ class InterferenceEngine:
         for fs in fs_links:
             dist_to_tx = haversine_m(center_lat, center_lon, fs.tx_lat, fs.tx_lon)
 
-            # Spatial filter
-            if dist_to_tx > spatial_limit_m:
+            # Per-link spatial filter: can THIS FS transmitter reach the new IMT?
+            # Uses this FS link's ACTUAL EIRP, not system-wide max
+            fs_eirp = (fs.tx_power or 30) + (fs.tx_antenna_gain or 35)
+            fs_coord_km = self._fs_coordination_distance_km(fs_eirp)
+            fs_spatial_limit_m = (cell_radius + fs_coord_km * 1000 + self.SPATIAL_MARGIN_KM * 1000)
+            if dist_to_tx > fs_spatial_limit_m:
                 continue
 
             # Frequency filter
@@ -747,8 +774,7 @@ class InterferenceEngine:
                 beamwidth_deg=fs.beamwidth_deg,
             )
 
-            # FS EIRP = tx_power + tx_antenna_gain (directional)
-            fs_eirp = (fs.tx_power or 30) + (fs.tx_antenna_gain or 35)
+            # fs_eirp already computed above in spatial filter — reuse
 
             # Effective distance from FS Tx to closest IMT receiver (at cell edge)
             effective_dist = max(dist_to_tx - cell_radius, 1.0)
@@ -801,8 +827,12 @@ class InterferenceEngine:
         for imt in neighbor_imts:
             dist = haversine_m(center_lat, center_lon, imt.center_lat, imt.center_lon)
 
-            # Spatial filter
-            if dist > spatial_limit_m:
+            # Per-IMT spatial filter: each neighbor IMT has its own cell_radius
+            imt_spatial_limit_m = (cell_radius + imt.cell_radius + 
+                                   self._fs_coordination_distance_km(imt.max_eirp) * 1000 +
+                                   self.SPATIAL_MARGIN_KM * 1000)
+            # Also apply global cap for safety
+            if dist > max(imt_spatial_limit_m, global_spatial_limit_m):
                 continue
 
             # Co-channel check (same block usage possible)
