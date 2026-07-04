@@ -66,6 +66,9 @@ function AuthenticatedApp({
     setTimeout(() => {
       setShowDashboardWorkspace(false)
       setWorkspaceClosing(false)
+      // Clear the red placement marker when workspace closes
+      setSelectedLat(null)
+      setSelectedLon(null)
     }, 600)
   }, [])
 

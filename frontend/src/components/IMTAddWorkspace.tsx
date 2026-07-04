@@ -1012,6 +1012,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     setSaving(true)
     setSaveError('')
     try {
+      // Use calculated EIRP when autoEirp is ON, else user-provided maxEirp
+      const effectiveEirp = autoEirp 
+        ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius))
+        : maxEirp
+
       const res = await fetchWithAuth('/api/imt/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1021,14 +1026,13 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
           cell_radius: cellRadius,
           antenna_height: antennaHeight,
           antenna_gain: antennaGain,
-          max_eirp: maxEirp,
+          max_eirp: effectiveEirp,
           antenna_type: antennaType,
           sector_beamwidth_deg: sectorBeamwidth,
           sector_azimuth_deg: sectorAzimuth,
           name: name.trim(),
           operator: operator.trim(),
           status: 'active',
-          // Coverage params (Phase 15)
           ...(coverageInfo ? {
             target_rss: coverageInfo.target_rss_dbm,
             shadow_margin: coverageInfo.shadow_margin_db,
@@ -1039,7 +1043,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
           blocks: selectedGreenBlocks.map((b) => ({
             freq_low: b.freq_low,
             freq_high: b.freq_high,
-            status: 'allocated',  // Always allocated when user explicitly saves
+            status: 'allocated',
           })),
         }),
       })
@@ -1050,14 +1054,13 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       }
 
       setSavedMessage('บันทึก IMT สำเร็จ')
-      // Go back after short delay
       setTimeout(() => onBack(), 1200)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการบันทึก')
     } finally {
       setSaving(false)
     }
-  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, blocks, selectedBlocks, antennaType, sectorBeamwidth, sectorAzimuth, propagationModel, coverageInfo, onConfirmLocation, fetchWithAuth, onBack])
+  }, [name, operator, lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, autoEirp, coverageInfo, blocks, selectedBlocks, antennaType, sectorBeamwidth, sectorAzimuth, propagationModel, onConfirmLocation, fetchWithAuth, onBack])
 
   // Spectrum summary
   const statusCounts = {
