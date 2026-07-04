@@ -181,7 +181,6 @@ function AuthenticatedApp({
       </nav>
 
       {/* Tab Content */}
-      <FadeIn key={tab} className="flex-1">
       {tab === 'dashboard' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Dashboard toolbar */}
@@ -262,7 +261,6 @@ function AuthenticatedApp({
           <QueryPanel onZoomTo={handleZoomTo} />
         </div>
       )}
-      </FadeIn>
     </div>
   )
 }
