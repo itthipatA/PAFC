@@ -305,10 +305,11 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   // Auto-pan when centerLat/centerLon change
   useEffect(() => {
     if (!mapRef.current || centerLat == null || centerLon == null) return
-    const padding: { right: number } | undefined = workspaceOpen && containerRef.current
-      ? { right: containerRef.current.offsetWidth * 0.6 }
-      : undefined
-    mapRef.current.flyTo({ center: [centerLon, centerLat], zoom: 12, duration: 800, curve: 1.5, padding })
+    const opts: maplibregl.FlyToOptions = { center: [centerLon, centerLat], zoom: 12, duration: 800, curve: 1.5 }
+    if (workspaceOpen && containerRef.current) {
+      opts.padding = { right: containerRef.current.offsetWidth * 0.6 }
+    }
+    mapRef.current.flyTo(opts)
   }, [centerLat, centerLon, workspaceOpen])
 
   // Update selected-location marker
