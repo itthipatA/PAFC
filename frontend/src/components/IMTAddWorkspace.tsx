@@ -2754,15 +2754,15 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                             </span>
                           </div>
                         )}
-                        <div className="pt-2 mt-1 border-t border-gray-100 text-[10px] text-gray-500">
+                        <div className="pt-2 mt-1 border-t border-gray-100 text-[10px] text-gray-500 flex items-center gap-1.5">
                           {green.length > 0 && redReducible.length === 0 && redNonReducible.length === 0 && (
-                            <>✅ ตำแหน่งนี้ไม่มีผลกระทบต่อระบบอื่น — จัดสรรได้เต็มที่</>
+                            <><CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" /> ตำแหน่งนี้ไม่มีผลกระทบต่อระบบอื่น — จัดสรรได้เต็มที่</>
                           )}
                           {redNonReducible.length > 0 && (
-                            <>⚠️ มี {redNonReducible.length} บล็อกที่ไม่สามารถจัดสรรได้เนื่องจากถูกรบกวนจาก FS/IMT อื่น — แนะนำให้ย้ายตำแหน่ง</>
+                            <><AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" /> มี {redNonReducible.length} บล็อกที่ไม่สามารถจัดสรรได้เนื่องจากถูกรบกวนจาก FS/IMT อื่น — แนะนำให้ย้ายตำแหน่ง</>
                           )}
                           {redReducible.length > 0 && redNonReducible.length === 0 && (
-                            <>💡 ลดกำลังส่งลงจะทำให้จัดสรรได้ทุกบล็อก — พิจารณาลด cell radius</>
+                            <><Zap className="w-3 h-3 text-amber-500 flex-shrink-0" /> ลดกำลังส่งลงจะทำให้จัดสรรได้ทุกบล็อก — พิจารณาลด cell radius</>
                           )}
                         </div>
                       </div>
