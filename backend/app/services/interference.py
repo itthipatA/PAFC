@@ -581,12 +581,22 @@ class InterferenceEngine:
         sector_beamwidth_deg: float = 120,
         sector_azimuth_deg: float = 0,
         model_params: Optional[dict] = None,
+        indoor_pct: float = 0,
     ) -> InterferenceResult:
         """
         Full three-phase analysis.
 
+        indoor_pct: 0-100, % of indoor deployment.
+          building_loss = indoor_pct / 100 * 20 dB → reduces effective EIRP.
+          indoor signal must penetrate building walls → lower interference.
+
         Returns InterferenceResult with pairs, pair_results, and blocks.
         """
+        # Phase 29: building loss from indoor %
+        MAX_BUILDING_LOSS_DB = 20
+        building_loss_db = (indoor_pct / 100) * MAX_BUILDING_LOSS_DB
+        effective_eirp = max_eirp - building_loss_db
+        effective_eirp = max(effective_eirp, 0)  # Floor at 0 dBm
         import time
         t0 = time.time()
 
@@ -600,7 +610,7 @@ class InterferenceEngine:
             cell_radius=cell_radius,
             antenna_height=antenna_height,
             antenna_gain=antenna_gain,
-            max_eirp=max_eirp,
+            max_eirp=effective_eirp,  # Phase 29: use effective EIRP (accounting for building loss)
             fs_links=fs_links,
             neighbor_imts=neighbor_imts,
             antenna_type=antenna_type,
@@ -613,7 +623,7 @@ class InterferenceEngine:
             pairs=pairs,
             new_imt_lat=center_lat, new_imt_lon=center_lon,
             new_imt_radius=cell_radius,
-            new_imt_eirp=max_eirp,  # max_eirp = total EIRP (already includes antenna_gain)
+            new_imt_eirp=effective_eirp,  # Phase 29: effective EIRP (after building loss)
             new_imt_height=antenna_height,
             new_imt_ant_gain=antenna_gain,
             fs_links=fs_links,
@@ -627,14 +637,14 @@ class InterferenceEngine:
         blocks = self.phase2_aggregate(
             pair_results=pair_results,
             band_start=band_start, band_end=band_end,
-            max_eirp=max_eirp,
+            max_eirp=effective_eirp,  # Phase 29: store effective EIRP (after building loss)
         )
 
         # ── Phase 3: Per-block EIRP limits ──
         block_limits = self.compute_per_block_eirp_limits(
             blocks=blocks,
             pair_results=pair_results,
-            current_eirp=max_eirp,
+            current_eirp=effective_eirp,  # Phase 29: limits based on effective EIRP
             band_start=band_start,
             band_end=band_end,
         )

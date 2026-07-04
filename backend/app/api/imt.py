@@ -157,6 +157,8 @@ def _imt_to_dict(a: IMTAllocation, blocks: list) -> dict:
         "building_loss": a.building_loss,
         "propagation_model": a.propagation_model,
         "coverage_classification": a.coverage_classification,
+        # Deployment (Phase 29)
+        "indoor_pct": a.indoor_pct or 0,
         "status": a.status,
         "approved_by": a.approved_by,
         "valid_from": str(a.valid_from) if a.valid_from else None,

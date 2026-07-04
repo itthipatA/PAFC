@@ -775,6 +775,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [antennaGain, setAntennaGain] = useState(12)
   const [maxEirp, setMaxEirp] = useState(23)
   const [autoEirp, setAutoEirp] = useState(true)
+  const [indoorPct, setIndoorPct] = useState(0)  // Phase 29: 0-100% indoor
   const [coverageInfo, setCoverageInfo] = useState<CoverageInfo | null>(null)
   const [blockLimits, setBlockLimits] = useState<BlockEirpLimit[]>([])
   const [tradeoff, setTradeoff] = useState<TradeOff | null>(null)
@@ -962,6 +963,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         sector_beamwidth_deg: sectorBeamwidth,
         sector_azimuth_deg: sectorAzimuth,
         model_params: modelParams,
+        indoor_pct: indoorPct,  // Phase 29
       }
       if (autoEirp) {
         body.auto_eirp = true
@@ -1154,6 +1156,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
           sector_azimuth_deg: sectorAzimuth,
           name: name.trim(),
           operator: operator.trim(),
+          indoor_pct: indoorPct,  // Phase 29
           status: 'active',
           ...(freshCoverage ? {
             target_rss: freshCoverage.target_rss_dbm,
@@ -1496,6 +1499,30 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     </div>
                   </>
                 )}
+                {/* 6.5. Indoor % — Phase 29 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    สัดส่วน Indoor (%)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="0" max="100" step="10"
+                      value={indoorPct}
+                      onChange={(e) => setIndoorPct(Number(e.target.value))}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#C00000]"
+                    />
+                    <span className="text-sm font-mono font-bold text-[#C00000] w-10 text-right">
+                      {indoorPct}%
+                    </span>
+                  </div>
+                  {indoorPct > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      building_loss ≈ {(indoorPct / 100 * 20).toFixed(0)} dB
+                      {indoorPct >= 70 ? ' — indoor เด่น' : indoorPct >= 30 ? ' — ผสม indoor/outdoor' : ' — outdoor เด่น'}
+                    </p>
+                  )}
+                </div>
                 {/* 7. กำลังส่ง — LAST, auto-calculated from all inputs above */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">

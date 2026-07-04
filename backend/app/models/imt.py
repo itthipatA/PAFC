@@ -35,6 +35,9 @@ class IMTAllocation(Base):
     propagation_model = Column(String(50), nullable=True)    # which model was used
     coverage_classification = Column(String(30), nullable=True)  # OUTDOOR_GOOD etc.
 
+    # Deployment type (Phase 29)
+    indoor_pct = Column(Float, nullable=True, default=0)  # 0-100, % of indoor deployment
+
     # Status
     status = Column(String(20), default="pending")  # pending/active/rejected/expired
     approved_by = Column(String(255), nullable=True)

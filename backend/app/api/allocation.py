@@ -43,13 +43,16 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     antenna_height = float(data["antenna_height"])
     antenna_gain = float(data.get("antenna_gain", 0))
     model_name = data.get("model", "free_space")
-    
+    indoor_pct = float(data.get("indoor_pct", 0))  # Phase 29
+
     # ── Coverage: auto-calculate EIRP if requested ──
     auto_eirp = data.get("auto_eirp", False)
     coverage_result = None
-    
+
     if auto_eirp:
-        # Use coverage engine to compute required EIRP from cell_radius
+        # Phase 29: building_loss from indoor %
+        MAX_BUILDING_LOSS_DB = 20
+        building_loss_db = (indoor_pct / 100) * MAX_BUILDING_LOSS_DB
         cov_engine = CoverageEngine(propagation_model=model_name)
         coverage_result = cov_engine.calculate_required_eirp(
             cell_radius_m=cell_radius,
@@ -57,7 +60,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
             bs_antenna_gain_dbi=antenna_gain,
             target_rss_dbm=data.get("target_rss"),
             shadow_margin_db=data.get("shadow_margin"),
-            building_loss_db=data.get("building_loss"),
+            building_loss_db=data.get("building_loss", building_loss_db),
             ue_antenna_gain_dbi=data.get("ue_antenna_gain"),
         )
         max_eirp = coverage_result.required_eirp_dbm
@@ -154,6 +157,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
         sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
         model_params=data.get("model_params", {}) or {},
+        indoor_pct=indoor_pct,  # Phase 29
     )
 
     return {
