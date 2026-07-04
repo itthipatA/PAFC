@@ -280,3 +280,12 @@ body {
 .animate-line-draw       { animation: lineDraw var(--dur-slow) var(--ease-expo) forwards; }
 .animate-color-wave      { animation: colorWave 2s ease infinite; }
 .animate-pulse-border    { animation: pulseBorder 2s var(--ease-standard) infinite; }
+
+/* Map Marker Pulse — highlight related stations */
+@keyframes pulseMap {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.5) drop-shadow(0 0 8px currentColor); }
+}
+.animate-pulse-map {
+  animation: pulseMap 1s ease-in-out infinite;
+}

@@ -10,6 +10,7 @@ import {
   PlusCircle,
 } from 'lucide-react'
 import MapView, { MAP_STYLES } from './components/MapView'
+import type { HighlightStation } from './components/MapView'
 import LoginPage from './components/LoginPage'
 import FSLinkManager from './components/FSLinkManager'
 import IMTManager from './components/IMTManager'
@@ -45,6 +46,7 @@ function AuthenticatedApp({
   const [showDashboardWorkspace, setShowDashboardWorkspace] = useState(false)
   const [workspaceClosing, setWorkspaceClosing] = useState(false)
   const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
+  const [highlightStationNames, setHighlightStationNames] = useState<HighlightStation[] | undefined>(undefined)
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
@@ -63,6 +65,8 @@ function AuthenticatedApp({
 
   const handleCloseWorkspace = useCallback(() => {
     setWorkspaceClosing(true)
+    // Clear highlight immediately on close
+    setHighlightStationNames(undefined)
     setTimeout(() => {
       setShowDashboardWorkspace(false)
       setWorkspaceClosing(false)
@@ -208,6 +212,7 @@ function AuthenticatedApp({
               centerLon={selectedLon}
               clickMode="pan"
               workspaceOpen={showDashboardWorkspace}
+              highlightStationNames={highlightStationNames}
             />
 
             {(showDashboardWorkspace || workspaceClosing) && (
@@ -221,6 +226,10 @@ function AuthenticatedApp({
                   mode="panel"
                   onCellRadiusChange={setWorkspaceCellRadius}
                   onConfirmLocation={handleConfirmLocation}
+                  onShowStations={(stations) => {
+                    // Trigger re-render by setting a new array reference
+                    setHighlightStationNames(stations.length > 0 ? [...stations] : undefined)
+                  }}
                 />
               </div>
             )}

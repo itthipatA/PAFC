@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
-import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal, ChevronUp, ChevronDown, ChevronRight, Eye } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
 import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff, AssumptionItem } from '../types'
+import type { HighlightStation } from './MapView'
 import { useSyncAnimation } from '../hooks/useSyncAnimation'
 import { MiniMap, getCoverageColorForModel } from './MiniMap'
 
@@ -13,6 +14,7 @@ interface IMTAddWorkspaceProps {
   mode?: 'full' | 'panel'
   onCellRadiusChange?: (r: number) => void
   onConfirmLocation?: (lat: number, lon: number, cellRadius: number) => void
+  onShowStations?: (stations: HighlightStation[]) => void
 }
 
 const LAYER_IDS = {
@@ -740,7 +742,7 @@ function generateNarrativeLog(
 
 
 
-export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusChange, onConfirmLocation }: IMTAddWorkspaceProps) {
+export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusChange, onConfirmLocation, onShowStations }: IMTAddWorkspaceProps) {
   const { fetchWithAuth } = useAuth()
 
   // Form state
@@ -985,6 +987,74 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       setLoading(false)
     }
   }, [lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, autoEirp, propagationModel, fetchWithAuth])
+
+  // Collect related stations from analysis results
+  const relatedStations = useMemo((): HighlightStation[] => {
+    if (pairResults.length === 0 && pairs.length === 0) return []
+
+    const seen = new Set<string>()
+    const stations: HighlightStation[] = []
+
+    // Always include new IMT
+    stations.push({ name: 'IMT ใหม่', type: 'new_imt' })
+    seen.add('new_imt')
+
+    for (const pr of pairResults) {
+      // Parse names — strip parenthesized suffixes like "(FS_RX)", "(TX)"
+      const interName = pr.interferer.replace(/\\(.*?\\)$/, '').trim()
+      const victName = pr.victim.replace(/\\(.*?\\)$/, '').trim()
+
+      for (const rawName of [interName, victName]) {
+        // Skip generic labels
+        if (!rawName || rawName === 'NEW_IMT' || rawName === 'New IMT' || rawName === 'IMT ใหม่') continue
+        if (seen.has(rawName)) continue
+        seen.add(rawName)
+
+        // Determine type from pair data
+        const pair = pairs.find(
+          p => p.interferer_name === rawName || p.victim_name === rawName,
+        )
+        if (pair) {
+          if (pair.interferer_type === 'FS' || pair.victim_type === 'FS') {
+            // Add both TX and RX for FS links
+            if (!seen.has(rawName + '_tx')) {
+              seen.add(rawName + '_tx')
+              stations.push({ name: rawName, type: 'fs_tx' })
+            }
+            if (!seen.has(rawName + '_rx')) {
+              seen.add(rawName + '_rx')
+              stations.push({ name: rawName, type: 'fs_rx' })
+            }
+          } else {
+            stations.push({ name: rawName, type: 'imt' })
+          }
+        } else {
+          // Fallback: check direction
+          if (pr.direction === 'IMT→FS' || pr.direction === 'FS→IMT') {
+            if (!seen.has(rawName + '_tx')) {
+              seen.add(rawName + '_tx')
+              stations.push({ name: rawName, type: 'fs_tx' })
+            }
+            if (!seen.has(rawName + '_rx')) {
+              seen.add(rawName + '_rx')
+              stations.push({ name: rawName, type: 'fs_rx' })
+            }
+          } else {
+            stations.push({ name: rawName, type: 'imt' })
+          }
+        }
+      }
+    }
+
+    return stations
+  }, [pairResults, pairs])
+
+  // Auto-highlight related stations on map when analysis results come in
+  useEffect(() => {
+    if (mode === 'panel' && onShowStations && blocks.length > 0 && relatedStations.length > 0) {
+      onShowStations(relatedStations)
+    }
+  }, [mode, onShowStations, relatedStations, blocks.length])
 
   const handleSave = useCallback(async () => {
     if (!name.trim() || !operator.trim()) {

@@ -4,6 +4,11 @@ import { circle } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
 import type { BlockResult, IMTAllocation } from '../types'
 
+export interface HighlightStation {
+  name: string
+  type: 'fs_tx' | 'fs_rx' | 'imt' | 'new_imt'
+}
+
 interface MapViewProps {
   onMapClick: (lat: number, lon: number) => void
   selectedLat: number | null
@@ -15,6 +20,7 @@ interface MapViewProps {
   centerLon?: number | null
   clickMode?: 'place' | 'pan'
   workspaceOpen?: boolean
+  highlightStationNames?: HighlightStation[]
 }
 
 // Map styles
@@ -233,12 +239,14 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
   const fsMarkersRef = useRef<maplibregl.Marker[]>([])
   const imtMarkersRef = useRef<maplibregl.Marker[]>([])
+  const fsLinksDataRef = useRef<any[]>([])
+  const imtAllocDataRef = useRef<any[]>([])
   const { fetchWithAuth } = useAuth()
 
   // Init map
@@ -332,16 +340,100 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     const map = mapRef.current
 
     map.once('load', () => {
-      loadFSLinks(map, fetchWithAuth, fsMarkersRef)
-      loadIMTAllocations(map, fetchWithAuth, imtMarkersRef)
+      loadFSLinks(map, fetchWithAuth, fsMarkersRef, fsLinksDataRef)
+      loadIMTAllocations(map, fetchWithAuth, imtMarkersRef, imtAllocDataRef)
     })
 
     // If map already loaded, call immediately
     if (map.loaded()) {
-      loadFSLinks(map, fetchWithAuth, fsMarkersRef)
-      loadIMTAllocations(map, fetchWithAuth, imtMarkersRef)
+      loadFSLinks(map, fetchWithAuth, fsMarkersRef, fsLinksDataRef)
+      loadIMTAllocations(map, fetchWithAuth, imtMarkersRef, imtAllocDataRef)
     }
   }, [fetchWithAuth])
+
+  // Highlight related stations — fly to bounds + pulse markers
+  useEffect(() => {
+    if (!highlightStationNames || highlightStationNames.length === 0 || !mapRef.current) return
+
+    const map = mapRef.current
+    const fsLinks = fsLinksDataRef.current
+    const imtAllocs = imtAllocDataRef.current
+    const bounds = new maplibregl.LngLatBounds()
+    const targetCoords: { lon: number; lat: number }[] = []
+
+    // Include new IMT location
+    if (centerLat != null && centerLon != null) {
+      bounds.extend([centerLon, centerLat])
+      targetCoords.push({ lon: centerLon, lat: centerLat })
+    }
+
+    for (const station of highlightStationNames) {
+      if (station.type === 'new_imt') continue // already handled
+
+      let found = false
+      const nameLower = station.name.toLowerCase()
+
+      // Search in FS links
+      if (station.type === 'fs_tx' || station.type === 'fs_rx') {
+        for (const link of fsLinks) {
+          if (!link.name || link.name.toLowerCase() !== nameLower) continue
+          const lon = station.type === 'fs_tx' ? (link.tx?.lon ?? link.tx_lon) : (link.rx?.lon ?? link.rx_lon)
+          const lat = station.type === 'fs_tx' ? (link.tx?.lat ?? link.tx_lat) : (link.rx?.lat ?? link.rx_lat)
+          if (lon != null && lat != null) {
+            bounds.extend([lon, lat])
+            targetCoords.push({ lon, lat })
+            found = true
+          }
+          break
+        }
+      }
+
+      // Search in IMT allocations
+      if (!found && station.type === 'imt') {
+        for (const alloc of imtAllocs) {
+          if (!alloc.name || alloc.name.toLowerCase() !== nameLower) continue
+          if (alloc.center_lon != null && alloc.center_lat != null) {
+            bounds.extend([alloc.center_lon, alloc.center_lat])
+            targetCoords.push({ lon: alloc.center_lon, lat: alloc.center_lat })
+            found = true
+          }
+          break
+        }
+      }
+    }
+
+    if (targetCoords.length === 0) return
+
+    // Fly to bounds
+    const paddingRight = workspaceOpen && containerRef.current
+      ? containerRef.current.offsetWidth * 0.6
+      : 100
+    map.fitBounds(bounds, { padding: { top: 80, bottom: 80, left: 80, right: paddingRight }, duration: 1000, maxZoom: 14 })
+
+    // Pulse matching markers
+    const allMarkers = [...fsMarkersRef.current, ...imtMarkersRef.current]
+    const pulsedElements: HTMLElement[] = []
+
+    for (const coord of targetCoords) {
+      for (const marker of allMarkers) {
+        const pos = marker.getLngLat()
+        if (Math.abs(pos.lat - coord.lat) < 0.0001 && Math.abs(pos.lng - coord.lon) < 0.0001) {
+          const el = marker.getElement()
+          el.classList.add('animate-pulse-map')
+          pulsedElements.push(el)
+        }
+      }
+    }
+
+    if (pulsedElements.length === 0) return
+
+    // Pulse continuously until component unmounts or highlightStationNames changes
+    return () => {
+      for (const el of pulsedElements) {
+        el.classList.remove('animate-pulse-map')
+      }
+    }
+  }, [highlightStationNames, centerLat, centerLon, workspaceOpen])
 
   return <div ref={containerRef} className="w-full h-full" />
 }
@@ -626,6 +718,7 @@ async function loadFSLinks(
   map: maplibregl.Map,
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
   fsMarkersRef: React.MutableRefObject<maplibregl.Marker[]>,
+  fsLinksDataRef: React.MutableRefObject<any[]>,
 ) {
   try {
     const res = await fetchWithAuth('/api/fs-links/?status=active')
@@ -635,6 +728,7 @@ async function loadFSLinks(
     }
     const data = await res.json()
     const links = data.links || data || []
+    fsLinksDataRef.current = links
 
     // Clean up previous
     cleanupFSLayers(map, fsMarkersRef)
@@ -823,6 +917,7 @@ async function loadIMTAllocations(
   map: maplibregl.Map,
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
   imtMarkersRef: React.MutableRefObject<maplibregl.Marker[]>,
+  imtAllocDataRef: React.MutableRefObject<any[]>,
 ) {
   try {
     const res = await fetchWithAuth('/api/imt/?status=active')
@@ -832,6 +927,7 @@ async function loadIMTAllocations(
     }
     const data = await res.json()
     const allocations: IMTAllocation[] = data.allocations || data || []
+    imtAllocDataRef.current = allocations
 
     cleanupIMTLayers(map, imtMarkersRef)
 
