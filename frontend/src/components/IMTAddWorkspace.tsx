@@ -1044,10 +1044,10 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
 
           {/* SECTION 1: Input Form */}
           <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            {/* Location */}
+            {/* Step 1: Location — FIRST */}
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
-                ตำแหน่ง
+                1. ตำแหน่ง
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1102,15 +1102,68 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               </div>
             </div>
 
-            {/* Radio params */}
+            {/* Step 2: Propagation Model — SECOND, before cell radius */}
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                2. Propagation Model
+              </h3>
+              <select
+                value={propagationModel}
+                onChange={(e) => {
+                  const newModel = e.target.value
+                  setPropagationModel(newModel)
+                  sync.syncModel(newModel)
+                  setSyncCoverageColor(getCoverageColorForModel(newModel))
+                }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+              >
+                <option value="free_space">Free Space (ITU-R P.525)</option>
+                <option value="p452">ITU-R P.452 (Interference)</option>
+                <option value="p2108">ITU-R P.2108 (Clutter Loss)</option>
+                <option value="p1411">ITU-R P.1411 (Short-Range)</option>
+                <option value="hata">Hata/COST-231</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                {PROPAGATION_MODEL_INFO[propagationModel]?.description}
+              </p>
+              {/* Model-specific params */}
+              {PROPAGATION_MODEL_INFO[propagationModel]?.params?.map((p: any) => (
+                <div key={p.name} className="mt-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    {p.label} {p.unit && `(${p.unit})`}
+                  </label>
+                  {p.name === 'clutter_type' || p.name === 'environment' ? (
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      value={modelParams[p.name] ?? p.defaultValue}
+                      onChange={(e) => setModelParams(prev => ({...prev, [p.name]: e.target.value}))}
+                    >
+                      <option value="urban">Urban (เมือง)</option>
+                      <option value="suburban">Suburban (ชานเมือง)</option>
+                      <option value="rural">Rural (ชนบท)</option>
+                      <option value="water">Water (พื้นน้ำ)</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="number"
+                      defaultValue={p.defaultValue}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Step 3-7: Radio params — reordered */}
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
                 พารามิเตอร์วิทยุ
               </h3>
               <div className="grid grid-cols-2 gap-3">
+                {/* 3. รัศมีเซลล์ */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    รัศมีเซลล์ (m)
+                    3. รัศมีเซลล์ (m)
                   </label>
                   <input
                     type="number"
@@ -1123,9 +1176,65 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
                 </div>
+                {/* 4. Auto EIRP */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    ความสูงเสาอากาศ (m AGL)
+                    4. กำลังส่ง
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAutoEirp(!autoEirp)
+                        setCoverageInfo(null)
+                      }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        autoEirp
+                          ? 'bg-[#C00000]/10 text-[#C00000] border border-[#C00000]/30'
+                          : 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200'
+                      }`}
+                    >
+                      {autoEirp ? (
+                        <ToggleRight className="w-4 h-4" />
+                      ) : (
+                        <ToggleLeft className="w-4 h-4" />
+                      )}
+                      คำนวณกำลังส่งอัตโนมัติ
+                    </button>
+                    {autoEirp && (
+                      <span className="text-xs text-[#C00000] font-medium flex items-center gap-1">
+                        <Radio className="w-3 h-3" />
+                        Auto EIRP
+                      </span>
+                    )}
+                  </div>
+                  {autoEirp && (
+                    <div className="mt-2 p-2 bg-[#C00000]/5 rounded-lg border border-[#C00000]/10">
+                      <span className="text-xs text-gray-500">กำลังส่งที่คำนวณได้: </span>
+                      <span className="text-sm font-mono font-bold text-[#C00000]">
+                        {(coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius)).toFixed(1)} dBm
+                      </span>
+                      <span className="text-xs text-gray-400 ml-1">(จากรัศมี {cellRadius}m)</span>
+                    </div>
+                  )}
+                  {!autoEirp && (
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Max EIRP — รวม TX Power + Antenna Gain (dBm)
+                      </label>
+                      <input
+                        type="number"
+                        value={maxEirp}
+                        onChange={(e) => setMaxEirp(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      />
+                    </div>
+                  )}
+                </div>
+                {/* 5. ความสูงเสาอากาศ */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    5. ความสูงเสาอากาศ (m AGL)
                   </label>
                   <input
                     type="number"
@@ -1134,9 +1243,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
                 </div>
+                {/* 6. Antenna Gain — only when auto EIRP OFF */}
+                {!autoEirp && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Antenna Gain (dBi)
+                    6. Antenna Gain (dBi)
                   </label>
                   <input
                     type="number"
@@ -1145,9 +1256,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                   />
                 </div>
-                <div>
+                )}
+                {/* 7. สายอากาศ IMT — last */}
+                <div className={autoEirp ? '' : ''}>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    สายอากาศ IMT
+                    {autoEirp ? '6.' : '7.'} สายอากาศ IMT
                   </label>
                   <select
                     value={antennaType}
@@ -1189,108 +1302,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     </div>
                   </>
                 )}
-                {!autoEirp && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Max EIRP — รวม TX Power + Antenna Gain (dBm)
-                  </label>
-                  <input
-                    type="number"
-                    value={maxEirp}
-                    onChange={(e) => setMaxEirp(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                  />
-                </div>
-                )}
-                <div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAutoEirp(!autoEirp)
-                        setCoverageInfo(null)
-                      }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                        autoEirp
-                          ? 'bg-[#C00000]/10 text-[#C00000] border border-[#C00000]/30'
-                          : 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200'
-                      }`}
-                    >
-                      {autoEirp ? (
-                        <ToggleRight className="w-4 h-4" />
-                      ) : (
-                        <ToggleLeft className="w-4 h-4" />
-                      )}
-                      คำนวณกำลังส่งอัตโนมัติ
-                    </button>
-                    {autoEirp && (
-                      <span className="text-xs text-[#C00000] font-medium flex items-center gap-1">
-                        <Radio className="w-3 h-3" />
-                        Auto EIRP
-                      </span>
-                    )}
-                  </div>
-                  {autoEirp && (
-                    <div className="mt-2 p-2 bg-[#C00000]/5 rounded-lg border border-[#C00000]/10">
-                      <span className="text-xs text-gray-500">กำลังส่งที่คำนวณได้: </span>
-                      <span className="text-sm font-mono font-bold text-[#C00000]">
-                        {(coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius)).toFixed(1)} dBm
-                      </span>
-                      <span className="text-xs text-gray-400 ml-1">(จากรัศมี {cellRadius}m)</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="mt-3">
-                <label className="block text-xs font-medium text-gray-500 mb-1">
-                  Propagation Model
-                </label>
-                <select
-                  value={propagationModel}
-                  onChange={(e) => {
-                    const newModel = e.target.value
-                    setPropagationModel(newModel)
-                    sync.syncModel(newModel)
-                    setSyncCoverageColor(getCoverageColorForModel(newModel))
-                  }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                >
-                  <option value="free_space">Free Space (ITU-R P.525)</option>
-                  <option value="p452">ITU-R P.452 (Interference)</option>
-                  <option value="p2108">ITU-R P.2108 (Clutter Loss)</option>
-                  <option value="p1411">ITU-R P.1411 (Short-Range)</option>
-                  <option value="hata">Hata/COST-231</option>
-                </select>
-                {/* Model description */}
-                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  {PROPAGATION_MODEL_INFO[propagationModel]?.description}
-                </p>
-                {/* Model-specific params */}
-                {PROPAGATION_MODEL_INFO[propagationModel]?.params?.map((p: any) => (
-                  <div key={p.name} className="mt-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      {p.label} {p.unit && `(${p.unit})`}
-                    </label>
-                    {p.name === 'clutter_type' || p.name === 'environment' ? (
-                      <select
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                        value={modelParams[p.name] ?? p.defaultValue}
-                        onChange={(e) => setModelParams(prev => ({...prev, [p.name]: e.target.value}))}
-                      >
-                        <option value="urban">Urban (เมือง)</option>
-                        <option value="suburban">Suburban (ชานเมือง)</option>
-                        <option value="rural">Rural (ชนบท)</option>
-                        <option value="water">Water (พื้นน้ำ)</option>
-                      </select>
-                    ) : (
-                      <input
-                        type="number"
-                        defaultValue={p.defaultValue}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
-                      />
-                    )}
-                  </div>
-                ))}
               </div>
             </div>
 
@@ -1455,6 +1466,139 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               </section>
             </>
           )}
+
+          {/* ─── AGGREGATE REPORT — after Pairs Report ─── */}
+          {blocks.length > 0 && (() => {
+            const thresholdDbm = -114.0
+            
+            // Aggregate I_total per victim type across ALL blocks
+            const fsLinear = blocks
+              .filter(b => b.i_total_to_fs_dbm != null && b.i_total_to_fs_dbm !== undefined && b.i_total_to_fs_dbm > -200)
+              .reduce((sum, b) => sum + Math.pow(10, (b.i_total_to_fs_dbm ?? -200) / 10), 0)
+            const newImtLinear = blocks
+              .filter(b => b.i_total_to_new_imt_dbm != null && b.i_total_to_new_imt_dbm !== undefined && b.i_total_to_new_imt_dbm > -200)
+              .reduce((sum, b) => sum + Math.pow(10, (b.i_total_to_new_imt_dbm ?? -200) / 10), 0)
+            const existingImtLinear = blocks
+              .filter(b => b.i_total_to_existing_imt_dbm != null && b.i_total_to_existing_imt_dbm !== undefined && b.i_total_to_existing_imt_dbm > -200)
+              .reduce((sum, b) => sum + Math.pow(10, (b.i_total_to_existing_imt_dbm ?? -200) / 10), 0)
+            
+            const iTotalFs = fsLinear > 0 ? 10 * Math.log10(fsLinear) : undefined
+            const iTotalNewImt = newImtLinear > 0 ? 10 * Math.log10(newImtLinear) : undefined
+            const iTotalExistingImt = existingImtLinear > 0 ? 10 * Math.log10(existingImtLinear) : undefined
+            
+            // Count interferers per victim type from pairResults
+            const fsInterferers = pairResults
+              .filter(pr => pr.victim?.includes('FS_RX') || pr.direction === 'IMT→FS')
+            const newImtInterferers = pairResults
+              .filter(pr => pr.victim?.includes('NEW_IMT'))
+            const existingImtInterferers = pairResults
+              .filter(pr => pr.victim?.includes('EXISTING_IMT'))
+            
+            // Extract unique interferer names
+            const uniqueFsInterferers = [...new Set(fsInterferers.map(pr => pr.interferer))]
+            const uniqueNewImtInterferers = [...new Set(newImtInterferers.map(pr => pr.interferer))]
+            const uniqueExistingImtInterferers = [...new Set(existingImtInterferers.map(pr => pr.interferer))]
+            
+            // Find worst interferer per victim type
+            const worstFs = fsInterferers.length > 0 
+              ? fsInterferers.reduce((worst, pr) => (pr.i_dbm ?? -200) > (worst.i_dbm ?? -200) ? pr : worst)
+              : null
+            const worstNewImt = newImtInterferers.length > 0
+              ? newImtInterferers.reduce((worst, pr) => (pr.i_dbm ?? -200) > (worst.i_dbm ?? -200) ? pr : worst)
+              : null
+            const worstExistingImt = existingImtInterferers.length > 0
+              ? existingImtInterferers.reduce((worst, pr) => (pr.i_dbm ?? -200) > (worst.i_dbm ?? -200) ? pr : worst)
+              : null
+            
+            const hasAnyAggregate = iTotalFs != null || iTotalNewImt != null || iTotalExistingImt != null
+            
+            if (!hasAnyAggregate) return null
+            
+            return (
+              <>
+                <div className="flex items-center gap-3 my-1">
+                  <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, #C00000, #D1D5DB)' }} />
+                  <span className="text-xs font-medium text-[#C00000] tracking-wider">AGGREGATE REPORT</span>
+                  <div className="flex-1 h-px" style={{ background: 'linear-gradient(to left, #C00000, #D1D5DB)' }} />
+                </div>
+
+                <section className="bg-white rounded-xl border border-gray-200 overflow-hidden animate-fade-in-up">
+                  <div className="px-4 py-3 border-b border-gray-100">
+                    <h3 className="text-sm font-bold text-[#1A1A2E]">ผลรวมสัญญาณรบกวน (I_total) แยกตามประเภท Victim</h3>
+                  </div>
+                  <div className="px-4 pb-4 overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b-2 border-gray-200 text-left text-gray-500">
+                          <th className="py-2 pr-3 font-semibold">Victim Type</th>
+                          <th className="py-2 pr-3 font-semibold">I_total (dBm)</th>
+                          <th className="py-2 pr-3 font-semibold">จำนวน Interferer</th>
+                          <th className="py-2 pr-3 font-semibold">Worst Interferer</th>
+                          <th className="py-2 font-semibold">Verdict</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {/* FS Links row */}
+                        {iTotalFs != null && (
+                          <tr className={`${(iTotalFs ?? -200) > thresholdDbm ? 'bg-red-50/30' : 'bg-green-50/30'} hover:bg-gray-50`}>
+                            <td className="py-2 pr-3 font-medium text-[#1A1A2E]">FS Links</td>
+                            <td className="py-2 pr-3 font-mono text-gray-700">{iTotalFs.toFixed(1)}</td>
+                            <td className="py-2 pr-3 font-mono text-gray-600">{uniqueFsInterferers.length}</td>
+                            <td className="py-2 pr-3 font-medium text-gray-700">
+                              {worstFs ? worstFs.interferer.replace(/\(.*\)$/, '').trim() : '—'}
+                            </td>
+                            <td className="py-2">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                (iTotalFs ?? -200) < thresholdDbm ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              }`}>
+                                {(iTotalFs ?? -200) < thresholdDbm ? 'CLEAR' : 'CONFLICT'}
+                              </span>
+                            </td>
+                          </tr>
+                        )}
+                        {/* NEW IMT row */}
+                        {iTotalNewImt != null && (
+                          <tr className={`${(iTotalNewImt ?? -200) > thresholdDbm ? 'bg-red-50/30' : 'bg-green-50/30'} hover:bg-gray-50`}>
+                            <td className="py-2 pr-3 font-medium text-[#1A1A2E]">IMT ใหม่ (NEW IMT)</td>
+                            <td className="py-2 pr-3 font-mono text-gray-700">{iTotalNewImt.toFixed(1)}</td>
+                            <td className="py-2 pr-3 font-mono text-gray-600">{uniqueNewImtInterferers.length}</td>
+                            <td className="py-2 pr-3 font-medium text-gray-700">
+                              {worstNewImt ? worstNewImt.interferer.replace(/\(.*\)$/, '').trim() : '—'}
+                            </td>
+                            <td className="py-2">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                (iTotalNewImt ?? -200) < thresholdDbm ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              }`}>
+                                {(iTotalNewImt ?? -200) < thresholdDbm ? 'CLEAR' : 'CONFLICT'}
+                              </span>
+                            </td>
+                          </tr>
+                        )}
+                        {/* Existing IMT row */}
+                        {iTotalExistingImt != null && (
+                          <tr className={`${(iTotalExistingImt ?? -200) > thresholdDbm ? 'bg-red-50/30' : 'bg-green-50/30'} hover:bg-gray-50`}>
+                            <td className="py-2 pr-3 font-medium text-[#1A1A2E]">IMT เดิม (Existing IMT)</td>
+                            <td className="py-2 pr-3 font-mono text-gray-700">{iTotalExistingImt.toFixed(1)}</td>
+                            <td className="py-2 pr-3 font-mono text-gray-600">{uniqueExistingImtInterferers.length}</td>
+                            <td className="py-2 pr-3 font-medium text-gray-700">
+                              {worstExistingImt ? worstExistingImt.interferer.replace(/\(.*\)$/, '').trim() : '—'}
+                            </td>
+                            <td className="py-2">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                (iTotalExistingImt ?? -200) < thresholdDbm ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              }`}>
+                                {(iTotalExistingImt ?? -200) < thresholdDbm ? 'CLEAR' : 'CONFLICT'}
+                              </span>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </>
+            )
+          })()}
 
           {/* ─── DIVIDER 2: between Log and Calculation Details ─── */}
           {blocks.length > 0 && (
@@ -2103,62 +2247,230 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 </div>
               </div>
 
-              {/* Conflicts detail — ENHANCED */}
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {blocks
-                  .filter((b) => b.status !== 'green')
-                  .map((b, i) => {
-                    const parsed = parseReason(b.reason)
-                    return (
-                      <div
-                        key={i}
-                        className={`text-xs p-3 rounded border ${
-                          b.status === 'red' ? 'bg-red-50/50 border-red-200' : 'bg-gray-50 border-gray-200'
-                        }`}
-                        style={{
-                          borderLeftWidth: '3px',
-                          borderLeftColor: b.status === 'red' ? '#DC2626' : '#9CA3AF',
-                        }}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="font-mono font-bold text-[#1A1A2E]">
-                            {b.freq_low.toFixed(0)}-{b.freq_high.toFixed(0)} MHz
+              {/* RESULTS TABLE — like Pairs Report */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-gray-200 text-left text-gray-500">
+                      <th className="py-2 pr-3 font-semibold">บล็อก (MHz)</th>
+                      <th className="py-2 pr-3 font-semibold">สถานะ</th>
+                      <th className="py-2 pr-3 font-semibold">I_total (dBm)</th>
+                      <th className="py-2 pr-3 font-semibold">Threshold</th>
+                      <th className="py-2 pr-3 font-semibold">Margin</th>
+                      <th className="py-2 font-semibold">เหตุผล</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {sorted.map((b, i) => {
+                      const statusThai = b.status === 'green' ? 'จัดสรรได้' : b.status === 'red' ? 'จัดสรรไม่ได้' : 'ต้องเว้นระยะ'
+                      const rowBg = b.status === 'green' ? '#16A34A' : b.status === 'red' ? '#DC2626' : '#9CA3AF'
+                      const statusLabelBg = b.status === 'green' ? 'bg-green-100 text-green-700' : b.status === 'red' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                      const thresholdDbm = -114.0
+                      const iTotal = (b.i_total_dbm != null && b.i_total_dbm !== undefined && b.i_total_dbm > -200) ? b.i_total_dbm : undefined
+                      const marginDb = iTotal != null ? (iTotal - thresholdDbm) : undefined
+                      const shortReason = b.reason.length > 60 ? b.reason.substring(0, 60) + '...' : b.reason
+                      
+                      return (
+                        <tr key={i} className="group cursor-pointer hover:brightness-95" 
+                          style={{ backgroundColor: rowBg + '15' }}
+                          onClick={() => setSelectedBlockIndex(selectedBlockIndex === i ? null : i)}
+                        >
+                          <td className="py-2 pr-3 font-mono font-bold text-[#1A1A2E]" style={{ borderLeft: `3px solid ${rowBg}` }}>
+                            {b.freq_low.toFixed(0)}-{b.freq_high.toFixed(0)}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusLabelBg}`}>
+                              {statusThai}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3 font-mono text-gray-700">
+                            {iTotal != null ? iTotal.toFixed(1) : '—'}
+                          </td>
+                          <td className="py-2 pr-3 font-mono text-gray-500">
+                            {iTotal != null ? thresholdDbm.toFixed(1) : '—'}
+                          </td>
+                          <td className="py-2 pr-3 font-mono">
+                            <span className={marginDb != null ? (marginDb > 0 ? 'text-red-600' : 'text-green-600') : 'text-gray-400'}>
+                              {marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'}
+                            </span>
+                          </td>
+                          <td className="py-2 text-gray-600 max-w-[300px] truncate" title={b.reason}>
+                            {b.status === 'green' ? 'ว่าง — จัดสรรได้' : shortReason}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Expanded block detail — shown when a row is clicked */}
+              {selectedBlockIndex !== null && sorted[selectedBlockIndex] && (
+                (() => {
+                  const block = sorted[selectedBlockIndex]
+                  const parsed = parseReason(block.reason)
+                  const rowBg = block.status === 'green' ? '#16A34A' : block.status === 'red' ? '#DC2626' : '#9CA3AF'
+                  const thresholdDbm = -114.0
+                  const iTotal = (block.i_total_dbm != null && block.i_total_dbm !== undefined && block.i_total_dbm > -200) ? block.i_total_dbm : undefined
+                  const marginDb = iTotal != null ? (iTotal - thresholdDbm) : undefined
+                  
+                  return (
+                    <div
+                      className="mt-3 p-3 rounded border shadow-sm"
+                      style={{
+                        borderLeftWidth: '4px',
+                        borderLeftColor: rowBg,
+                        backgroundColor: block.status === 'green' ? '#F0FDF4' : block.status === 'red' ? '#FEF2F2' : '#F9FAFB',
+                        borderColor: block.status === 'green' ? '#BBF7D0' : block.status === 'red' ? '#FECACA' : '#E5E7EB',
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-mono font-bold text-[#1A1A2E]">
+                          {block.freq_low.toFixed(0)}-{block.freq_high.toFixed(0)} MHz
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          block.status === 'green' ? 'bg-green-100 text-green-700' :
+                          block.status === 'gray' ? 'bg-gray-100 text-gray-600' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {block.status === 'green' ? 'จัดสรรได้' :
+                           block.status === 'gray' ? 'ต้องเว้นระยะ' : 'จัดสรรไม่ได้'}
+                        </span>
+                        {iTotal != null && (
+                          <span className="text-xs font-mono text-gray-500 ml-auto">
+                            I_total={iTotal.toFixed(1)} dBm | Threshold={thresholdDbm} dBm | Margin={marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'} dB
                           </span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                            b.status === 'red' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {b.status === 'red' ? 'ไม่สามารถจัดสรร' : 'Guard Band'}
-                          </span>
-                        </div>
-
-                        {parsed.conflictType === 'FS' && (
-                          <div className="text-gray-600 space-y-0.5 pl-1">
-                            <div className="text-red-600">ทับซ้อนกับ FS Link: <span className="font-medium">{parsed.linkName}</span></div>
-                            <div className="text-red-600">I={parsed.iValue} dBm {'>'} threshold {parsed.threshold} dBm (เกิน {parsed.exceedDb} dB)</div>
-                          </div>
-                        )}
-
-                        {parsed.conflictType === 'IMT_COCHANNEL' && (
-                          <div className="text-gray-600 space-y-0.5 pl-1">
-                            <div className="text-red-600">Co-channel กับ IMT: <span className="font-medium">{parsed.linkName}</span></div>
-                            <div className="text-red-600">ระยะห่าง {parsed.imtDistance} km {'<'} ขั้นต่ำ {parsed.neededSeparation} km</div>
-                          </div>
-                        )}
-
-                        {parsed.conflictType === 'GUARD' && (
-                          <div className="text-gray-600 space-y-0.5 pl-1">
-                            <div className="text-amber-600">Guard Band — ติดกับ: <span className="font-medium">{parsed.linkName}</span></div>
-                            <div className="text-amber-600">ระยะห่าง {parsed.imtDistance} km {'<'} ขั้นต่ำ {parsed.neededSeparation} km</div>
-                          </div>
-                        )}
-
-                        {!['FS', 'IMT_COCHANNEL', 'GUARD'].includes(parsed.conflictType) && (
-                          <div className="text-gray-500">{b.reason}</div>
                         )}
                       </div>
-                    )
-                  })}
-              </div>
+
+                      {/* Aggregate interference per victim type */}
+                      {block.i_total_to_fs_dbm != null && block.i_total_to_fs_dbm > -200 && (
+                        <div className="text-xs text-gray-600 mb-1">
+                          <span className="font-medium">I_total → FS:</span>{' '}
+                          <span className="font-mono">{block.i_total_to_fs_dbm.toFixed(1)} dBm</span>
+                        </div>
+                      )}
+                      {block.i_total_to_new_imt_dbm != null && block.i_total_to_new_imt_dbm > -200 && (
+                        <div className="text-xs text-gray-600 mb-1">
+                          <span className="font-medium">I_total → IMT ใหม่:</span>{' '}
+                          <span className="font-mono">{block.i_total_to_new_imt_dbm.toFixed(1)} dBm</span>
+                        </div>
+                      )}
+                      {block.i_total_to_existing_imt_dbm != null && block.i_total_to_existing_imt_dbm > -200 && (
+                        <div className="text-xs text-gray-600 mb-1">
+                          <span className="font-medium">I_total → ITM อื่น:</span>{' '}
+                          <span className="font-mono">{block.i_total_to_existing_imt_dbm.toFixed(1)} dBm</span>
+                        </div>
+                      )}
+
+                      {/* Block-specific detail from parsed reason */}
+                      {block.status === 'green' && (
+                        <div className="text-xs text-green-700 space-y-1 mt-2 pt-2 border-t border-green-200">
+                          <div className="flex items-center gap-1 font-medium">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            สามารถจัดสรรได้
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleBlockSelection(block.freq_low); }}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                              selectedBlocks.has(block.freq_low.toString())
+                                ? 'bg-green-200 text-green-800 hover:bg-green-300'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200'
+                            }`}
+                          >
+                            {selectedBlocks.has(block.freq_low.toString()) ? (
+                              <>✓ เลือกแล้ว (คลิกยกเลิก)</>
+                            ) : (
+                              <>+ เลือกบล็อกนี้</>
+                            )}
+                          </button>
+                          {(() => {
+                            const idx = blocks.indexOf(block)
+                            const prevBlock = idx > 0 ? blocks[idx - 1] : null
+                            const nextBlock = idx < blocks.length - 1 ? blocks[idx + 1] : null
+                            const prevIsFsRed = prevBlock?.status === 'red' && prevBlock?.reason?.includes('FS conflict')
+                            const nextIsFsRed = nextBlock?.status === 'red' && nextBlock?.reason?.includes('FS conflict')
+                            if (prevIsFsRed || nextIsFsRed) {
+                              const adjacentFsName = (prevIsFsRed && nextIsFsRed)
+                                ? `FS links บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} และ ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
+                                : prevIsFsRed
+                                  ? `FS link ที่บล็อก ${prevBlock?.freq_low.toFixed(0)}-${prevBlock?.freq_high.toFixed(0)} MHz`
+                                  : `FS link ที่บล็อก ${nextBlock?.freq_low.toFixed(0)}-${nextBlock?.freq_high.toFixed(0)} MHz`
+                              return (
+                                <div className="text-xs text-green-600 bg-green-100/50 rounded p-1.5 mt-1 leading-relaxed">
+                                  บล็อก {block.freq_low.toFixed(0)} MHz — อยู่นอกย่านความถี่ของ {adjacentFsName} {'\n'}
+                                  Adjacent Channel Protection (ACS 33 dB + ACLR 45 dB = 78 dB isolation) เพียงพอ {'\n'}
+                                  จัดสรรได้โดยไม่ต้องใช้ Guard Band กับ FS
+                                </div>
+                              )
+                            }
+                            return null
+                          })()}
+                        </div>
+                      )}
+
+                      {block.status === 'red' && parsed.conflictType === 'FS' && (
+                        <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-red-200">
+                          <div className="flex items-center gap-1 font-medium text-red-700">
+                            <XCircle className="w-3.5 h-3.5" />
+                            ไม่สามารถจัดสรรได้
+                          </div>
+                          <div className="text-red-700">สาเหตุ: ทับซ้อนกับ Fixed Service Link</div>
+                          <div className="text-red-700 space-y-0.5">
+                            {parsed.linkName && <div>&nbsp;&nbsp;&nbsp;• ชื่อ FS Link: {parsed.linkName}</div>}
+                            {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจาก IMT ถึง FS: {parsed.imtDistance} km</div>}
+                            {parsed.iValue && <div>&nbsp;&nbsp;&nbsp;• กำลังสัญญาณรบกวน (I): {parsed.iValue} dBm</div>}
+                            {parsed.threshold && <div>&nbsp;&nbsp;&nbsp;• Threshold: {parsed.threshold} dBm</div>}
+                            {parsed.exceedDb && <div>&nbsp;&nbsp;&nbsp;• เกิน Threshold: {parsed.exceedDb} dB</div>}
+                            {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• {parsed.neededSeparation}</div>}
+                          </div>
+                        </div>
+                      )}
+
+                      {block.status === 'red' && parsed.conflictType === 'IMT_COCHANNEL' && (
+                        <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-red-200">
+                          <div className="flex items-center gap-1 font-medium text-red-700">
+                            <XCircle className="w-3.5 h-3.5" />
+                            ไม่สามารถจัดสรรได้
+                          </div>
+                          <div className="text-red-700">สาเหตุ: ทับซ้อนกับ IMT เครือข่ายอื่น (Co-Channel)</div>
+                          <div className="text-red-700 space-y-0.5">
+                            {parsed.linkName && <div>&nbsp;&nbsp;&nbsp;• ชื่อ IMT: {parsed.linkName}</div>}
+                            {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>}
+                            {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างขั้นต่ำ: {parsed.neededSeparation} km</div>}
+                          </div>
+                        </div>
+                      )}
+
+                      {block.status === 'gray' && parsed.conflictType === 'GUARD' && parsed.linkName && (
+                        <div className="text-xs space-y-1.5 mt-2 pt-2 border-t border-gray-200">
+                          <div className="flex items-center gap-1 font-medium text-gray-700">
+                            <Shield className="w-3.5 h-3.5" />
+                            Guard Band
+                          </div>
+                          <div className="text-gray-600 space-y-0.5">
+                            <div>&nbsp;&nbsp;&nbsp;• ช่องว่างป้องกันระหว่าง IMT: {parsed.linkName}</div>
+                            {parsed.imtDistance && <div>&nbsp;&nbsp;&nbsp;• ระยะห่างจริง: {parsed.imtDistance} km</div>}
+                            {parsed.neededSeparation && <div>&nbsp;&nbsp;&nbsp;• ระยะขั้นต่ำ: {parsed.neededSeparation} km</div>}
+                          </div>
+                        </div>
+                      )}
+
+                      {block.status === 'gray' && (!parsed.linkName) && (
+                        <div className="text-xs text-gray-600 mt-2 pt-2 border-t border-gray-200">
+                          Guard Band — {block.reason}
+                        </div>
+                      )}
+
+                      {block.status === 'red' && parsed.conflictType !== 'FS' && parsed.conflictType !== 'IMT_COCHANNEL' && (
+                        <div className="text-xs text-red-700 mt-2 pt-2 border-t border-red-200">
+                          ไม่สามารถจัดสรรได้ — {block.reason}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()
+              )}
 
               {/* Save button — inside Section 4 at bottom */}
               <div className="mt-4 pt-4 border-t border-gray-200">
