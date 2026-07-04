@@ -15,7 +15,6 @@ import FSLinkManager from './components/FSLinkManager'
 import IMTManager from './components/IMTManager'
 import IMTAddWorkspace from './components/IMTAddWorkspace'
 import QueryPanel from './components/QueryPanel'
-import { FadeIn } from './components/AnimatePresence'
 import { useAuth } from './contexts/AuthContext'
 
 type Tab = 'dashboard' | 'fslinks' | 'imt' | 'search'
@@ -71,7 +70,6 @@ function AuthenticatedApp({
     setWorkspaceCellRadius(cellRadius)
   }, [])
 
-  // Trigger MapView re-fetch when switching to dashboard tab
   useEffect(() => {
     if (tab === 'dashboard') {
       setDashboardRefreshKey(k => k + 1)
@@ -97,10 +95,9 @@ function AuthenticatedApp({
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Tab: Dashboard */}
           <button
             onClick={() => setTab('dashboard')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors active:animate-press ${
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               tab === 'dashboard'
                 ? 'bg-white/20 text-white'
                 : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -109,11 +106,9 @@ function AuthenticatedApp({
             <Layout className="w-4 h-4" />
             Dashboard
           </button>
-
-          {/* Tab: FS Links */}
           <button
             onClick={() => setTab('fslinks')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors active:animate-press ${
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               tab === 'fslinks'
                 ? 'bg-white/20 text-white'
                 : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -122,11 +117,9 @@ function AuthenticatedApp({
             <MapIcon className="w-4 h-4" />
             FS Links
           </button>
-
-          {/* Tab: IMT */}
           <button
             onClick={() => setTab('imt')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors active:animate-press ${
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               tab === 'imt'
                 ? 'bg-white/20 text-white'
                 : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -135,11 +128,9 @@ function AuthenticatedApp({
             <Radio className="w-4 h-4" />
             IMT
           </button>
-
-          {/* Tab: Search */}
           <button
             onClick={() => setTab('search')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors active:animate-press ${
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               tab === 'search'
                 ? 'bg-white/20 text-white'
                 : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -149,7 +140,6 @@ function AuthenticatedApp({
             ค้นหา
           </button>
 
-          {/* Map Style Selector */}
           <div className="flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1">
             <Globe className="w-4 h-4 opacity-70" />
             <select
@@ -163,7 +153,6 @@ function AuthenticatedApp({
             </select>
           </div>
 
-          {/* User info + Logout */}
           <div className="ml-4 flex items-center gap-2 pl-4 border-l border-white/20">
             <span className="text-xs text-white/70">
               {user?.username || 'ผู้ใช้'} ({user?.role || '-'})
@@ -184,46 +173,40 @@ function AuthenticatedApp({
       {tab === 'dashboard' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Dashboard toolbar */}
-          <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shadow-sm z-10">
             <h2 className="text-sm font-semibold text-[#1A1A2E]">
               แผนที่จัดสรรคลื่นความถี่ 4800-4990 MHz
             </h2>
-            <button
-              onClick={handleOpenWorkspace}
-              className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
-            >
-              <PlusCircle className="w-4 h-4" />
-              เพิ่ม IMT
-            </button>
+            {!showDashboardWorkspace && (
+              <button
+                onClick={handleOpenWorkspace}
+                className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+              >
+                <PlusCircle className="w-4 h-4" />
+                เพิ่ม IMT
+              </button>
+            )}
           </div>
 
-          {showDashboardWorkspace ? (
-            /* ─── 60/40 SPLIT: Map left 40%, Workspace right 60% ─── */
-            <div className="flex-1 flex overflow-hidden">
-              {/* Left 40% — Compact Map */}
-              <div className="w-[40%] min-w-[280px] relative border-r border-gray-300">
-                <MapView
-                  key={dashboardRefreshKey}
-                  onMapClick={handleMapClick}
-                  selectedLat={selectedLat}
-                  selectedLon={selectedLon}
-                  blocks={[]}
-                  mapStyle={mapStyle}
-                  cellRadius={workspaceCellRadius}
-                  centerLat={selectedLat}
-                  centerLon={selectedLon}
-                  clickMode="pan"
-                />
-              </div>
+          {/* Map + Workspace overlay — map ALWAYS mounted, never unmounts */}
+          <div className="flex-1 relative overflow-hidden">
+            {/* Full-screen Map — stays mounted; workspace slides over it */}
+            <MapView
+              key={dashboardRefreshKey}
+              onMapClick={handleMapClick}
+              selectedLat={selectedLat}
+              selectedLon={selectedLon}
+              blocks={[]}
+              mapStyle={mapStyle}
+              cellRadius={workspaceCellRadius}
+              centerLat={selectedLat}
+              centerLon={selectedLon}
+              clickMode="pan"
+            />
 
-              {/* Right 60% — Workspace Panel with slide-in animation */}
-              <div
-                className="flex-1 overflow-hidden transition-all duration-300 ease-in-out"
-                style={{
-                  transform: showDashboardWorkspace ? 'translateX(0)' : 'translateX(100%)',
-                  opacity: showDashboardWorkspace ? 1 : 0,
-                }}
-              >
+            {/* Workspace overlay — slides in from right on top of map */}
+            {showDashboardWorkspace && (
+              <div className="absolute inset-y-0 right-0 w-[60%] min-w-[400px] bg-white border-l border-gray-300 shadow-2xl z-20 animate-slide-in-right">
                 <IMTAddWorkspace
                   onBack={handleCloseWorkspace}
                   mode="panel"
@@ -231,22 +214,8 @@ function AuthenticatedApp({
                   onConfirmLocation={handleConfirmLocation}
                 />
               </div>
-            </div>
-          ) : (
-            /* ─── FULL MAP (pan only, no quick analysis) ─── */
-            <div className="flex-1 flex overflow-hidden">
-              <div className="flex-1 relative">
-                <MapView
-                  onMapClick={handleMapClick}
-                  selectedLat={selectedLat}
-                  selectedLon={selectedLon}
-                  blocks={[]}
-                  mapStyle={mapStyle}
-                  clickMode="pan"
-                />
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       ) : tab === 'fslinks' ? (
         <div className="flex-1 overflow-hidden">
