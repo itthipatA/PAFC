@@ -352,8 +352,13 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   }, [fetchWithAuth])
 
   // Highlight related stations — fly to bounds + pulse markers
+  const highlightInProgressRef = useRef(false)
+
   useEffect(() => {
     if (!highlightStationNames || highlightStationNames.length === 0 || !mapRef.current) return
+    if (highlightInProgressRef.current) return // Prevent re-entrant calls
+
+    highlightInProgressRef.current = true
 
     const map = mapRef.current
     const fsLinks = fsLinksDataRef.current
@@ -408,7 +413,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       }
     }
 
-    if (targetCoords.length === 0) return
+    if (targetCoords.length === 0) { highlightInProgressRef.current = false; return }
 
     // Fly to bounds
     const paddingRight = workspaceOpen && containerRef.current
@@ -438,6 +443,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       for (const el of pulsedElements) {
         el.classList.remove('animate-pulse-map')
       }
+      highlightInProgressRef.current = false
     }
   }, [highlightStationNames, centerLat, centerLon, workspaceOpen])
 

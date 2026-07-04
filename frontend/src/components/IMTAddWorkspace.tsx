@@ -981,6 +981,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       // Trigger result reveal animation with stagger
       const resultCount = (data.blocks?.length || 0) + (data.pairs?.length || 0)
       sync.syncResults(resultCount)
+
+      // Flag that analysis is complete — next render will auto-highlight stations
+      highlightStationsRef.current = true
     } catch (err) {
       console.error('Analysis failed:', err)
       setLogLines((prev) => [...prev, '', 'ERROR: การวิเคราะห์ล้มเหลว กรุณาลองใหม่'])
@@ -1052,11 +1055,16 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   }, [pairResults, pairs])
 
   // Auto-highlight related stations on map when analysis results come in
+  // Called directly from handleCalculate after analysis completes
+  const highlightStationsRef = useRef(false)
+
   useEffect(() => {
-    if (mode === 'panel' && onShowStations && blocks.length > 0 && relatedStations.length > 0) {
+    // Only trigger highlight ONCE after analysis — not on every render
+    if (highlightStationsRef.current && mode === 'panel' && onShowStations && relatedStations.length > 0) {
       onShowStations(relatedStations)
+      highlightStationsRef.current = false
     }
-  }, [mode, onShowStations, relatedStations, blocks.length])
+  }, [relatedStations])
 
   const handleSave = useCallback(async () => {
     if (!name.trim() || !operator.trim()) {
