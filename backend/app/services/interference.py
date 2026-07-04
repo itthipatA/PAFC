@@ -157,6 +157,9 @@ class InterferenceResult:
     # Phase 2 output
     blocks: list[BlockResult] = field(default_factory=list)
 
+    # Phase 3 output — per-block max EIRP limits
+    block_limits: list = field(default_factory=list)
+
     # Metadata
     summary: dict = field(default_factory=dict)
     verification: dict = field(default_factory=dict)
@@ -627,6 +630,15 @@ class InterferenceEngine:
             max_eirp=max_eirp,
         )
 
+        # ── Phase 3: Per-block EIRP limits ──
+        block_limits = self.compute_per_block_eirp_limits(
+            blocks=blocks,
+            pair_results=pair_results,
+            current_eirp=max_eirp,
+            band_start=band_start,
+            band_end=band_end,
+        )
+
         # ── Summary ──
         summary = {
             "total_blocks": len(blocks),
@@ -653,6 +665,7 @@ class InterferenceEngine:
             pairs=pairs,
             pair_results=pair_results,
             blocks=blocks,
+            block_limits=block_limits,
             summary=summary,
             verification=verification,
             computation_time_ms=computation_time_ms,
@@ -1463,6 +1476,152 @@ class InterferenceEngine:
             freq += block_size
 
         return blocks
+
+    # ══════════════════════════════════════════════════════════
+    # PHASE 3: PER-BLOCK EIRP LIMITS
+    # ══════════════════════════════════════════════════════════
+
+    def compute_per_block_eirp_limits(
+        self,
+        blocks: list[BlockResult],
+        pair_results: list[PairResult],
+        current_eirp: float,
+        band_start: float,
+        band_end: float,
+    ) -> list[dict]:
+        """Phase 3: Compute max achievable EIRP per block.
+
+        For GREEN blocks: max EIRP = current + min margin across NEW_IMT-as-interferer pairs.
+          Only pairs where NEW_IMT is the interferer depend on EIRP.
+          FS→IMT and EXISTING_IMT→NEW_IMT pairs are independent → they limit the block
+          regardless of EIRP (checked via i_total_to_new_imt_dbm).
+
+        For RED blocks: required EIRP reduction to bring block under threshold.
+          If i_total_to_new_imt > threshold, reducing own EIRP won't help
+          (interference comes from others).
+
+        Returns per-block dict with max_eirp_dbm, achievable_radius, limiting_factor.
+        """
+        threshold_dbm = settings.interference_threshold_dbm
+        limits = []
+
+        for block in blocks:
+            freq_low = block.freq_low
+            freq_high = block.freq_high
+
+            # Per-pair margins for NEW_IMT-as-interferer pairs affecting this block
+            per_pair_margins: list[dict] = []
+
+            for pr in pair_results:
+                if not freq_overlap(freq_low, freq_high,
+                                   pr.pair.freq_overlap_low, pr.pair.freq_overlap_high):
+                    continue
+
+                # Only pairs where NEW_IMT is the interferer change with EIRP
+                if pr.pair.interferer_type != "NEW_IMT":
+                    continue
+
+                margin = threshold_dbm - pr.i_dbm
+                per_pair_margins.append({
+                    'victim_name': pr.pair.victim_name,
+                    'victim_type': pr.pair.victim_type,
+                    'direction': pr.pair.direction,
+                    'current_i_dbm': round(pr.i_dbm, 1),
+                    'margin_db': round(margin, 1),
+                })
+
+            # Check if interference from others (independent of EIRP) blocks this
+            others_block = block.i_total_to_new_imt_dbm > threshold_dbm
+
+            if block.status == 'green':
+                if per_pair_margins:
+                    # Most restrictive pair = smallest margin
+                    restrictive = min(per_pair_margins, key=lambda x: x['margin_db'])
+                    max_eirp = current_eirp + restrictive['margin_db']
+                    max_eirp = max(max_eirp, 0)  # Floor at 0 dBm
+                    margin_from_current = restrictive['margin_db']
+                    limiting = f"{restrictive['victim_name']} ({restrictive['direction']}, margin={margin_from_current:.1f} dB)"
+                else:
+                    # No interfering pairs — unrestricted up to regulatory max
+                    max_eirp = 60  # dBm regulatory cap
+                    margin_from_current = 60 - current_eirp
+                    limiting = "ไม่มี interferer (unrestricted)"
+
+                limits.append({
+                    'freq_low': freq_low,
+                    'freq_high': freq_high,
+                    'status': 'green',
+                    'current_eirp_dbm': round(current_eirp, 1),
+                    'max_eirp_dbm': round(max_eirp, 1),
+                    'margin_db': round(margin_from_current, 1),
+                    'limiting_factor': limiting,
+                    'pairs_checked': len(per_pair_margins),
+                })
+
+            elif block.status == 'red':
+                # Check if reducing EIRP would help
+                if others_block and (not per_pair_margins or 
+                    all(m['margin_db'] > 0 for m in per_pair_margins)):
+                    # Interference from others → reducing EIRP won't help
+                    limits.append({
+                        'freq_low': freq_low,
+                        'freq_high': freq_high,
+                        'status': 'red',
+                        'current_eirp_dbm': round(current_eirp, 1),
+                        'reducible': False,
+                        'reason': (
+                            f"Interference from FS/existing-IMT (I_total={block.i_total_to_new_imt_dbm:.1f} dBm "
+                            f"> threshold {threshold_dbm:.0f} dBm) — "
+                            f"การลดกำลังส่งของตัวเองไม่ช่วย เพราะถูกรบกวนจากระบบอื่น"
+                        ),
+                    })
+                elif per_pair_margins:
+                    # Can be made green by reducing EIRP
+                    worst = min(per_pair_margins, key=lambda x: x['margin_db'])
+                    if worst['margin_db'] < 0:
+                        required_reduction = -worst['margin_db']
+                        max_eirp_if_reduced = max(current_eirp - required_reduction, 0)
+                        limits.append({
+                            'freq_low': freq_low,
+                            'freq_high': freq_high,
+                            'status': 'red',
+                            'current_eirp_dbm': round(current_eirp, 1),
+                            'reducible': True,
+                            'required_reduction_db': round(required_reduction, 1),
+                            'max_eirp_if_reduced_dbm': round(max_eirp_if_reduced, 1),
+                            'limiting_factor': (
+                                f"{worst['victim_name']} ({worst['direction']}, "
+                                f"I={worst['current_i_dbm']} dBm, exceed {required_reduction:.1f} dB)"
+                            ),
+                        })
+                    else:
+                        limits.append({
+                            'freq_low': freq_low,
+                            'freq_high': freq_high,
+                            'status': 'red',
+                            'current_eirp_dbm': round(current_eirp, 1),
+                            'reducible': False,
+                            'reason': block.reason,
+                        })
+                else:
+                    limits.append({
+                        'freq_low': freq_low,
+                        'freq_high': freq_high,
+                        'status': 'red',
+                        'current_eirp_dbm': round(current_eirp, 1),
+                        'reducible': False,
+                        'reason': block.reason,
+                    })
+
+            elif block.status == 'gray':
+                limits.append({
+                    'freq_low': freq_low,
+                    'freq_high': freq_high,
+                    'status': 'gray',
+                    'reason': block.reason,
+                })
+
+        return limits
 
     # ══════════════════════════════════════════════════════════
     # RISK CLASSIFICATION

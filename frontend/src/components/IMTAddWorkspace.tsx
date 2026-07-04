@@ -4,7 +4,7 @@ import { circle } from '@turf/turf'
 import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal, ChevronUp, ChevronDown, ChevronRight, Eye } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
-import type { BlockResult, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff, AssumptionItem } from '../types'
+import type { BlockResult, BlockEirpLimit, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff, AssumptionItem } from '../types'
 import type { HighlightStation } from './MapView'
 import { useSyncAnimation } from '../hooks/useSyncAnimation'
 import { MiniMap, getCoverageColorForModel } from './MiniMap'
@@ -776,6 +776,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [maxEirp, setMaxEirp] = useState(23)
   const [autoEirp, setAutoEirp] = useState(true)
   const [coverageInfo, setCoverageInfo] = useState<CoverageInfo | null>(null)
+  const [blockLimits, setBlockLimits] = useState<BlockEirpLimit[]>([])
   const [tradeoff, setTradeoff] = useState<TradeOff | null>(null)
   const [propagationModel, setPropagationModel] = useState('free_space')
   const [antennaType, setAntennaType] = useState('omni')
@@ -985,6 +986,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       if (data.tradeoff) {
         setTradeoff(data.tradeoff)
       }
+      setBlockLimits(data.block_limits || [])
       // Use backend-provided EIRP if autoEIRP was used
       const effectiveEirp = data.coverage?.used_eirp_dbm ?? maxEirp
       setLogLines(generateNarrativeLog(
@@ -2318,6 +2320,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       <th className="py-2 pr-3 font-semibold">I_total (dBm)</th>
                       <th className="py-2 pr-3 font-semibold">Threshold</th>
                       <th className="py-2 pr-3 font-semibold">Margin</th>
+                      <th className="py-2 pr-3 font-semibold">Max EIRP</th>
                       <th className="py-2 font-semibold">เหตุผล</th>
                     </tr>
                   </thead>
@@ -2386,6 +2389,22 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                               <span className={marginDb != null ? (marginDb > 0 ? 'text-red-600' : 'text-green-600') : 'text-gray-400'}>
                                 {marginDb != null ? (marginDb > 0 ? '+' : '') + marginDb.toFixed(1) : '—'}
                               </span>
+                            </td>
+                            <td className="py-2 pr-3 font-mono">
+                              {(() => {
+                                const lim = blockLimits.find(l => l.freq_low === b.freq_low)
+                                if (!lim) return <span className="text-gray-400">—</span>
+                                if (lim.status === 'green' && lim.max_eirp_dbm != null) {
+                                  return <span className="text-green-700 font-semibold">{lim.max_eirp_dbm.toFixed(1)} dBm</span>
+                                }
+                                if (lim.status === 'red' && lim.reducible && lim.max_eirp_if_reduced_dbm != null) {
+                                  return <span className="text-amber-600">≤{lim.max_eirp_if_reduced_dbm.toFixed(1)} dBm</span>
+                                }
+                                if (lim.status === 'red' && !lim.reducible) {
+                                  return <span className="text-red-500 text-[10px]" title={lim.reason}>ลดเองไม่ช่วย</span>
+                                }
+                                return <span className="text-gray-400">—</span>
+                              })()}
                             </td>
                             <td className="py-2 text-gray-600 max-w-[300px] truncate" title={prefixedReason}>
                               {prefixedReason.length > 70 ? prefixedReason.substring(0, 70) + '...' : prefixedReason}
@@ -2626,6 +2645,84 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   </tbody>
                 </table>
               </div>
+
+              {/* ── Assurance Summary (Phase 28) ── */}
+              {blockLimits.length > 0 && (
+                <div className="mt-3 p-4 bg-gradient-to-r from-[#1A1A2E] to-[#2D2D44] rounded-lg text-white">
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-green-400" />
+                    ผลการประเมิน — Assurance Summary
+                  </h4>
+                  {(() => {
+                    const green = blockLimits.filter(l => l.status === 'green')
+                    const redReducible = blockLimits.filter(l => l.status === 'red' && l.reducible)
+                    const redNonReducible = blockLimits.filter(l => l.status === 'red' && !l.reducible)
+                    
+                    const bestGreen = green.length > 0 
+                      ? green.reduce((best, l) => (l.max_eirp_dbm ?? 0) > (best.max_eirp_dbm ?? 0) ? l : best, green[0])
+                      : null
+                    const worstMargin = green.length > 0
+                      ? green.reduce((worst, l) => (l.margin_db ?? 999) < (worst.margin_db ?? 999) ? l : worst, green[0])
+                      : null
+                    
+                    return (
+                      <div className="space-y-2 text-xs">
+                        {/* Green blocks summary */}
+                        {green.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+                            <span>
+                              <span className="font-semibold text-green-400">{green.length} บล็อก</span>
+                              {' '}จัดสรรได้ ({green.length * 10} MHz)
+                              {bestGreen && (
+                                <> — กำลังส่งสูงสุด <span className="font-mono font-bold text-green-300">{bestGreen.max_eirp_dbm?.toFixed(1)} dBm</span></>
+                              )}
+                              {worstMargin && (
+                                <> (margin ต่ำสุด <span className={`font-mono ${(worstMargin.margin_db ?? 0) < 6 ? 'text-amber-300' : 'text-green-300'}`}>{worstMargin.margin_db?.toFixed(1)} dB</span>)</>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        {/* Red-reducible */}
+                        {redReducible.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                            <span>
+                              <span className="font-semibold text-amber-400">{redReducible.length} บล็อก</span>
+                              {' '}จัดสรรได้ถ้าลดกำลังส่ง — สูงสุด{' '}
+                              <span className="font-mono font-bold text-amber-300">
+                                {Math.min(...redReducible.map(l => l.max_eirp_if_reduced_dbm ?? 999)).toFixed(1)} dBm
+                              </span>
+                            </span>
+                          </div>
+                        )}
+                        {/* Red-non-reducible */}
+                        {redNonReducible.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                            <span>
+                              <span className="font-semibold text-red-400">{redNonReducible.length} บล็อก</span>
+                              {' '}จัดสรรไม่ได้ — ถูกรบกวนจากระบบอื่น (ลดกำลังส่งก็ไม่ช่วย)
+                            </span>
+                          </div>
+                        )}
+                        {/* Bottom line */}
+                        <div className="pt-2 mt-2 border-t border-white/10 text-[10px] text-white/50">
+                          {green.length > 0 && redReducible.length === 0 && redNonReducible.length === 0 && (
+                            <>✅ ตำแหน่งนี้ไม่มีผลกระทบต่อระบบอื่น — จัดสรรได้เต็มที่</>
+                          )}
+                          {redNonReducible.length > 0 && (
+                            <>⚠️ มี {redNonReducible.length} บล็อกที่ไม่สามารถจัดสรรได้เนื่องจากถูกรบกวนจาก FS/IMT อื่น — แนะนำให้ย้ายตำแหน่ง</>
+                          )}
+                          {redReducible.length > 0 && redNonReducible.length === 0 && (
+                            <>💡 ลดกำลังส่งลงจะทำให้จัดสรรได้ทุกบล็อก — พิจารณาลด cell radius</>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
 
               {/* Save button — inside Section 4 at bottom */}
               <div className="mt-4 pt-4 border-t border-gray-200">

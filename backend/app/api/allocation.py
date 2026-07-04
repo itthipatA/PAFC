@@ -223,7 +223,10 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         # Metadata
         "summary": result.summary,
         "verification": result.verification,
-        "computation_time_ms": round(result.computation_time_ms, 1),
+        "computation_time_ms": result.computation_time_ms,
+
+        # Phase 3: Per-block EIRP limits
+        "block_limits": result.block_limits,
         "model_used": model_name,
         "neighbor_imts_checked": len(neighbor_imts),
         "fs_links_checked": len(fs_links),

@@ -201,6 +201,24 @@ export interface AnalyzeResponse {
   tradeoff?: TradeOff
   computation_time_ms?: number
   model_used?: string
+  block_limits?: BlockEirpLimit[]  // Phase 28: per-block max EIRP limits
+}
+
+// ─── Phase 28: Per-Block EIRP Limits ──────────────────────────────────────────
+
+export interface BlockEirpLimit {
+  freq_low: number
+  freq_high: number
+  status: 'green' | 'red' | 'gray'
+  current_eirp_dbm?: number
+  max_eirp_dbm?: number           // for green blocks: max allowed EIRP
+  margin_db?: number              // how much headroom from current EIRP
+  limiting_factor?: string        // which interferer/victim limits this block
+  pairs_checked?: number          // how many NEW_IMT-as-interferer pairs
+  reducible?: boolean             // for red blocks: can reducing EIRP help?
+  required_reduction_db?: number  // for red blocks: how much to reduce
+  max_eirp_if_reduced_dbm?: number // for reducible red blocks: max EIRP after reduction
+  reason?: string                 // explanation (gray blocks, non-reducible red)
 }
 
 // ─── Engineering Assumptions ──────────────────────────────────────────────────
