@@ -18,9 +18,15 @@ interface MapViewProps {
   cellRadius?: number
   centerLat?: number | null
   centerLon?: number | null
-  clickMode?: 'place' | 'pan'
+  clickMode?: 'place' | 'pan' | 'draw_polygon'
   workspaceOpen?: boolean
   highlightStationNames?: HighlightStation[]
+  polygonVertices?: [number, number][]
+  packResults?: {
+    points: { lat: number; lon: number; type: string }[]
+    centroid: { lat: number; lon: number }
+    cell_radius_m?: number
+  } | null
 }
 
 // Map styles
@@ -241,7 +247,7 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames, polygonVertices, packResults }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
@@ -286,6 +292,9 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       if (clickMode === 'place') {
         onMapClick(e.lngLat.lat, e.lngLat.lng)
       }
+      if (clickMode === 'draw_polygon') {
+        onMapClick(e.lngLat.lat, e.lngLat.lng)
+      }
     })
 
     mapRef.current = map
@@ -311,6 +320,20 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     const style = MAP_STYLES[mapStyle] || MAP_STYLES.positron
     source.setTiles([style.url])
   }, [mapStyle])
+
+  // Update cursor based on click mode
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current
+    const canvas = map.getCanvas()
+    if (clickMode === 'draw_polygon') {
+      canvas.style.cursor = 'crosshair'
+    } else {
+      canvas.style.cursor = 'grab'
+      map.once('dragstart', () => { canvas.style.cursor = 'grabbing' })
+      map.once('dragend', () => { canvas.style.cursor = 'grab' })
+    }
+  }, [clickMode])
 
   // Auto-pan when centerLat/centerLon change
   useEffect(() => {
@@ -449,7 +472,317 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     }
   }, [highlightStationNames, centerLat, centerLon, workspaceOpen])
 
+  // ─── Polygon Drawing Layers ────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current
+
+    // Clean up previous polygon layers
+    const sourcesToRemove = ['polygon-land', 'polygon-vertices', 'pack-circles', 'centroid-marker']
+    sourcesToRemove.forEach(src => {
+      if (map.getLayer(src + '-layer')) map.removeLayer(src + '-layer')
+      if (map.getLayer(src + '-outline')) map.removeLayer(src + '-outline')
+      if (map.getLayer(src + '-label')) map.removeLayer(src + '-label')
+      if (map.getSource(src)) map.removeSource(src)
+    })
+
+    // A. Draw polygon fill if we have enough vertices
+    if (polygonVertices && polygonVertices.length >= 3) {
+      // Close the polygon by appending first vertex
+      const coords: [number, number][] = [...polygonVertices]
+      if (
+        coords[0][0] !== coords[coords.length - 1][0] ||
+        coords[0][1] !== coords[coords.length - 1][1]
+      ) {
+        coords.push(coords[0])
+      }
+
+      const polygonGeoJSON: GeoJSON.Feature = {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [coords],
+        },
+        properties: {},
+      }
+
+      map.addSource('polygon-land', {
+        type: 'geojson',
+        data: polygonGeoJSON,
+      })
+
+      map.addLayer({
+        id: 'polygon-land-layer',
+        type: 'fill',
+        source: 'polygon-land',
+        paint: {
+          'fill-color': '#C00000',
+          'fill-opacity': 0.15,
+        },
+      })
+
+      map.addLayer({
+        id: 'polygon-land-outline',
+        type: 'line',
+        source: 'polygon-land',
+        paint: {
+          'line-color': '#C00000',
+          'line-width': 2,
+          'line-opacity': 0.6,
+          'line-dasharray': [4, 2],
+        },
+      })
+
+      // B. Vertex markers
+      const vertexFeatures: GeoJSON.Feature[] = polygonVertices.map(
+        (v: [number, number], i: number) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: v },
+          properties: { index: i + 1 },
+        })
+      )
+
+      map.addSource('polygon-vertices', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: vertexFeatures },
+      })
+
+      map.addLayer({
+        id: 'polygon-vertices-layer',
+        type: 'circle',
+        source: 'polygon-vertices',
+        paint: {
+          'circle-radius': 6,
+          'circle-color': '#C00000',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#FFFFFF',
+        },
+      })
+    }
+
+    // C. Pack result circles
+    if (packResults && packResults.points && packResults.points.length > 0) {
+      const cellRadiusM = packResults.cell_radius_m || 500
+
+      const circleFeatures: any[] = []
+      packResults.points.forEach((p) => {
+        try {
+          const c = circle([p.lon, p.lat], cellRadiusM / 1000, {
+            steps: 64,
+            units: 'kilometers',
+          })
+          circleFeatures.push(c)
+        } catch (_e) {
+          // skip invalid circle
+        }
+      })
+
+      if (circleFeatures.length > 0) {
+        map.addSource('pack-circles', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: circleFeatures },
+        })
+
+        map.addLayer({
+          id: 'pack-circles-layer',
+          type: 'fill',
+          source: 'pack-circles',
+          paint: {
+            'fill-color': '#16A34A',
+            'fill-opacity': 0.1,
+          },
+        })
+
+        map.addLayer({
+          id: 'pack-circles-outline',
+          type: 'line',
+          source: 'pack-circles',
+          paint: {
+            'line-color': '#16A34A',
+            'line-width': 1,
+            'line-opacity': 0.5,
+          },
+        })
+      }
+    }
+
+    // D. Centroid marker
+    if (packResults && packResults.centroid) {
+      const centroidFeature: GeoJSON.Feature = {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [packResults.centroid.lon, packResults.centroid.lat],
+        },
+        properties: {},
+      }
+
+      map.addSource('centroid-marker', {
+        type: 'geojson',
+        data: centroidFeature,
+      })
+
+      map.addLayer({
+        id: 'centroid-marker-layer',
+        type: 'circle',
+        source: 'centroid-marker',
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#F59E0B',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#FFFFFF',
+        },
+      })
+    }
+  }, [polygonVertices, packResults])
+
   return <div ref={containerRef} className="w-full h-full" />
+}
+
+// ── Polygon Creator Layers ─────────────────────────────────────────
+
+const POLYGON_LAYER_IDS = {
+  polygonFill: 'polygon-land-fill',
+  polygonOutline: 'polygon-land-outline',
+  polygonSource: 'polygon-land-source',
+  packCirclesSource: 'pack-circles-source',
+  packCirclesFill: 'pack-circles-fill',
+  centroidMarkerSource: 'centroid-marker-source',
+  centroidMarkerFill: 'centroid-marker-fill',
+} as const
+
+function removePolygonLayers(map: maplibregl.Map) {
+  const ids = Object.values(POLYGON_LAYER_IDS)
+  ids.forEach(id => {
+    if (map.getLayer(id)) map.removeLayer(id)
+  })
+  // Sources
+  const srcIds = [POLYGON_LAYER_IDS.polygonSource, POLYGON_LAYER_IDS.packCirclesSource, POLYGON_LAYER_IDS.centroidMarkerSource]
+  srcIds.forEach(sid => {
+    if (map.getSource(sid)) map.removeSource(sid)
+  })
+}
+
+function drawPolygonLayers(
+  map: maplibregl.Map,
+  vertices: [number, number][],
+  packResults: {
+    points: { lat: number; lon: number; type: string }[]
+    centroid: { lat: number; lon: number }
+    cell_radius_m?: number
+  } | null | undefined,
+) {
+  // 1. Polygon fill + outline
+  if (vertices.length >= 3) {
+    // Close polygon by adding first vertex at end if needed
+    const coords = [...vertices]
+    const first = coords[0]
+    const last = coords[coords.length - 1]
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      coords.push(first)
+    }
+
+    const geoJSON = {
+      type: 'Polygon' as const,
+      coordinates: [coords],
+    }
+
+    // Remove old
+    if (map.getLayer(POLYGON_LAYER_IDS.polygonOutline)) map.removeLayer(POLYGON_LAYER_IDS.polygonOutline)
+    if (map.getLayer(POLYGON_LAYER_IDS.polygonFill)) map.removeLayer(POLYGON_LAYER_IDS.polygonFill)
+    if (map.getSource(POLYGON_LAYER_IDS.polygonSource)) map.removeSource(POLYGON_LAYER_IDS.polygonSource)
+
+    map.addSource(POLYGON_LAYER_IDS.polygonSource, {
+      type: 'geojson',
+      data: geoJSON as any,
+    })
+
+    map.addLayer({
+      id: POLYGON_LAYER_IDS.polygonFill,
+      type: 'fill',
+      source: POLYGON_LAYER_IDS.polygonSource,
+      paint: {
+        'fill-color': '#C00000',
+        'fill-opacity': 0.12,
+      },
+    })
+
+    map.addLayer({
+      id: POLYGON_LAYER_IDS.polygonOutline,
+      type: 'line',
+      source: POLYGON_LAYER_IDS.polygonSource,
+      paint: {
+        'line-color': '#C00000',
+        'line-opacity': 0.5,
+        'line-width': 2,
+        'line-dasharray': [4, 3],
+      },
+    })
+  }
+
+  // 2. Pack result circles
+  if (packResults?.points?.length) {
+    const features = packResults.points.map(p => {
+      try {
+        const cellRadius = packResults.cell_radius_m || 500
+        const km = cellRadius / 1000
+        return circle([p.lon, p.lat], km, { steps: 48, units: 'kilometers' })
+      } catch {
+        // Fallback: tiny point
+        return { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] } }
+      }
+    })
+
+    if (map.getLayer(POLYGON_LAYER_IDS.packCirclesFill)) map.removeLayer(POLYGON_LAYER_IDS.packCirclesFill)
+    if (map.getSource(POLYGON_LAYER_IDS.packCirclesSource)) map.removeSource(POLYGON_LAYER_IDS.packCirclesSource)
+
+    map.addSource(POLYGON_LAYER_IDS.packCirclesSource, {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: features as any[],
+      },
+    })
+
+    map.addLayer({
+      id: POLYGON_LAYER_IDS.packCirclesFill,
+      type: 'fill',
+      source: POLYGON_LAYER_IDS.packCirclesSource,
+      paint: {
+        'fill-color': '#16A34A',
+        'fill-opacity': 0.08,
+      },
+    })
+  }
+
+  // 3. Centroid marker
+  if (packResults?.centroid) {
+    const { lat, lon } = packResults.centroid
+
+    if (map.getLayer(POLYGON_LAYER_IDS.centroidMarkerFill)) map.removeLayer(POLYGON_LAYER_IDS.centroidMarkerFill)
+    if (map.getSource(POLYGON_LAYER_IDS.centroidMarkerSource)) map.removeSource(POLYGON_LAYER_IDS.centroidMarkerSource)
+
+    map.addSource(POLYGON_LAYER_IDS.centroidMarkerSource, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [lon, lat] },
+        properties: {},
+      } as any,
+    })
+
+    map.addLayer({
+      id: POLYGON_LAYER_IDS.centroidMarkerFill,
+      type: 'circle',
+      source: POLYGON_LAYER_IDS.centroidMarkerSource,
+      paint: {
+        'circle-radius': 8,
+        'circle-color': '#F59E0B',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#FFFFFF',
+      },
+    })
+  }
 }
 
 function drawCellRadius(map: maplibregl.Map, lat: number, lon: number, radiusM?: number) {

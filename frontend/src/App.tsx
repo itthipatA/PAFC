@@ -8,6 +8,7 @@ import {
   Search,
   Globe,
   PlusCircle,
+  Octagon,
 } from 'lucide-react'
 import MapView, { MAP_STYLES } from './components/MapView'
 import type { HighlightStation } from './components/MapView'
@@ -15,10 +16,11 @@ import LoginPage from './components/LoginPage'
 import FSLinkManager from './components/FSLinkManager'
 import IMTManager from './components/IMTManager'
 import IMTAddWorkspace from './components/IMTAddWorkspace'
+import PolygonCreator from './components/PolygonCreator'
 import QueryPanel from './components/QueryPanel'
 import { useAuth } from './contexts/AuthContext'
 
-type Tab = 'dashboard' | 'fslinks' | 'imt' | 'search'
+type Tab = 'dashboard' | 'fslinks' | 'imt' | 'polygon' | 'search'
 
 export default function App() {
   const { isAuthenticated, user, logout } = useAuth()
@@ -47,6 +49,13 @@ function AuthenticatedApp({
   const [workspaceClosing, setWorkspaceClosing] = useState(false)
   const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
   const [highlightStationNames, setHighlightStationNames] = useState<HighlightStation[] | undefined>(undefined)
+
+  // Polygon creator state
+  const [showPolygonWorkspace, setShowPolygonWorkspace] = useState(false)
+  const [polygonClosing, setPolygonClosing] = useState(false)
+  const [polygonVertices, setPolygonVertices] = useState<[number, number][]>([])
+  const [polygonPackResults, setPolygonPackResults] = useState<any>(null)
+  const [polygonDrawingMode, setPolygonDrawingMode] = useState(false)
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
@@ -141,6 +150,17 @@ function AuthenticatedApp({
           >
             <Radio className="w-4 h-4" />
             IMT
+          </button>
+          <button
+            onClick={() => setTab('polygon')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === 'polygon'
+                ? 'bg-white/20 text-white'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            <Octagon className="w-4 h-4" />
+            สร้างโพลีกอน
           </button>
           <button
             onClick={() => setTab('search')}
@@ -244,6 +264,77 @@ function AuthenticatedApp({
       ) : tab === 'imt' ? (
         <div className="flex-1 overflow-hidden">
           <IMTManager />
+        </div>
+      ) : tab === 'polygon' ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shadow-sm z-10">
+            <h2 className="text-sm font-semibold text-[#1A1A2E]">
+              สร้างโพลีกอนที่ดิน
+            </h2>
+            {!showPolygonWorkspace && (
+              <button
+                onClick={() => {
+                  setShowPolygonWorkspace(true)
+                  setPolygonVertices([])
+                  setPolygonPackResults(null)
+                }}
+                className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+              >
+                <PlusCircle className="w-4 h-4" />
+                เพิ่มที่ดิน
+              </button>
+            )}
+          </div>
+          <div className="flex-1 relative overflow-hidden">
+            <MapView
+              key={dashboardRefreshKey}
+              onMapClick={(lat, lon) => {
+                if (polygonDrawingMode) {
+                  setPolygonVertices(prev => [...prev, [lon, lat]])
+                }
+              }}
+              selectedLat={selectedLat}
+              selectedLon={selectedLon}
+              blocks={[]}
+              mapStyle={mapStyle}
+              cellRadius={workspaceCellRadius}
+              centerLat={selectedLat}
+              centerLon={selectedLon}
+              clickMode={polygonDrawingMode ? 'draw_polygon' : 'pan'}
+              workspaceOpen={showPolygonWorkspace}
+              highlightStationNames={undefined}
+              polygonVertices={polygonVertices}
+              packResults={polygonPackResults}
+            />
+            {(showPolygonWorkspace || polygonClosing) && (
+              <div
+                className={`absolute inset-y-0 right-0 w-[60%] min-w-[400px] bg-white border-l border-gray-300 shadow-2xl z-20 ${
+                  polygonClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
+                }`}
+              >
+                <PolygonCreator
+                  onClose={() => {
+                    setPolygonClosing(true)
+                    setTimeout(() => {
+                      setShowPolygonWorkspace(false)
+                      setPolygonClosing(false)
+                      setPolygonDrawingMode(false)
+                      setPolygonVertices([])
+                      setPolygonPackResults(null)
+                    }, 600)
+                  }}
+                  vertices={polygonVertices}
+                  onVerticesChange={setPolygonVertices}
+                  packResults={polygonPackResults}
+                  onPackResultsChange={setPolygonPackResults}
+                  drawingMode={polygonDrawingMode}
+                  onDrawingModeChange={setPolygonDrawingMode}
+                  dashboardRefreshKey={dashboardRefreshKey}
+                  onDashboardRefresh={() => setDashboardRefreshKey(k => k + 1)}
+                />
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="flex-1 overflow-hidden">
