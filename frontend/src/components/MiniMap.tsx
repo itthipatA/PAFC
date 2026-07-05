@@ -252,7 +252,7 @@ export function MiniMap({
           transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px) rotate(${rotate}deg)`,
           transformOrigin: 'center center',
         }}
-      >
+        >
         {/* Background */}
         <defs>
           {/* Grid pattern */}
