@@ -549,10 +549,13 @@ async def analyze_parcel_endpoint(data: dict, db: AsyncSession = Depends(get_db)
     sector_beamwidth_deg = float(data.get("sector_beamwidth_deg", 120) or 120)
     sector_azimuth_deg = float(data.get("sector_azimuth_deg", 0) or 0)
     
-    # Get FS links
-    db_fs = db.query(FSLink).all()
+    # Get FS links (async)
+    fs_query = select(FSLink).where(FSLink.status == "active")
+    fs_result = await db.execute(fs_query)
+    fs_links_raw = fs_result.scalars().all()
+    
     fs_links = []
-    for fs in db_fs:
+    for fs in fs_links_raw:
         fs_links.append(FSLinkData(
             id=str(fs.id),
             name=str(fs.name),
@@ -570,29 +573,26 @@ async def analyze_parcel_endpoint(data: dict, db: AsyncSession = Depends(get_db)
             rx_antenna_gain=float(fs.rx_antenna_gain or 0),
         ))
     
-    # Get existing IMTs
-    imt_raw = db.query(IMTAllocation).filter(IMTAllocation.deleted == False).all()
+    # Get existing IMTs (async)
+    imt_query = select(IMTAllocation).where(IMTAllocation.status == "active")
+    imt_result = await db.execute(imt_query)
+    imt_raw = imt_result.scalars().all()
+    
     neighbor_imts = []
     for imt in imt_raw:
-        blocks_db = db.query(SpectrumBlock).filter(
+        block_query = select(SpectrumBlock).where(
             SpectrumBlock.imt_allocation_id == imt.id
-        ).all()
-        blocks_by_imt = {}
-        for b in blocks_db:
-            aid = str(b.imt_allocation_id)
-            if aid not in blocks_by_imt:
-                blocks_by_imt[aid] = []
-            blocks_by_imt[aid].append(b)
+        )
+        block_result = await db.execute(block_query)
+        blocks = block_result.scalars().all()
         
-        imt_id = str(imt.id)
-        blocks = blocks_by_imt.get(imt_id, [])
         center = _parse_wkt_center(imt.area_wkt)
         if center is None or not blocks:
             continue
         
         for block in blocks:
             neighbor_imts.append(IMTNeighborData(
-                id=imt_id,
+                id=str(imt.id),
                 name=str(imt.name),
                 center_lat=center["lat"],
                 center_lon=center["lon"],
