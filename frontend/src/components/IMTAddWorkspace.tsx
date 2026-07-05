@@ -1468,6 +1468,47 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               </div>
             </div>
 
+            {/* Optimize button — recalculate tower positions */}
+            <button
+              onClick={async () => {
+                if (packResult?._coords) {
+                  setParcelCalculating(true)
+                  try {
+                    const coords = packResult._coords
+                    const res = await fetchWithAuth('/api/polygon/pack-circles', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        polygon: { type: 'Polygon', coordinates: [coords] },
+                        cell_radius_m: cellRadius || 0,
+                        animate: true,
+                      }),
+                    })
+                    const data = await res.json()
+                    if (data.steps && data.steps.length > 0) {
+                      const stepDelay = 350
+                      for (let i = 0; i < data.steps.length; i++) {
+                        const step = data.steps[i]
+                        setTimeout(() => {
+                          setPackResult({ ...data, points: step.points, coverage_pct: step.cov_pct, _step: i + 1, _total_steps: data.steps.length, _action: step.action, _coords: coords })
+                          onShowStations?.(step.points.map((p: any) => ({ name: 'Tower', type: 'new_imt' as const, lat: p.lat, lon: p.lon })))
+                        }, i * stepDelay)
+                      }
+                      setTimeout(() => { setPackResult({ ...data, _step: data.steps.length, _total_steps: data.steps.length, _action: 'done', _coords: coords }); setParcelCalculating(false)
+                        onShowStations?.(data.points.map((p: any) => ({ name: 'Tower', type: 'new_imt' as const, lat: p.lat, lon: p.lon })))
+                      }, data.steps.length * stepDelay)
+                    } else { setPackResult({ ...data, _coords: coords }); setParcelCalculating(false)
+                      onShowStations?.(data.points.map((p: any) => ({ name: 'Tower', type: 'new_imt' as const, lat: p.lat, lon: p.lon })))
+                    }
+                  } catch { setParcelCalculating(false) }
+                }
+              }}
+              disabled={parcelCalculating}
+              className="w-full bg-[#1A1A2E] hover:bg-[#2D2D4A] text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Zap className="w-4 h-4" />
+              {parcelCalculating ? 'กำลัง Optimize...' : `Optimize จำนวนเสา (${packResult?.points?.length || 0} ต้น)`}
+            </button>
+
             {/* Analyze button — full width */}
             <button
               onClick={handleParcelAnalyze}
