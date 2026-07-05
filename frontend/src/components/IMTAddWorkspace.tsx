@@ -390,7 +390,7 @@ function directionLabelForLog(direction: string): string {
 }
 
 function generateNarrativeLog(
-  params: { lat: number; lon: number; cellRadius: number; antH: number; antG: number; eirp: number; model: string },
+  params: { lat: number; lon: number; cellRadius: number; antH: number; antG: number; eirp: number; model: string; indoorPct: number },
   response: any,
   elapsedMs: number,
   pairs: Pair[],
@@ -398,6 +398,7 @@ function generateNarrativeLog(
   backendVerification: BackendVerification | null,
   coverage: CoverageInfo | null,
   assumptions: Record<string, AssumptionItem> | null,
+  blockLimits: any[],
 ): string[] {
   const lines: string[] = []
   const blocks = response.blocks || []
@@ -425,6 +426,23 @@ function generateNarrativeLog(
   lines.push(`   Propagation     : ${modelLabel}`)
   lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks x 10 MHz)`)
   lines.push('')
+  // Section 1.2: Building Loss Trace (Phase 29)
+  if (params.indoorPct > 0) {
+    const bl = params.indoorPct / 100 * 20
+    lines.push('--- 1.2 BUILDING LOSS TRACE (Phase 29) --------------------------')
+    lines.push('   Formula: building_loss = (indoor_pct/100) x 20 dB')
+    lines.push('   building_loss = ' + params.indoorPct.toFixed(0) + '/100 x 20 = ' + bl.toFixed(1) + ' dB')
+    const effEirp = Math.max(params.eirp - bl, 0)
+    lines.push('   effective_eirp = EIRP - building_loss = ' + params.eirp.toFixed(1) + ' - ' + bl.toFixed(1) + ' = ' + effEirp.toFixed(1) + ' dBm')
+    lines.push('')
+    lines.push('   Impact on interference calculations:')
+    lines.push('   > IMT as INTERFERER: EIRP reduced ' + bl.toFixed(1) + ' dB -> I reduced ' + bl.toFixed(1) + ' dB (directions 1/1b/3)')
+    lines.push('   > IMT as VICTIM:     attenuation ' + bl.toFixed(1) + ' dB -> I reduced ' + bl.toFixed(1) + ' dB (directions 2/2b/4)')
+    lines.push('   > Net: bidirectional protection')
+    lines.push('')
+  }
+
+
 
   // Section 1.2: Engineering Assumptions (สมมุติฐาน)
   if (assumptions && Object.keys(assumptions).length > 0) {
@@ -480,7 +498,8 @@ function generateNarrativeLog(
         const freqStr = p.freq_overlap_low && p.freq_overlap_high
           ? `${p.freq_overlap_low.toFixed(0)}-${p.freq_overlap_high.toFixed(0)} MHz`
           : 'N/A'
-        lines.push(`      Freq: ${freqStr} | Dist: ${(p.distance_m / 1000).toFixed(1)} km | I≈${p.estimated_i_dbm.toFixed(1)} dBm`)
+        lines.push(`      Freq: ${freqStr} | Dist: ${(p.distance_m / 1000).toFixed(1)} km`)
+        lines.push(`      Phase 0 est: I = EIRP − PL(d,f) + G − disc ≈ ${p.estimated_i_dbm.toFixed(1)} dBm`)
         if (p.direction === 'FS→IMT' && p.within_beam !== null) {
           lines.push(`      FS beam: ${p.within_beam ? 'IMT IN main beam' : 'IMT outside beam (-25 dB)'}`)
         }
@@ -548,6 +567,67 @@ function generateNarrativeLog(
   lines.push('   Standard         : ITU-R SM.1047 — sufficient for spectrum coordination')
   lines.push('                      at 4.8–5.0 GHz (omni-pattern assumed, conservative)')
   lines.push('')
+  // Section 3.0: Phase 1 - Full Calculation Detail
+  if (pairResults.length > 0) {
+    lines.push('--- 3.0 PHASE 1: DETAILED INTERFERENCE CALCULATION --------------')
+    lines.push('   Total pairs computed: ' + pairResults.length)
+    lines.push('')
+
+    const allDirs = ['IMT→FS', 'IMT→FS_ADJACENT', 'FS→IMT', 'FS→IMT_ADJACENT', 'IMT↔IMT_COCHANNEL', 'IMT↔IMT_ADJACENT']
+    const dirLabels: Record<string, string> = {
+      'IMT→FS': '➀ IMT→FS (New IMT interferes with FS receiver)',
+      'IMT→FS_ADJACENT': '➀b IMT→FS ADJACENT (ACLR out-of-band emission)',
+      'FS→IMT': '➁ FS→IMT (FS transmitter interferes with new IMT)',
+      'FS→IMT_ADJACENT': '➁b FS→IMT ADJACENT (FS spill-over to adjacent)',
+      'IMT↔IMT_COCHANNEL': '➂/➃ IMT↔IMT CO-CHANNEL (bidirectional)',
+      'IMT↔IMT_ADJACENT': 'IMT↔IMT ADJACENT (guard band protection)',
+    }
+
+    for (const dir of allDirs) {
+      const dirResults = pairResults.filter(function(pr: any) { return pr.direction === dir })
+      if (dirResults.length === 0) continue
+
+      lines.push('   === ' + (dirLabels[dir] || dir) + ' ===')
+      lines.push('   Pairs: ' + dirResults.length)
+      lines.push('')
+
+      dirResults.forEach(function(pr: any, i: number) {
+        lines.push('   ' + (i + 1) + '. ' + pr.interferer + ' → ' + pr.victim)
+        lines.push('      Verdict     : ' + pr.verdict)
+        lines.push('      Eff. Dist   : ' + pr.effective_distance_m.toFixed(0) + ' m')
+
+        if (dir === 'IMT→FS') {
+          lines.push('      I = EIRP_IMT − PL(d,f) + G_RX_FS − sector_disc')
+          lines.push('        = ' + params.eirp.toFixed(1) + ' − ' + pr.path_loss_db.toFixed(1) + ' + G_RX − disc')
+          lines.push('        ≈ ' + pr.i_dbm.toFixed(1) + ' dBm')
+        } else if (dir === 'IMT→FS_ADJACENT') {
+          lines.push('      I = EIRP − PL + G_RX − disc − ACS(33) − ACLR(45) − guard_iso')
+          lines.push('        ≈ ' + pr.i_dbm.toFixed(1) + ' dBm')
+          lines.push('      Isolation: ACS 33 + ACLR 45 = 78 dB base')
+        } else if (dir === 'FS→IMT') {
+          lines.push('      I = FS_EIRP − PL(d,f) + G_IMT − beam_disc(F.699) − bldg_loss')
+          lines.push('        = FS_EIRP − ' + pr.path_loss_db.toFixed(1) + ' + ' + params.antG.toFixed(0) + ' − beam − bl')
+          lines.push('        ≈ ' + pr.i_dbm.toFixed(1) + ' dBm')
+        } else if (dir === 'FS→IMT_ADJACENT') {
+          lines.push('      I = FS_EIRP − PL + G_IMT − beam − bl − ACS(33) − ACLR(45)')
+          lines.push('        ≈ ' + pr.i_dbm.toFixed(1) + ' dBm')
+        } else if (dir === 'IMT↔IMT_COCHANNEL') {
+          lines.push('      I = EIRP_int − PL + G_vic − sect_disc − bl(if victim=NEW)')
+          lines.push('        ≈ ' + pr.i_dbm.toFixed(1) + ' dBm')
+          lines.push('      ' + (pr.detail || ''))
+        } else if (dir === 'IMT↔IMT_ADJACENT') {
+          lines.push('      I = EIRP − PL + G − ACS(33) − ACLR(45) − guard_iso')
+          lines.push('        ≈ ' + pr.i_dbm.toFixed(1) + ' dBm')
+          lines.push('      ' + (pr.detail || ''))
+        }
+
+        lines.push('      Margin: I − th = ' + pr.i_dbm.toFixed(1) + ' − ' + pr.threshold_dbm.toFixed(0) + ' = ' + pr.margin_db.toFixed(1) + ' dB')
+        lines.push('')
+      })
+    }
+  }
+
+
 
   // Section 3: FS Link Conflict
   const fsConflicts = red.filter((b: any) => b.reason?.includes('FS conflict'))
@@ -570,6 +650,18 @@ function generateNarrativeLog(
     lines.push('   No FS link conflicts detected.')
   }
   lines.push('')
+
+  // F.699 Beam Analysis for FS->IMT pairs
+  const fsToImtPairs = pairResults.filter(function(pr: any) { return pr.direction === 'FS→IMT' || pr.direction === 'FS→IMT_ADJACENT' })
+  if (fsToImtPairs.length > 0) {
+    lines.push('   --- FS→IMT Beam Analysis (ITU-R F.699) ---')
+    fsToImtPairs.forEach(function(pr: any, idx: number) {
+      const p = pairs.find(function(pp: any) { return pp.direction === pr.direction && pp.interferer_name === pr.interferer.replace(/\\(.*?\\)$/, '').trim() })
+      const beamStatus = (p && p.within_beam) ? 'IN main beam (F.699 G_max)' : 'OUTSIDE main beam (-25 dB F.699 side-lobe)'
+      lines.push('   ' + (idx+1) + '. ' + pr.interferer + ': ' + beamStatus + ' | I=' + pr.i_dbm.toFixed(1) + ' dBm | PL=' + pr.path_loss_db.toFixed(1) + ' dB')
+    })
+    lines.push('')
+  }
 
   // Section 4: IMT Co-Channel
   const imtConflicts = red.filter((b: any) => b.reason?.includes('IMT co-channel'))
@@ -675,13 +767,15 @@ function generateNarrativeLog(
     lines.push('   Guard bands (ย่านป้องกัน) ป้องกันการรบกวนระหว่างช่องความถี่ข้างเคียง')
     lines.push('   ระบบใช้ guard_band_isolation_db(width) — isolation เพิ่มตามความกว้าง')
     lines.push('')
-    lines.push('   === ISOLATION vs GUARD BAND WIDTH ===')
-    lines.push('   Guard Band  | Isolation | Required Distance')
-    lines.push('   ------------|-----------|------------------')
-    lines.push('   0 MHz (adj) |   33 dB   |   134 m')
-    lines.push('   10 MHz      |   45 dB   |    30 m')
-    lines.push('   20 MHz      |   61 dB   |     4 m')
-    lines.push('   40+ MHz     |   88+ dB  |  < 0.1 m (co-locate)')
+    lines.push('   === GUARD BAND ISOLATION FORMULA ===')
+    lines.push('   ACS (receiver)       : 33 dB  (3GPP TS 38.104)')
+    lines.push('   ACLR (BS transmitter) : 45 dB  (3GPP TS 38.104 section 6.6.3)')
+    lines.push('   Filter roll-off: 12 dB in first 10 MHz, then 15 dB per 10 MHz')
+    lines.push('')
+    lines.push('   guard_band_isolation_db(guard_mhz):')
+    lines.push('     if guard <= 0:  return 33 (ACS only)')
+    lines.push('     if guard <= 10: return 33 + guard/10 x 12')
+    lines.push('     if guard > 10: return 33 + 12 + (guard-10)/10 x 15')
     lines.push('')
     // Per-site guard band requirements
     if (guardPairs.length > 0) {
@@ -728,6 +822,39 @@ function generateNarrativeLog(
     lines.push('')
   }
 
+  // Section 5.8: Phase 2 Aggregation (worst-case block)
+  var blocksWithI2 = blocks.filter(function(b: any) { return b.i_total_dbm != null && b.i_total_dbm > -200 })
+  if (blocksWithI2.length > 0) {
+    var worstBlock = blocksWithI2.reduce(function(a: any, b: any) { return (b.i_total_dbm || -200) > (a.i_total_dbm || -200) ? b : a }, blocksWithI2[0])
+    if (worstBlock && worstBlock.i_total_dbm && worstBlock.i_total_dbm > -200) {
+      lines.push('--- 5.8 PHASE 2: AGGREGATION (worst case) -----------------------')
+      lines.push('   Block ' + worstBlock.freq_low.toFixed(0) + '-' + worstBlock.freq_high.toFixed(0) + ' MHz:')
+      lines.push('   Formula: I_total = 10·log10( SUM 10^(I_pair/10) )')
+      lines.push('')
+      var bPairs = pairResults.filter(function(pr: any) {
+        var plow = pr.pair ? pr.pair.freq_overlap_low : 0
+        var phigh = pr.pair ? pr.pair.freq_overlap_high : 0
+        return plow < worstBlock.freq_high && worstBlock.freq_low < phigh
+      })
+      if (bPairs.length > 0) {
+        lines.push('   Contributing pairs:')
+        bPairs.forEach(function(pr: any, idx: number) {
+          var iLin = Math.pow(10, pr.i_dbm / 10)
+          lines.push('     ' + (idx+1) + '. ' + pr.interferer + ' -> ' + pr.victim + ': I=' + pr.i_dbm.toFixed(1) + ' dBm -> ' + iLin.toExponential(2) + ' W')
+        })
+        if (worstBlock.i_total_to_new_imt_dbm != null && worstBlock.i_total_to_new_imt_dbm > -200)
+          lines.push('   I_total -> New IMT = ' + worstBlock.i_total_to_new_imt_dbm.toFixed(1) + ' dBm')
+        if (worstBlock.i_total_to_fs_dbm != null && worstBlock.i_total_to_fs_dbm > -200)
+          lines.push('   I_total -> FS = ' + worstBlock.i_total_to_fs_dbm.toFixed(1) + ' dBm')
+        if (worstBlock.i_total_to_existing_imt_dbm != null && worstBlock.i_total_to_existing_imt_dbm > -200)
+          lines.push('   I_total -> Existing IMT = ' + worstBlock.i_total_to_existing_imt_dbm.toFixed(1) + ' dBm')
+      }
+      lines.push('   Combined I_total = ' + worstBlock.i_total_dbm.toFixed(1) + ' dBm')
+      lines.push('')
+    }
+  }
+
+
   // Section 6: Final Results with ASCII bar
   lines.push('─── 6. FINAL BLOCK ALLOCATION ──────────────────────────────────')
   lines.push(`   Total    : ${blocks.length} blocks (190 MHz)`)
@@ -768,6 +895,53 @@ function generateNarrativeLog(
   lines.push(`   Response time: ${elapsedMs} ms`)
   lines.push('')
   lines.push('═══════════════════════════════════════════════')
+  // Section 7: Phase 3 - Per-Block Max EIRP Limits
+  if (blockLimits && blockLimits.length > 0) {
+    lines.push('--- 7. PHASE 3: PER-BLOCK MAX EIRP LIMITS ------------------------')
+    lines.push('   Formula: max_eirp = current_eirp + min(margin across NEW_IMT pairs)')
+    lines.push('   Capped at realistic regulatory max')
+    lines.push('')
+
+    var capOut = 43
+    var capIn = 24
+    var realMax = capIn + (capOut - capIn) * (1 - params.indoorPct / 100)
+    lines.push('   Realistic max = 24 + (43-24)x(1-' + params.indoorPct.toFixed(0) + '/100) = ' + realMax.toFixed(1) + ' dBm')
+    lines.push('')
+
+    var greenLims = blockLimits.filter(function(bl: any) { return bl.status === 'green' })
+    if (greenLims.length > 0) {
+      lines.push('   --- GREEN BLOCKS (allocatable) ---')
+      greenLims.forEach(function(bl: any) {
+        lines.push('   ' + bl.freq_low.toFixed(0) + '-' + bl.freq_high.toFixed(0) + ' MHz:')
+        lines.push('     EIRP: ' + (bl.current_eirp_dbm ? bl.current_eirp_dbm.toFixed(1) : '?') + ' -> max ' + (bl.max_eirp_dbm ? bl.max_eirp_dbm.toFixed(1) : '?') + ' dBm')
+        lines.push('     Margin: +' + (bl.margin_db ? bl.margin_db.toFixed(1) : '?') + ' dB')
+        if (bl.limiting_factor) lines.push('     Limit: ' + bl.limiting_factor)
+        lines.push('')
+      })
+    }
+
+    var redLims = blockLimits.filter(function(bl: any) { return bl.reducible })
+    if (redLims.length > 0) {
+      lines.push('   --- RED BLOCKS (reducible - reduce power to use) ---')
+      redLims.forEach(function(bl: any) {
+        lines.push('   ' + bl.freq_low.toFixed(0) + '-' + bl.freq_high.toFixed(0) + ' MHz:')
+        lines.push('     Reduce by: ' + (bl.required_reduction_db ? bl.required_reduction_db.toFixed(1) : '?') + ' dB -> ' + (bl.max_eirp_if_reduced_dbm ? bl.max_eirp_if_reduced_dbm.toFixed(1) : '?') + ' dBm')
+        if (bl.limiting_factor) lines.push('     Limit: ' + bl.limiting_factor)
+        lines.push('')
+      })
+    }
+
+    var nrLims = blockLimits.filter(function(bl: any) { return bl.status === 'red' && !bl.reducible })
+    if (nrLims.length > 0) {
+      lines.push('   --- RED (non-reducible - reducing power will not help) ---')
+      nrLims.forEach(function(bl: any) {
+        lines.push('   ' + bl.freq_low.toFixed(0) + '-' + bl.freq_high.toFixed(0) + ' MHz: ' + (bl.reason || 'Interference from other systems'))
+      })
+      lines.push('')
+    }
+  }
+
+
 
   return lines
 }
@@ -1003,7 +1177,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       // Use backend-provided EIRP if autoEIRP was used
       const effectiveEirp = data.coverage?.used_eirp_dbm ?? maxEirp
       setLogLines(generateNarrativeLog(
-        { lat, lon, cellRadius, antH: antennaHeight, antG: antennaGain, eirp: effectiveEirp, model: propagationModel },
+        { lat, lon, cellRadius, antH: antennaHeight, antG: antennaGain, eirp: effectiveEirp, model: propagationModel, indoorPct },
         data,
         elapsedMs,
         data.pairs || [],
@@ -1011,6 +1185,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         data.verification || null,
         data.coverage || null,
         data.assumptions || null,
+      blockLimits,
       ))
 
       // Trigger result reveal animation with stagger
