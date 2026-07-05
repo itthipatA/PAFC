@@ -426,10 +426,38 @@ function generateNarrativeLog(
   lines.push(`   Propagation     : ${modelLabel}`)
   lines.push(`   Frequency Band  : 4800 – 4990 MHz (190 MHz, 19 blocks x 10 MHz)`)
   lines.push('')
-  // Section 1.2: Building Loss Trace (Phase 29)
+
+  // Section 1.2: LINK BUDGET CALCULATION (Coverage Engine)
+  if (coverage?.auto_eirp) {
+    const covModelLabel = PROPAGATION_MODEL_INFO[coverage.propagation_model || 'free_space']?.label || coverage.propagation_model || 'Free Space'
+    const thaiClass = coverageClassificationThai(coverage.coverage_classification)
+    const pl = coverage.actual_path_loss_db
+    lines.push('--- 1.2 LINK BUDGET CALCULATION (Coverage Engine) -------------')
+    lines.push(`   Model           : ${covModelLabel}`)
+    lines.push('')
+    lines.push('   Input Parameters:')
+    lines.push(`     Cell Radius        : ${params.cellRadius} m`)
+    lines.push(`     Target RSS         : ${coverage.target_rss_dbm} dBm`)
+    lines.push(`     Shadow Margin      : ${coverage.shadow_margin_db} dB`)
+    lines.push('')
+    lines.push('   Formula:')
+    lines.push('     EIRP_req = RSS_target + PathLoss(model, d, f) + Margin')
+    lines.push('')
+    lines.push('   Calculation:')
+    lines.push(`     Path Loss (${covModelLabel})  : ${pl?.toFixed(1) || 'N/A'} dB at cell edge`)
+    lines.push(`     Required EIRP      = ${coverage.target_rss_dbm} + ${pl?.toFixed(1) || '?'} + ${coverage.shadow_margin_db}`)
+    lines.push(`                        = ${coverage.required_eirp_dbm.toFixed(1)} dBm`)
+    lines.push(`     Used EIRP          = ${coverage.used_eirp_dbm.toFixed(1)} dBm`)
+    lines.push(`     Cell Edge RSS      = ${coverage.cell_edge_rss_dbm.toFixed(1)} dBm`)
+    lines.push('')
+    lines.push(`   Coverage Classification: ${coverage.coverage_classification} (${thaiClass})`)
+    lines.push('')
+  }
+
+  // Section 1.3: Building Loss Trace (Phase 29)
   if (params.indoorPct > 0) {
     const bl = params.indoorPct / 100 * 20
-    lines.push('--- 1.2 BUILDING LOSS TRACE (Phase 29) --------------------------')
+    lines.push('--- 1.3 BUILDING LOSS TRACE (Phase 29) -------------------------')
     lines.push('   Formula: building_loss = (indoor_pct/100) x 20 dB')
     lines.push('   building_loss = ' + params.indoorPct.toFixed(0) + '/100 x 20 = ' + bl.toFixed(1) + ' dB')
     const effEirp = Math.max(params.eirp - bl, 0)
@@ -513,33 +541,6 @@ function generateNarrativeLog(
         lines.push(`   ${i + 1}. ${dirLabel}: ${p.interferer_name} → ${p.victim_name}`)
       })
     }
-    lines.push('')
-  }
-
-  // Section 1.5: LINK BUDGET CALCULATION (Coverage Engine)
-  if (coverage?.auto_eirp) {
-    const modelLabel = PROPAGATION_MODEL_INFO[coverage.propagation_model || 'free_space']?.label || coverage.propagation_model || 'Free Space'
-    const thaiClass = coverageClassificationThai(coverage.coverage_classification)
-    const pl = coverage.actual_path_loss_db
-    lines.push('─── 1.4 LINK BUDGET CALCULATION ────────────────────────────────')
-    lines.push(`   Model           : ${modelLabel}`)
-    lines.push('')
-    lines.push('   Input Parameters:')
-    lines.push(`     Cell Radius        : ${params.cellRadius} m`)
-    lines.push(`     Target RSS         : ${coverage.target_rss_dbm} dBm`)
-    lines.push(`     Shadow Margin      : ${coverage.shadow_margin_db} dB`)
-    lines.push('')
-    lines.push('   Formula:')
-    lines.push('     EIRP_req = RSS_target + PathLoss(model, d, f) + Margin')
-    lines.push('')
-    lines.push('   Calculation:')
-    lines.push(`     Path Loss (${modelLabel})  : ${pl?.toFixed(1) || 'N/A'} dB at cell edge`)
-    lines.push(`     Required EIRP      = ${coverage.target_rss_dbm} + ${pl?.toFixed(1) || '?'} + ${coverage.shadow_margin_db}`)
-    lines.push(`                        = ${coverage.required_eirp_dbm.toFixed(1)} dBm`)
-    lines.push(`     Used EIRP          = ${coverage.used_eirp_dbm.toFixed(1)} dBm`)
-    lines.push(`     Cell Edge RSS      = ${coverage.cell_edge_rss_dbm.toFixed(1)} dBm`)
-    lines.push('')
-    lines.push(`   Coverage Classification: ${coverage.coverage_classification} (${thaiClass})`)
     lines.push('')
   }
 
@@ -629,28 +630,6 @@ function generateNarrativeLog(
 
 
 
-  // Section 3: FS Link Conflict
-  const fsConflicts = red.filter((b: any) => b.reason?.includes('FS conflict'))
-  lines.push('─── 3. FS LINK CONFLICT ANALYSIS ────────────────────────────────')
-  lines.push(`   Conflicts found : ${fsConflicts.length} block(s)`)
-  if (fsConflicts.length > 0) {
-    lines.push('   Details:')
-    fsConflicts.forEach((b: any) => {
-      const m = b.reason.match(/FS conflict:\s*(.+?)\s*\(I=([-\d.]+)\s*dBm\s*>\s*threshold\s*([-\d.]+)\s*dBm\)/)
-      if (m) {
-        const exceed = (parseFloat(m[2]) - parseFloat(m[3])).toFixed(1)
-        lines.push(`     ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz : ${m[1].trim()}`)
-        lines.push(`       I = ${m[2]} dBm > threshold ${m[3]} dBm (exceed by ${exceed} dB)`)
-        lines.push(`       I = EIRP_IMT − FSPL(d, f) + G_RX_FS`)
-      } else {
-        lines.push(`     ${b.reason}`)
-      }
-    })
-  } else {
-    lines.push('   No FS link conflicts detected.')
-  }
-  lines.push('')
-
   // F.699 Beam Analysis for FS->IMT pairs
   const fsToImtPairs = pairResults.filter(function(pr: any) { return pr.direction === 'FS→IMT' || pr.direction === 'FS→IMT_ADJACENT' })
   if (fsToImtPairs.length > 0) {
@@ -663,89 +642,7 @@ function generateNarrativeLog(
     lines.push('')
   }
 
-  // Section 4: IMT Co-Channel
-  const imtConflicts = red.filter((b: any) => b.reason?.includes('IMT co-channel'))
-  const neighborsChecked = response.neighbor_imts_checked || 0
-  // Find co-channel pair results for details
-  const coPairs = pairResults.filter(pr => pr.direction === 'IMT↔IMT_COCHANNEL' && pr.verdict === 'CONFLICT')
-  lines.push('─── 4. IMT CO-CHANNEL ANALYSIS ──────────────────────────────────')
-  lines.push(`   Neighbors       : ${neighborsChecked} block(s) from nearby IMT stations`)
-  lines.push(`   Co-channel hits : ${imtConflicts.length} block(s), ${coPairs.length} conflicting pair(s)`)
-  if (imtConflicts.length > 0) {
-    imtConflicts.forEach((b: any) => {
-      // Match old format: "IMT-A (0.6 km < 1.1 km)" or new: "IMT-A (0.6 km < ขั้นต่ำ 1.1 km | ...)"
-      const m = b.reason.match(/IMT co-channel conflict:\s*(.+?)\s*\(([\d.]+)\s*km\s*<\s*(?:ขั้นต่ำ\s*)?([\d.]+)\s*km/)
-      if (m) {
-        const name = m[1].trim()
-        const actual = m[2]
-        const needed = m[3]
-        lines.push(`   ${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${name}`)
-        lines.push(`     Required separation: ≥ ${needed} km (cell radii + 2 km co-channel protection)`)
-        lines.push(`     Actual distance   : ${actual} km → ต้องอยู่ห่าง ${name} อย่างน้อย ${needed} km`)
-      } else {
-        lines.push(`   ${b.reason}`)
-      }
-    })
-    lines.push('')
-    lines.push('   Co-channel = SAME frequency block → no electrical isolation')
-    lines.push('   Only PHYSICAL DISTANCE prevents interference')
-    lines.push('')
-    // Show co-channel pair details
-    if (coPairs.length > 0) {
-      lines.push('   === CO-CHANNEL PAIR DETAILS ===')
-      coPairs.forEach((pr, i) => {
-        lines.push(`   ${i+1}. ${pr.interferer} → ${pr.victim}`)
-        lines.push(`      ${pr.detail}`)
-        lines.push('')
-      })
-    }
-    // Note if aggregate I includes co-channel contributions
-    const blocksWithI = blocks.filter((b: any) => b.i_total_dbm != null && b.i_total_dbm > -200)
-    if (blocksWithI.length > 0) {
-      // Count per-victim aggregates
-      const newImtBlocks = blocks.filter((b: any) => b.i_total_to_new_imt_dbm != null && b.i_total_to_new_imt_dbm > -200)
-      const fsBlocks = blocks.filter((b: any) => b.i_total_to_fs_dbm != null && b.i_total_to_fs_dbm > -200)
-      const existingImtBlocks = blocks.filter((b: any) => b.i_total_to_existing_imt_dbm != null && b.i_total_to_existing_imt_dbm > -200)
-      lines.push('   Note: Aggregate I includes ALL interferers (FS + IMT)')
-      lines.push('   summed in linear domain per victim type')
-      if (newImtBlocks.length > 0) {
-        const worst = newImtBlocks.reduce((a: any, b: any) => (b.i_total_to_new_imt_dbm || -200) > (a.i_total_to_new_imt_dbm || -200) ? b : a, newImtBlocks[0])
-        lines.push(`   I_total → IMT ใหม่: worst ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz = ${worst.i_total_to_new_imt_dbm?.toFixed(1)} dBm (FS + IMT อื่น → IMT ใหม่)`)
-      }
-      if (fsBlocks.length > 0) {
-        const worst = fsBlocks.reduce((a: any, b: any) => (b.i_total_to_fs_dbm || -200) > (a.i_total_to_fs_dbm || -200) ? b : a, fsBlocks[0])
-        lines.push(`   I_total → FS:      worst ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz = ${worst.i_total_to_fs_dbm?.toFixed(1)} dBm (IMT ใหม่ → FS receivers)`)
-      }
-      if (existingImtBlocks.length > 0) {
-        const worst = existingImtBlocks.reduce((a: any, b: any) => (b.i_total_to_existing_imt_dbm || -200) > (a.i_total_to_existing_imt_dbm || -200) ? b : a, existingImtBlocks[0])
-        lines.push(`   I_total → IMT อื่น: worst ${worst.freq_low.toFixed(0)}-${worst.freq_high.toFixed(0)} MHz = ${worst.i_total_to_existing_imt_dbm?.toFixed(1)} dBm (IMT ใหม่ → IMT เดิม)`)
-      }
-    }
-  } else {
-    lines.push('   No co-channel conflicts.')
-  }
-  lines.push('')
 
-  // Section 4.5: Adjacent Channel Analysis
-  const adjPairs = pairResults.filter(pr => pr.direction === 'IMT↔IMT_ADJACENT')
-  if (adjPairs.length > 0) {
-    lines.push('─── 4.5 ADJACENT CHANNEL ANALYSIS ───────────────────────────────')
-    lines.push(`   Adjacent pairs  : ${adjPairs.length} IMT(s) on adjacent channels`)
-    lines.push('')
-    lines.push('   Adjacent = 0 MHz guard — isolation from ACS (33 dB) only')
-    lines.push('   Wider guard → Section 5 (Guard Band Analysis)')
-    lines.push('')
-    adjPairs.forEach((pr, i) => {
-      const d = pr.detail || ''
-      lines.push(`   ${i+1}. ${pr.interferer} → ${pr.victim}`)
-      lines.push(`      ${d}`)
-      lines.push('')
-    })
-    const clearAdj = adjPairs.filter(pr => pr.verdict === 'CLEAR')
-    const guardAdj = adjPairs.filter(pr => pr.verdict === 'GUARD_BAND')
-    lines.push(`   Result: ${clearAdj.length} CLEAR, ${guardAdj.length} GUARD_BAND`)
-    lines.push('')
-  }
 
   // Section 5: Guard Band
   const guardBlocks = gray.filter((b: any) => b.reason?.includes('Guard band'))
@@ -777,30 +674,10 @@ function generateNarrativeLog(
     lines.push('     if guard <= 10: return 33 + guard/10 x 12')
     lines.push('     if guard > 10: return 33 + 12 + (guard-10)/10 x 15')
     lines.push('')
-    // Per-site guard band requirements
-    if (guardPairs.length > 0) {
-      lines.push('   === PER-SITE GUARD BAND REQUIREMENTS ===')
-      guardPairs.forEach((pr, i) => {
-        const d = pr.detail || ''
-        lines.push(`   ${i+1}. ${pr.interferer} -> ${pr.victim}`)
-        lines.push(`      ${d}`)
-        lines.push('')
-      })
-    }
     lines.push('   หลักการ: isolation(dB) = ACS 33 + filter_roll_off(guard_width)')
     lines.push('   distance = co-channel / 10^(isolation/20)')
     lines.push('   อ้างอิง: 3GPP TS 38.104 NR base station ACLR/ACS requirements')
     lines.push('')
-    // Show per-pair calculation detail
-    if (guardPairs.length > 0) {
-      lines.push('   === GUARD BAND PAIR DETAILS ===')
-      guardPairs.forEach((pr, i) => {
-        const d = pr.detail || ''
-        lines.push(`   ${i+1}. ${pr.interferer} → ${pr.victim}`)
-        lines.push(`      ${d}`)
-        lines.push('')
-      })
-    }
   } else {
     lines.push('   No guard bands required.')
   }
@@ -894,10 +771,9 @@ function generateNarrativeLog(
   lines.push(`   RESULT: ${availMHz} / 190 MHz available (${pct}%)`)
   lines.push(`   Response time: ${elapsedMs} ms`)
   lines.push('')
-  lines.push('═══════════════════════════════════════════════')
-  // Section 7: Phase 3 - Per-Block Max EIRP Limits
+  // Section 6.5: Phase 3 - Per-Block Max EIRP Limits
   if (blockLimits && blockLimits.length > 0) {
-    lines.push('--- 7. PHASE 3: PER-BLOCK MAX EIRP LIMITS ------------------------')
+    lines.push('--- 6.5 PHASE 3: PER-BLOCK MAX EIRP LIMITS -----------------------')
     lines.push('   Formula: max_eirp = current_eirp + min(margin across NEW_IMT pairs)')
     lines.push('   Capped at realistic regulatory max')
     lines.push('')
@@ -940,6 +816,8 @@ function generateNarrativeLog(
       lines.push('')
     }
   }
+
+  lines.push('═══════════════════════════════════════════════')
 
 
 
