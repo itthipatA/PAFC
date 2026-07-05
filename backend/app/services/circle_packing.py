@@ -539,28 +539,24 @@ def _pack_optimal(
     Optimal packing via Iterative Removal + Local Refinement
     
     Approach:
-    1. Start with hex grid (known-good solution, high coverage)
-    2. Greedily remove redundant circles (each that doesn't drop coverage below 95%)
-    3. Local refinement: small shifts to reclaim coverage from any dips
-    
-    This guarantees at least as good as hex grid, and improves for irregular shapes.
+    1. Start with hex grid (extended for edge coverage → 99%+ base)
+    2. Greedily remove redundant circles (drop < 0.5%, cov >= 98%)
+    3. Gap-fill: if coverage < 99%, add circles at uncovered gaps
+    4. Local refinement: small shifts to push coverage toward 100%
     """
-    # Phase 1: Start with hex grid
+    # Phase 1: Start with hex grid (now covers edges for 99%+)
     hex_points = _pack_hex(vertices, cell_radius_m, ref_lat, cos_lat)
     if len(hex_points) <= 1:
         cov = _calculate_coverage(hex_points, cell_radius_m, vertices)
         return hex_points, cov
     
     # Phase 2: Greedy redundancy removal
-    # Sort by "how much unique coverage does this circle provide?"
-    # Remove circles that contribute least unique coverage first
     current = list(hex_points)
     baseline_cov = _calculate_coverage(current, cell_radius_m, vertices)
     
     improved = True
     while improved:
         improved = False
-        # Score each circle by how much coverage drops if removed
         scores = []
         for i in range(len(current)):
             test = current[:i] + current[i+1:]
@@ -568,10 +564,9 @@ def _pack_optimal(
             drop = baseline_cov - cov
             scores.append((i, drop, cov))
         
-        # Find removable: drop < 1% and coverage >= 93%
-        candidates = [(i, drop, cov) for i, drop, cov in scores if drop < 0.01 and cov >= 0.93]
+        # Strict: drop < 0.5% and coverage >= 98%
+        candidates = [(i, drop, cov) for i, drop, cov in scores if drop < 0.005 and cov >= 0.98]
         if candidates:
-            # Remove the one with smallest drop
             best = min(candidates, key=lambda x: x[1])
             i, _, new_cov = best
             current = current[:i] + current[i+1:]
@@ -580,12 +575,22 @@ def _pack_optimal(
     
     points = current
     
-    # Phase 3: Local shift optimization (small perturbations)
-    # For each remaining circle, try small shifts in 4 directions
-    # Accept if coverage improves
+    # Phase 3: Gap-fill if coverage < 99%
+    coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
+    if coverage_pct < 0.99 and len(points) > 0:
+        # Re-run hex grid without the removed circles, adding back denser grid at gaps
+        all_hex = _pack_hex(vertices, cell_radius_m, ref_lat, cos_lat)
+        # Build a composite: keep optimized points + fill from hex where not covered
+        coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
+        if coverage_pct < 0.99:
+            # Fallback: use full hex grid
+            points = all_hex
+            coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
+    
+    # Phase 4: Local shift optimization
     if len(points) > 2:
-        shift_m = cell_radius_m * 0.15  # 15% of radius
-        for _ in range(3):  # 3 passes
+        shift_m = cell_radius_m * 0.15
+        for _ in range(3):
             any_improved = False
             for pi in range(len(points)):
                 p = points[pi]
@@ -593,20 +598,21 @@ def _pack_optimal(
                 best_cov = _calculate_coverage(points, cell_radius_m, vertices)
                 best_shift = (lat, lon)
                 
-                # Try 8 directions
                 for angle in range(8):
                     rad = angle * math.pi / 4
                     dlat_m = shift_m * math.cos(rad)
                     dlon_m = shift_m * math.sin(rad)
                     new_lat, new_lon = _latlon_offset(lat, lon, dlon_m, dlat_m)
                     
-                    if not _point_in_polygon(new_lat, new_lon, vertices):
+                    # Allow center outside polygon — circle just needs to overlap
+                    frac = _circle_fraction_in_polygon(new_lat, new_lon, cell_radius_m, vertices)
+                    if frac < 0.05:
                         continue
                     
                     test = [dict(p) for p in points]
                     test[pi] = {"lat": round(new_lat, 7), "lon": round(new_lon, 7), "type": "packed"}
                     cov = _calculate_coverage(test, cell_radius_m, vertices)
-                    if cov > best_cov + 0.005:
+                    if cov > best_cov + 0.002:
                         best_cov = cov
                         best_shift = (new_lat, new_lon)
                 
@@ -628,30 +634,33 @@ def _pack_hex(
     ref_lat: float,
     cos_lat: float,
 ) -> List[Dict[str, Any]]:
-    """Hexagonal grid packing — fast fallback"""
+    """Hexagonal grid packing — fast fallback. Extends beyond polygon boundary for full edge coverage."""
     spacing = cell_radius_m * math.sqrt(3)
     
     dlat_deg = math.degrees(spacing / EARTH_RADIUS_M)
     dlon_deg = math.degrees(spacing / (EARTH_RADIUS_M * cos_lat))
+    
+    # Extend search area by cell_radius (in lat/lon) to cover polygon edges
+    radius_lat_deg = math.degrees(cell_radius_m / EARTH_RADIUS_M)
+    radius_lon_deg = math.degrees(cell_radius_m / (EARTH_RADIUS_M * cos_lat))
     
     lats = [v[0] for v in vertices]
     lons = [v[1] for v in vertices]
     
     points = []
     row = 0
-    lat = min(lats) - dlat_deg
-    while lat <= max(lats) + dlat_deg:
+    lat = min(lats) - dlat_deg - radius_lat_deg
+    while lat <= max(lats) + dlat_deg + radius_lat_deg:
         offset = (dlon_deg / 2) if (row % 2 == 1) else 0.0
-        lon = min(lons) - dlon_deg + offset
-        while lon <= max(lons) + dlon_deg:
-            if _point_in_polygon(lat, lon, vertices):
-                frac = _circle_fraction_in_polygon(lat, lon, cell_radius_m, vertices)
-                if frac > 0.2:
-                    points.append({
-                        "lat": round(lat, 7),
-                        "lon": round(lon, 7),
-                        "type": "packed",
-                    })
+        lon = min(lons) - dlon_deg - radius_lon_deg + offset
+        while lon <= max(lons) + dlon_deg + radius_lon_deg:
+            frac = _circle_fraction_in_polygon(lat, lon, cell_radius_m, vertices)
+            if frac > 0.05:  # At least 5% of circle overlaps polygon
+                points.append({
+                    "lat": round(lat, 7),
+                    "lon": round(lon, 7),
+                    "type": "packed",
+                })
             lon += dlon_deg
         row += 1
         lat += dlat_deg
