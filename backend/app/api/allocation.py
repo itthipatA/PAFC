@@ -581,7 +581,7 @@ async def analyze_parcel_endpoint(data: dict, db: AsyncSession = Depends(get_db)
     neighbor_imts = []
     for imt in imt_raw:
         block_query = select(SpectrumBlock).where(
-            SpectrumBlock.imt_allocation_id == imt.id
+            SpectrumBlock.allocation_id == imt.id
         )
         block_result = await db.execute(block_query)
         blocks = block_result.scalars().all()
