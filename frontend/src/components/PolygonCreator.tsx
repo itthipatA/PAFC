@@ -56,6 +56,8 @@ export default function PolygonCreator({
   const [cellRadius, setCellRadius] = useState(500)
   const [calculating, setCalculating] = useState(false)
   const [calcError, setCalcError] = useState('')
+  const [saveDialogType, setSaveDialogType] = useState<'polygon' | 'towers' | null>(null)
+  const [saveFileName, setSaveFileName] = useState('')
 
   const isPolygonReady = vertices.length >= 3
 
@@ -121,47 +123,51 @@ export default function PolygonCreator({
 
   const handleDownloadGeoJSON = () => {
     if (!isPolygonReady) return
-
-    const polygonCoords = [...vertices]
-    if (
-      polygonCoords[0][0] !== polygonCoords[polygonCoords.length - 1][0] ||
-      polygonCoords[0][1] !== polygonCoords[polygonCoords.length - 1][1]
-    ) {
-      polygonCoords.push(polygonCoords[0])
-    }
-
-    const feature = {
-      type: 'Feature' as const,
-      geometry: {
-        type: 'Polygon' as const,
-        coordinates: [polygonCoords],
-      },
-      properties: { name: 'ที่ดิน' },
-    }
-
-    const blob = new Blob([JSON.stringify(feature, null, 2)], { type: 'application/geo+json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'ที่ดิน.geojson'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    setSaveFileName('ที่ดิน')
+    setSaveDialogType('polygon')
   }
 
   const handleDownloadPackPoints = () => {
     if (!packResults || !packResults.points) return
+    setSaveFileName('tower_positions')
+    setSaveDialogType('towers')
+  }
 
-    const blob = new Blob([JSON.stringify(packResults.points, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'tower_positions.json'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+  const handleConfirmSave = () => {
+    if (saveDialogType === 'polygon') {
+      const polygonCoords = [...vertices]
+      if (
+        polygonCoords[0][0] !== polygonCoords[polygonCoords.length - 1][0] ||
+        polygonCoords[0][1] !== polygonCoords[polygonCoords.length - 1][1]
+      ) {
+        polygonCoords.push(polygonCoords[0])
+      }
+      const feature = {
+        type: 'Feature' as const,
+        geometry: { type: 'Polygon' as const, coordinates: [polygonCoords] },
+        properties: { name: saveFileName || 'ที่ดิน' },
+      }
+      const blob = new Blob([JSON.stringify(feature, null, 2)], { type: 'application/geo+json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${saveFileName || 'ที่ดิน'}.geojson`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } else if (saveDialogType === 'towers' && packResults) {
+      const blob = new Blob([JSON.stringify(packResults.points, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${saveFileName || 'tower_positions'}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }
+    setSaveDialogType(null)
   }
 
   return (
@@ -400,6 +406,45 @@ export default function PolygonCreator({
           </div>
         </div>
       </div>
+
+      {/* Save Dialog Modal */}
+      {saveDialogType && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 w-[320px] animate-scale-in">
+            <h3 className="text-sm font-semibold text-[#1A1A2E] mb-4">
+              {saveDialogType === 'polygon' ? 'บันทึกไฟล์ที่ดิน' : 'บันทึกตำแหน่งเสา'}
+            </h3>
+            <label className="text-xs text-gray-500 mb-1 block">ชื่อไฟล์</label>
+            <input
+              type="text"
+              value={saveFileName}
+              onChange={(e) => setSaveFileName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmSave()}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C00000]/30 focus:border-[#C00000]"
+              placeholder="ระบุชื่อไฟล์..."
+              autoFocus
+            />
+            <p className="text-[10px] text-gray-400 mt-1">
+              .{saveDialogType === 'polygon' ? 'geojson' : 'json'}
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setSaveDialogType(null)}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleConfirmSave}
+                disabled={!saveFileName.trim()}
+                className="px-4 py-2 text-sm bg-[#C00000] text-white rounded-lg hover:bg-[#8B0000] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                ดาวน์โหลด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
