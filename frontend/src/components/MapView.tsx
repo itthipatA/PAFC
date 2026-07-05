@@ -496,15 +496,33 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     const fillId = 'parcel-polygon-layer'
     const outlineId = 'parcel-polygon-outline'
 
-    // Clean up
+    // Clean up sources/layers — safe even if style not loaded (getSource/getLayer return undefined)
     if (map.getLayer(fillId)) map.removeLayer(fillId)
     if (map.getLayer(outlineId)) map.removeLayer(outlineId)
     if (map.getLayer('parcel-extrusion-3d')) map.removeLayer('parcel-extrusion-3d')
     if (map.getSource(srcId)) map.removeSource(srcId)
 
-    if (!parcelPolygon || parcelPolygon.length < 3) return
+    if (!parcelPolygon || parcelPolygon.length < 3) {
+      parcelTowerMarkersRef.current.forEach(m => m.remove())
+      parcelTowerMarkersRef.current = []
+      return
+    }
 
-    const coords: [number, number][] = [...parcelPolygon]
+    // CRITICAL: MapLibre style loads async — addSource MUST wait (Pitfall #102)
+    if (!map.isStyleLoaded()) {
+      const capturedPolygon = parcelPolygon!
+      const onStyleLoad = () => {
+        map.off('style.load', onStyleLoad)
+        renderParcelPolygon(capturedPolygon)
+      }
+      map.on('style.load', onStyleLoad)
+      return () => { map.off('style.load', onStyleLoad) }
+    }
+
+    renderParcelPolygon(parcelPolygon)
+
+    function renderParcelPolygon(poly: [number, number][]) {
+    const coords: [number, number][] = [...poly]
     if (coords[0][0] !== coords[coords.length - 1][0] ||
         coords[0][1] !== coords[coords.length - 1][1]) {
       coords.push(coords[0])
@@ -571,6 +589,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       el.title = 'ศูนย์กลาง Polygon'
       new maplibregl.Marker({ element: el }).setLngLat([parcelCentroid.lon, parcelCentroid.lat]).addTo(map)
     }
+    } // end renderParcelPolygon
   }, [parcelPolygon, parcelTowers, parcelCentroid, view3D, workspaceOpen, mapReady])
 
   // ─── Polygon Drawing Layers (Live Lines + Draggable Vertices) ──────────
