@@ -99,16 +99,17 @@ export function MiniMap({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [isRotating, setIsRotating] = useState(false)
   const [rotateStart, setRotateStart] = useState({ x: 0, y: 0 })
-  const svgContainerRef = useRef<SVGSVGElement>(null)
+  const svgContainerRef = useRef<HTMLDivElement>(null)
 
   // Zoom with scroll
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     const delta = e.deltaY > 0 ? 0.9 : 1.1
     setZoom(z => Math.max(0.3, Math.min(5, z * delta)))
   }, [])
 
-  // Pan with middle-click or shift+click drag
+  // Pan with left-click drag, Rotate with middle-click or Shift+Click
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
       // Middle-click or Shift+Click = rotate
@@ -174,24 +175,22 @@ export function MiniMap({
   const wedgePath = sectorWedgePath(visualRadius, sectorBeamwidth, sectorAzimuth)
 
   // Polygon vertices → SVG path (projected relative to center)
-  const polyPath = useMemo(() => {
-    if (!polygonVertices || polygonVertices.length < 3) return ''
-    // Compute bounds to auto-scale
+  const { polyPath, polyScale } = useMemo(() => {
+    if (!polygonVertices || polygonVertices.length < 3) return { polyPath: '', polyScale: 1 }
     const lons = polygonVertices.map(v => v[0])
     const lats = polygonVertices.map(v => v[1])
     const cosCenter = Math.cos((lat * Math.PI) / 180)
     const metersPerDeg = 111320
-    // Convert to meters relative to center
     const dxs = lons.map(l => (l - lon) * metersPerDeg * cosCenter)
-    const dys = lats.map(l => -(l - lat) * metersPerDeg)  // negative: SVG y-axis
-    // Auto-scale to fit viewBox (-110 to 110)
+    const dys = lats.map(l => -(l - lat) * metersPerDeg)
     const maxAbs = Math.max(...dxs.map(Math.abs), ...dys.map(Math.abs))
-    const scale = maxAbs > 0 ? 100 / maxAbs : 1  // 100 SVG units for the furthest point
-    return polygonVertices.map((v, i) => {
+    const scale = maxAbs > 0 ? 100 / maxAbs : 1
+    const path = polygonVertices.map((v, i) => {
       const sx = dxs[i] * scale
       const sy = dys[i] * scale
       return `${i === 0 ? 'M' : 'L'} ${sx.toFixed(1)} ${sy.toFixed(1)}`
     }).join(' ') + ' Z'
+    return { polyPath: path, polyScale: scale }
   }, [polygonVertices, lat, lon])
 
   // Per-tower positions → SVG coordinates
@@ -225,7 +224,16 @@ export function MiniMap({
   const isRevealing = analyzePhase === 'revealing'
 
   return (
-    <div className={`relative overflow-hidden bg-[#F5F5F0] rounded-xl border border-gray-200 ${className}`}>
+    <div 
+      ref={svgContainerRef}
+      className={`relative overflow-hidden bg-[#F5F5F0] rounded-xl border border-gray-200 ${className}`}
+      style={{ cursor: isDragging ? 'grabbing' : isRotating ? 'crosshair' : 'grab' }}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       {/* Zoom/Pan/Rotate controls */}
       <div className="absolute top-1 right-1 z-10 flex gap-0.5">
         <button onClick={() => setZoom(z => Math.min(5, z * 1.2))} 
@@ -237,20 +245,13 @@ export function MiniMap({
       </div>
       {/* Grid background */}
       <svg
-        ref={svgContainerRef}
         viewBox="-120 -120 240 240"
-        className="w-full h-full cursor-grab"
+        className="w-full h-full pointer-events-none"
         style={{
           minHeight: '200px',
           transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px) rotate(${rotate}deg)`,
           transformOrigin: 'center center',
-          cursor: isDragging ? 'grabbing' : isRotating ? 'crosshair' : 'grab',
         }}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
       >
         {/* Background */}
         <defs>
@@ -298,20 +299,20 @@ export function MiniMap({
 
         {/* ─── Per-Tower Coverage Circles ─── */}
         {towerSvgs.length > 0 && (() => {
-          const maxAbs = Math.max(...towerSvgs.map(t => Math.max(Math.abs(t.x), Math.abs(t.y))), 1)
-          const scale = 100 / maxAbs
-          const visualRadiusScale = visualRadius / (radius || 1)
+          // Use polygon's scale factor (SVG units per meter)
+          const scale = polyScale || 1
           return towerSvgs.map((t, i) => {
             const sx = t.x * scale
             const sy = t.y * scale
-            const vr = Math.max(3, (t.radius || radius) * visualRadiusScale * scale / 111320)
+            // Circle radius in SVG units: radius_meters × SVG_units_per_meter
+            const vr = Math.max(4, (t.radius || radius) * scale)
             return (
               <g key={i}>
                 <circle cx={sx} cy={sy} r={vr}
-                  fill="rgba(192, 0, 0, 0.15)" stroke="#C00000" strokeWidth="0.8"
-                  strokeOpacity="0.4" />
-                <circle cx={sx} cy={sy} r="2" fill="#C00000" />
-                <text x={sx} y={sy - vr - 2} textAnchor="middle"
+                  fill="rgba(192, 0, 0, 0.12)" stroke="#C00000" strokeWidth="1"
+                  strokeOpacity="0.5" />
+                <circle cx={sx} cy={sy} r="2.5" fill="#C00000" />
+                <text x={sx} y={sy - vr - 3} textAnchor="middle"
                   fill="#1A1A2E" fontSize="6" fontWeight="bold">{i + 1}</text>
               </g>
             )

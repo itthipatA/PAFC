@@ -1282,7 +1282,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             <div className="mb-4">
               {/* Mini polygon preview */}
               {packResult?._coords && (
-                <div className="mb-4 h-[160px]">
+                <div className="mb-4 h-[280px]">
                   <MiniMap
                     lat={packResult.centroid?.lat || lat}
                     lon={packResult.centroid?.lon || lon}
