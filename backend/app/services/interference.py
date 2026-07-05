@@ -2095,21 +2095,33 @@ class InterferenceEngine:
         coverage_per_tower = []
         for ti, result in enumerate(per_tower_results):
             if hasattr(result, 'coverage') and result.coverage:
+                c = result.coverage
                 coverage_per_tower.append({
                     "tower": ti + 1,
-                    "used_eirp_dbm": result.coverage.used_eirp_dbm,
-                    "target_rss_dbm": result.coverage.target_rss_dbm,
+                    "used_eirp_dbm": getattr(c, 'used_eirp_dbm', None),
+                    "target_rss_dbm": getattr(c, 'target_rss_dbm', None),
+                    "required_eirp_dbm": getattr(c, 'required_eirp_dbm', None),
+                    "cell_edge_rss_dbm": getattr(c, 'cell_edge_rss_dbm', None),
+                    "coverage_classification": getattr(c, 'coverage_classification', None),
+                    "shadow_margin_db": getattr(c, 'shadow_margin_db', None),
                 })
             else:
                 coverage_per_tower.append({
                     "tower": ti + 1,
                     "used_eirp_dbm": None,
                     "target_rss_dbm": None,
+                    "required_eirp_dbm": None,
+                    "cell_edge_rss_dbm": None,
+                    "coverage_classification": None,
+                    "shadow_margin_db": None,
                 })
 
         # ── Verification: use first tower (same checks apply to all) ──
         first = per_tower_results[0]
         verification = first.verification if hasattr(first, 'verification') and first.verification else {}
+        
+        # ── Block limits: use first tower's limits (representative) ──
+        block_limits = first.block_limits if hasattr(first, 'block_limits') and first.block_limits else []
 
         return {
             "parcel_towers": len(towers),
@@ -2158,6 +2170,14 @@ class InterferenceEngine:
             },
             "verification": verification,
             "coverage": coverage_per_tower,
+            "block_limits": [{
+                "freq_low": bl.freq_low,
+                "freq_high": bl.freq_high,
+                "max_eirp_dbm": bl.max_eirp_dbm,
+                "margin_db": bl.margin_db,
+                "limiting_factor": bl.limiting_factor,
+                "reducible": bl.reducible,
+            } for bl in block_limits] if hasattr(first, 'block_limits') else [],
         }
         
         # ═══════════════════════════════════════════════════════════════

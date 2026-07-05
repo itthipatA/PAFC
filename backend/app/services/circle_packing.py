@@ -694,7 +694,7 @@ def _pack_optimal(
                     new_lat, new_lon = _latlon_offset(lat, lon, dlon_m, dlat_m)
                     
                     frac = _circle_fraction_in_polygon(new_lat, new_lon, cell_radius_m, vertices)
-                    if frac < 0.05:
+                    if frac < 0.05 or not _point_in_polygon(new_lat, new_lon, vertices):
                         continue
                     
                     test = [dict(p) for p in points]
@@ -742,7 +742,7 @@ def _pack_optimal(
                 new_lat, new_lon = _latlon_offset(old_lat, old_lon, dlon_m, dlat_m)
                 
                 frac = _circle_fraction_in_polygon(new_lat, new_lon, cell_radius_m, vertices)
-                if frac < 0.05:
+                if frac < 0.05 or not _point_in_polygon(new_lat, new_lon, vertices):
                     continue
                 
                 test = [dict(p) for p in current]
@@ -799,7 +799,7 @@ def _pack_hex(
         lon = min(lons) - dlon_deg - radius_lon_deg + offset
         while lon <= max(lons) + dlon_deg + radius_lon_deg:
             frac = _circle_fraction_in_polygon(lat, lon, cell_radius_m, vertices)
-            if frac > 0.05:  # At least 5% of circle overlaps polygon
+            if frac > 0.05 and _point_in_polygon(lat, lon, vertices):  # Center must be INSIDE polygon
                 points.append({
                     "lat": round(lat, 7),
                     "lon": round(lon, 7),
