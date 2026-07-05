@@ -21,6 +21,8 @@ interface PolygonCreatorProps {
   onDrawingModeChange: (mode: boolean) => void
   dashboardRefreshKey: number
   onDashboardRefresh: () => void
+  view3D: boolean
+  onView3DChange: (v: boolean) => void
 }
 
 interface PackPoint {
@@ -36,6 +38,7 @@ interface PackResult {
   num_required: number
   recommendation: string
   centroid_coverage_pct?: number
+  cell_radius_m?: number
 }
 
 export default function PolygonCreator({
@@ -46,6 +49,8 @@ export default function PolygonCreator({
   onPackResultsChange,
   drawingMode,
   onDrawingModeChange,
+  view3D,
+  onView3DChange,
 }: PolygonCreatorProps) {
   const { fetchWithAuth } = useAuth()
   const [cellRadius, setCellRadius] = useState(500)
@@ -164,13 +169,26 @@ export default function PolygonCreator({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
         <h2 className="text-base font-bold text-[#1A1A2E]">สร้างโพลีกอนที่ดิน</h2>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-          title="ปิด"
-        >
-          <X className="w-5 h-5 text-gray-500" />
-        </button>
+        <div className="flex items-center gap-2">
+          {vertices.length >= 3 && (
+            <button
+              onClick={() => onView3DChange(!view3D)}
+              className={view3D
+                ? 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[#C00000] text-white transition-colors'
+                : 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors'}
+              title={view3D ? 'กลับมุมมอง 2 มิติ' : 'แสดงแบบ 3 มิติ'}
+            >
+              {view3D ? '2D' : '3D'}
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            title="ปิด"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
       </div>
 
       {/* Body */}

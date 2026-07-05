@@ -27,6 +27,7 @@ interface MapViewProps {
     centroid: { lat: number; lon: number }
     cell_radius_m?: number
   } | null
+  view3D?: boolean
 }
 
 // Map styles
@@ -247,7 +248,7 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames, polygonVertices, packResults }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames, polygonVertices, packResults, view3D }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
@@ -635,6 +636,39 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       })
     }
   }, [polygonVertices, packResults])
+
+  // ─── 3D Polygon View ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current
+    const sourceId = 'polygon-land'
+    
+    if (view3D) {
+      // 3D mode: pitch camera + show extrusion
+      map.easeTo({ pitch: 60, duration: 800 })
+      
+      // Add extrusion layer for polygon
+      if (map.getSource(sourceId) && !map.getLayer('polygon-extrusion-3d')) {
+        map.addLayer({
+          id: 'polygon-extrusion-3d',
+          type: 'fill-extrusion',
+          source: sourceId,
+          paint: {
+            'fill-extrusion-color': '#C00000',
+            'fill-extrusion-opacity': 0.6,
+            'fill-extrusion-height': 80,  // 80m extrusion height
+            'fill-extrusion-base': 0,
+          },
+        })
+      }
+    } else {
+      // 2D mode: reset pitch, remove extrusion
+      map.easeTo({ pitch: 0, duration: 500 })
+      if (map.getLayer('polygon-extrusion-3d')) {
+        map.removeLayer('polygon-extrusion-3d')
+      }
+    }
+  }, [view3D, polygonVertices])
 
   return <div ref={containerRef} className="w-full h-full" />
 }

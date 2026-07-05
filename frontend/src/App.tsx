@@ -56,6 +56,7 @@ function AuthenticatedApp({
   const [polygonVertices, setPolygonVertices] = useState<[number, number][]>([])
   const [polygonPackResults, setPolygonPackResults] = useState<any>(null)
   const [polygonDrawingMode, setPolygonDrawingMode] = useState(false)
+  const [polygonView3D, setPolygonView3D] = useState(false)
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
@@ -305,6 +306,7 @@ function AuthenticatedApp({
               highlightStationNames={undefined}
               polygonVertices={polygonVertices}
               packResults={polygonPackResults}
+              view3D={polygonView3D}
             />
             {(showPolygonWorkspace || polygonClosing) && (
               <div
@@ -331,6 +333,8 @@ function AuthenticatedApp({
                   onDrawingModeChange={setPolygonDrawingMode}
                   dashboardRefreshKey={dashboardRefreshKey}
                   onDashboardRefresh={() => setDashboardRefreshKey(k => k + 1)}
+                  view3D={polygonView3D}
+                  onView3DChange={setPolygonView3D}
                 />
               </div>
             )}
