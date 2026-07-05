@@ -1213,6 +1213,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                               body: JSON.stringify({
                                 polygon: { type: 'Polygon', coordinates: [coords] },
                                 cell_radius_m: cellRadius || 0,  // 0 = auto, or user override
+                                use_rf_radius: true,
+                                eirp_dbm: autoEirp ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius, propagationModel)) : maxEirp,
+                                model_name: propagationModel,
+                                antenna_height_m: antennaHeight,
+                                indoor_pct: indoorPct,
                                 animate: true,
                               }),
                             })
@@ -1353,7 +1358,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 {/* Cell Radius — auto from optimize, user can override */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    รัศมีเซลล์ (m) {cellRadius > 0 ? `— ปรับเอง: ${cellRadius}m` : '— Auto'}
+                    รัศมีเซลล์ (m) {cellRadius > 0 ? `— ปรับเอง: ${cellRadius}m` : packResult?.rf_radius ? '— คำนวณจากกำลังส่ง (RF)' : '— Auto (เรขาคณิต)'}
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -1480,6 +1485,11 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       body: JSON.stringify({
                         polygon: { type: 'Polygon', coordinates: [coords] },
                         cell_radius_m: cellRadius || 0,
+                        use_rf_radius: true,  // RF-aware: calculate radius from link budget
+                        eirp_dbm: autoEirp ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius, propagationModel)) : maxEirp,
+                        model_name: propagationModel,
+                        antenna_height_m: antennaHeight,
+                        indoor_pct: indoorPct,
                         animate: true,
                       }),
                     })

@@ -19,8 +19,14 @@ class PolygonGeoJSON(BaseModel):
 
 class PackCirclesRequest(BaseModel):
     polygon: PolygonGeoJSON
-    cell_radius_m: float  # รัศมี coverage ต่อ 1 เสา (เมตร)
+    cell_radius_m: float = 0  # รัศมี coverage ต่อ 1 เสา (เมตร). 0 = auto from geometry
     animate: bool = False  # return animation steps for frontend playback
+    # RF-aware mode: calculate radius from link budget instead of geometry
+    use_rf_radius: bool = False
+    eirp_dbm: float = 23        # EIRP for RF radius calculation
+    model_name: str = "free_space"
+    antenna_height_m: float = 15
+    indoor_pct: float = 0       # 0-100
 
 
 class CirclePoint(BaseModel):
@@ -51,13 +57,10 @@ async def pack_circles_endpoint(req: PackCirclesRequest):
     คำนวณตำแหน่งวาง Base Station ให้ cover polygon ทั้งหมด
     
     Algorithm: "Hex-Init GRILS + SA"
-    1. Auto-calculate cell_radius จากพื้นที่ polygon (Shoelace formula) 
-       ถ้า cell_radius_m <= 0
-    2. Hex Grid — วาง honeycomb pattern ครอบคลุม polygon
-    3. Greedy Removal — ตัดจุดซ้ำซ้อนที่ coverage ลด <0.5%
-    4. Gap Fill — revert ถ้า coverage ต่ำกว่า 99%
-    5. Local Shift — ปรับตำแหน่ง 8 ทิศ 3 passes
-    6. Simulated Annealing — หลุด local minima ด้วย Metropolis criterion
+    
+    Two modes:
+    - Geometry mode (default): cell_radius_m = auto from polygon area (Shoelace)
+    - RF mode (use_rf_radius=True): cell_radius = achievable radius from link budget
     
     Ref: Nurmela & Östergård (2000) "Covering a Polygon with Equal Circles"
     """
@@ -66,7 +69,26 @@ async def pack_circles_endpoint(req: PackCirclesRequest):
             "type": req.polygon.type,
             "coordinates": req.polygon.coordinates,
         }
-        result = pack_circles(geojson, req.cell_radius_m, animate=req.animate)
+        
+        cell_radius = req.cell_radius_m
+        
+        # RF-aware mode: calculate achievable radius from link budget
+        if req.use_rf_radius:
+            from app.services.coverage import CoverageEngine
+            building_loss_db = (req.indoor_pct / 100) * 20  # Phase 29
+            
+            engine = CoverageEngine(propagation_model=req.model_name)
+            cell_radius = engine.calculate_achievable_radius(
+                eirp_dbm=req.eirp_dbm,
+                bs_antenna_height_m=req.antenna_height_m,
+                bs_antenna_gain_dbi=0,  # already in EIRP
+                building_loss_db=building_loss_db,
+            )
+            print(f"[pack_circles] RF mode: EIRP={req.eirp_dbm}dBm, model={req.model_name}, "
+                  f"height={req.antenna_height_m}m, indoor={req.indoor_pct}% → radius={cell_radius:.1f}m")
+        
+        result = pack_circles(geojson, cell_radius, animate=req.animate)
+        result["rf_radius"] = req.use_rf_radius
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Circle packing failed: {str(e)}")
