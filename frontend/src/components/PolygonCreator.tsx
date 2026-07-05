@@ -23,6 +23,11 @@ interface PolygonCreatorProps {
   onDashboardRefresh: () => void
   view3D: boolean
   onView3DChange: (v: boolean) => void
+  onParcelReady?: (data: {
+    polygon: [number, number][]
+    towers: { lat: number; lon: number }[]
+    cell_radius_m: number
+  }) => void
 }
 
 interface PackPoint {
@@ -51,6 +56,7 @@ export default function PolygonCreator({
   onDrawingModeChange,
   view3D,
   onView3DChange,
+  onParcelReady,
 }: PolygonCreatorProps) {
   const { fetchWithAuth } = useAuth()
   const [cellRadius, setCellRadius] = useState(500)
@@ -114,6 +120,13 @@ export default function PolygonCreator({
 
       const data = await res.json()
       onPackResultsChange(data)
+
+      // Notify parent for parcel mode integration
+      onParcelReady?.({
+        polygon: polygonCoords,
+        towers: data.points.map((p: any) => ({ lat: p.lat, lon: p.lon })),
+        cell_radius_m: cellRadius,
+      })
     } catch (err: any) {
       setCalcError(err.message || 'เกิดข้อผิดพลาดในการคำนวณ')
     } finally {

@@ -50,6 +50,14 @@ function AuthenticatedApp({
   const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
   const [highlightStationNames, setHighlightStationNames] = useState<HighlightStation[] | undefined>(undefined)
 
+  // Parcel mode shared state between PolygonCreator tab and Dashboard
+  const [parcelMode, setParcelMode] = useState<'single' | 'parcel'>('single')
+  const [parcelData, setParcelData] = useState<{
+    polygon: [number, number][]
+    towers: { lat: number; lon: number }[]
+    cell_radius_m: number
+  } | null>(null)
+
   // Polygon creator state
   const [showPolygonWorkspace, setShowPolygonWorkspace] = useState(false)
   const [polygonClosing, setPolygonClosing] = useState(false)
@@ -253,6 +261,38 @@ function AuthenticatedApp({
                     // Trigger re-render by setting a new array reference
                     setHighlightStationNames(stations.length > 0 ? [...stations] : undefined)
                   }}
+                  parcelMode={parcelMode}
+                  onParcelModeChange={setParcelMode}
+                  parcelData={parcelData}
+                  onClearParcel={() => setParcelData(null)}
+                  onSavePolygon={() => {
+                    // Trigger polygon download when IMT is saved in parcel mode
+                    if (parcelData && parcelData.polygon.length >= 3) {
+                      const polygonCoords = [...parcelData.polygon]
+                      if (
+                        polygonCoords[0][0] !== polygonCoords[polygonCoords.length - 1][0] ||
+                        polygonCoords[0][1] !== polygonCoords[polygonCoords.length - 1][1]
+                      ) {
+                        polygonCoords.push(polygonCoords[0])
+                      }
+                      const feature = {
+                        type: 'Feature' as const,
+                        geometry: { type: 'Polygon' as const, coordinates: [polygonCoords] },
+                        properties: { name: 'ที่ดิน_IMT' },
+                      }
+                      const blob = new Blob([JSON.stringify(feature, null, 2)], {
+                        type: 'application/geo+json',
+                      })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = 'ที่ดิน_IMT.geojson'
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                      URL.revokeObjectURL(url)
+                    }
+                  }}
                 />
               </div>
             )}
@@ -335,6 +375,10 @@ function AuthenticatedApp({
                   onDashboardRefresh={() => setDashboardRefreshKey(k => k + 1)}
                   view3D={polygonView3D}
                   onView3DChange={setPolygonView3D}
+                  onParcelReady={(data) => {
+                    setParcelData(data)
+                    setParcelMode('parcel')
+                  }}
                 />
               </div>
             )}
