@@ -11,7 +11,7 @@ Algorithms:
 
 import math
 import random
-from typing import List, Tuple, Dict, Any, Set
+from typing import List, Tuple, Dict, Any, Set, Optional
 
 # Earth's mean radius in meters
 EARTH_RADIUS_M = 6_371_000
@@ -479,6 +479,7 @@ def pack_circles(
     geojson: Dict[str, Any],
     cell_radius_m: float,
     optimize: bool = True,
+    animate: bool = False,
 ) -> Dict[str, Any]:
     """
     วาง coverage circles ภายใน polygon
@@ -487,20 +488,22 @@ def pack_circles(
         geojson: GeoJSON Polygon
         cell_radius_m: รัศมี coverage ต่อเสา (เมตร)
         optimize: True = GRILS optimal, False = hexagonal grid fast
+        animate: True = return animation steps for frontend playback
     
-    Returns: {...}
+    Returns: {...} + optional steps[]
     """
     vertices = _extract_polygon_vertices(geojson)
     ref_lat = sum(v[0] for v in vertices) / len(vertices)
     cos_lat = max(math.cos(math.radians(ref_lat)), 0.0001)
     
-    # 1. Centroid (สำหรับ single-tower case)
+    # 1. Centroid
     centroid = _chebyshev_center(vertices)
     max_radius = _min_distance_to_boundary(centroid[0], centroid[1], vertices)
     
     # 2. Circle packing
+    steps = None
     if optimize and len(vertices) >= 3:
-        points, coverage_pct = _pack_optimal(vertices, cell_radius_m, ref_lat, cos_lat)
+        points, coverage_pct, steps = _pack_optimal(vertices, cell_radius_m, ref_lat, cos_lat, animate)
     else:
         points = _pack_hex(vertices, cell_radius_m, ref_lat, cos_lat)
         coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
@@ -508,13 +511,12 @@ def pack_circles(
     # 3. Centroid coverage
     centroid_pct = _calculate_coverage(
         [{"lat": centroid[0], "lon": centroid[1], "type": "centroid"}],
-        cell_radius_m,
-        vertices,
+        cell_radius_m, vertices,
     )
     
     recommendation = "single" if len(points) <= 1 and coverage_pct >= 90 else "multi"
     
-    return {
+    result = {
         "points": points,
         "num_required": len(points),
         "coverage_pct": round(coverage_pct * 100, 1),
@@ -527,6 +529,11 @@ def pack_circles(
         "centroid_coverage_pct": round(centroid_pct * 100, 1),
         "recommendation": recommendation,
     }
+    
+    if animate and steps:
+        result["steps"] = steps
+    
+    return result
 
 
 def _pack_optimal(
@@ -534,21 +541,32 @@ def _pack_optimal(
     cell_radius_m: float,
     ref_lat: float,
     cos_lat: float,
-) -> Tuple[List[Dict[str, Any]], float]:
+    animate: bool = False,
+) -> Tuple[List[Dict[str, Any]], float, Optional[List[dict]]]:
     """
     Optimal packing via Iterative Removal + Local Refinement
     
-    Approach:
-    1. Start with hex grid (extended for edge coverage → 99%+ base)
-    2. Greedily remove redundant circles (drop < 0.5%, cov >= 98%)
-    3. Gap-fill: if coverage < 99%, add circles at uncovered gaps
-    4. Local refinement: small shifts to push coverage toward 100%
+    If animate=True, returns steps[] for frontend animation playback.
+    Each step: {action, points, cov_pct, action_idx?}
     """
-    # Phase 1: Start with hex grid (now covers edges for 99%+)
+    steps = [] if animate else None
+    
+    def _record(action: str, pts: List[Dict[str, Any]], extra: dict = None):
+        if animate:
+            step = {"action": action, "points": [dict(p) for p in pts],
+                    "cov_pct": round(_calculate_coverage(pts, cell_radius_m, vertices) * 100, 1)}
+            if extra:
+                step.update(extra)
+            steps.append(step)
+    
+    # Phase 1: Hex grid
     hex_points = _pack_hex(vertices, cell_radius_m, ref_lat, cos_lat)
     if len(hex_points) <= 1:
         cov = _calculate_coverage(hex_points, cell_radius_m, vertices)
-        return hex_points, cov
+        _record("init", hex_points, {"total": len(hex_points)})
+        return hex_points, cov, steps
+    
+    _record("init", hex_points, {"total": len(hex_points)})
     
     # Phase 2: Greedy redundancy removal
     current = list(hex_points)
@@ -564,30 +582,26 @@ def _pack_optimal(
             drop = baseline_cov - cov
             scores.append((i, drop, cov))
         
-        # Strict: drop < 0.5% and coverage >= 98%
         candidates = [(i, drop, cov) for i, drop, cov in scores if drop < 0.005 and cov >= 0.98]
         if candidates:
             best = min(candidates, key=lambda x: x[1])
             i, _, new_cov = best
+            removed = current[i]
             current = current[:i] + current[i+1:]
+            _record("remove", current, {"removed_idx": i, "removed": removed, "drop_pct": round(candidates[0][1]*100, 2)})
             baseline_cov = new_cov
             improved = True
     
     points = current
     
-    # Phase 3: Gap-fill if coverage < 99%
+    # Phase 3: Gap-fill
     coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
     if coverage_pct < 0.99 and len(points) > 0:
-        # Re-run hex grid without the removed circles, adding back denser grid at gaps
         all_hex = _pack_hex(vertices, cell_radius_m, ref_lat, cos_lat)
-        # Build a composite: keep optimized points + fill from hex where not covered
-        coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
-        if coverage_pct < 0.99:
-            # Fallback: use full hex grid
-            points = all_hex
-            coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
+        points = all_hex
+        _record("gapfill", points)
     
-    # Phase 4: Local shift optimization
+    # Phase 4: Local shift
     if len(points) > 2:
         shift_m = cell_radius_m * 0.15
         for _ in range(3):
@@ -604,7 +618,6 @@ def _pack_optimal(
                     dlon_m = shift_m * math.sin(rad)
                     new_lat, new_lon = _latlon_offset(lat, lon, dlon_m, dlat_m)
                     
-                    # Allow center outside polygon — circle just needs to overlap
                     frac = _circle_fraction_in_polygon(new_lat, new_lon, cell_radius_m, vertices)
                     if frac < 0.05:
                         continue
@@ -617,15 +630,19 @@ def _pack_optimal(
                         best_shift = (new_lat, new_lon)
                 
                 if best_shift != (lat, lon):
+                    old_pos = {"lat": lat, "lon": lon}
                     points[pi]["lat"] = round(best_shift[0], 7)
                     points[pi]["lon"] = round(best_shift[1], 7)
+                    _record("shift", points, {"shifted_idx": pi, "from": old_pos, "to": {"lat": points[pi]["lat"], "lon": points[pi]["lon"]}})
                     any_improved = True
             
             if not any_improved:
                 break
     
     coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
-    return points, coverage_pct
+    _record("done", points, {"final_cov": round(coverage_pct * 100, 1), "total": len(points)})
+    
+    return points, coverage_pct, steps
 
 
 def _pack_hex(

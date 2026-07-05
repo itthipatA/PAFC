@@ -44,6 +44,9 @@ interface PackResult {
   recommendation: string
   centroid_coverage_pct?: number
   cell_radius_m?: number
+  _step?: number
+  _total_steps?: number
+  _action?: string
 }
 
 export default function PolygonCreator({
@@ -110,6 +113,7 @@ export default function PolygonCreator({
         body: JSON.stringify({
           polygon: geoJSON,
           cell_radius_m: cellRadius,
+          animate: true,
         }),
       })
 
@@ -119,7 +123,32 @@ export default function PolygonCreator({
       }
 
       const data = await res.json()
-      onPackResultsChange(data)
+      
+      // Play animation steps
+      if (data.steps && data.steps.length > 0) {
+        const stepDelay = 350  // ms per step
+        for (let i = 0; i < data.steps.length; i++) {
+          const step = data.steps[i]
+          setTimeout(() => {
+            onPackResultsChange({
+              ...data,
+              points: step.points,
+              coverage_pct: step.cov_pct,
+              _step: i + 1,
+              _total_steps: data.steps.length,
+              _action: step.action,
+            })
+          }, i * stepDelay)
+        }
+        // After all steps, set final result
+        setTimeout(() => {
+          onPackResultsChange({ ...data, _step: data.steps.length, _total_steps: data.steps.length, _action: 'done' })
+          setCalculating(false)
+        }, data.steps.length * stepDelay)
+      } else {
+        onPackResultsChange(data)
+        setCalculating(false)
+      }
 
       // Notify parent for parcel mode integration
       onParcelReady?.({
@@ -343,6 +372,27 @@ export default function PolygonCreator({
         {packResults && (
           <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3 animate-fade-in-up">
             <h3 className="text-sm font-semibold text-[#1A1A2E]">ผลลัพธ์</h3>
+
+            {/* Animation progress */}
+            {packResults._step != null && packResults._total_steps != null && packResults._action !== 'done' && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>
+                    {packResults._action === 'init' && 'กำลังวาง grid เริ่มต้น...'}
+                    {packResults._action === 'remove' && 'กำลังหาวงกลมที่ไม่จำเป็น...'}
+                    {packResults._action === 'gapfill' && 'กำลังเติมวงกลมให้ครอบคลุม...'}
+                    {packResults._action === 'shift' && 'กำลังขยับวงกลม optimize coverage...'}
+                  </span>
+                  <span>{packResults._step}/{packResults._total_steps}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div
+                    className="bg-[#C00000] h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${(packResults._step / packResults._total_steps) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
               <div className="text-sm text-gray-700">

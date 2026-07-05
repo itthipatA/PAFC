@@ -20,6 +20,7 @@ class PolygonGeoJSON(BaseModel):
 class PackCirclesRequest(BaseModel):
     polygon: PolygonGeoJSON
     cell_radius_m: float  # รัศมี coverage ต่อ 1 เสา (เมตร)
+    animate: bool = False  # return animation steps for frontend playback
 
 
 class CirclePoint(BaseModel):
@@ -57,7 +58,7 @@ async def pack_circles_endpoint(req: PackCirclesRequest):
             "type": req.polygon.type,
             "coordinates": req.polygon.coordinates,
         }
-        result = pack_circles(geojson, req.cell_radius_m)
+        result = pack_circles(geojson, req.cell_radius_m, animate=req.animate)
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Circle packing failed: {str(e)}")
