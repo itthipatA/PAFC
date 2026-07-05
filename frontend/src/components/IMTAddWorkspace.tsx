@@ -1355,28 +1355,17 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 พารามิเตอร์วิทยุ
               </h3>
               <div className="grid grid-cols-2 gap-3">
-                {/* Cell Radius — auto from optimize, user can override */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    รัศมีเซลล์ (m) {cellRadius > 0 ? `— ปรับเอง: ${cellRadius}m` : packResult?.rf_radius ? '— คำนวณจากกำลังส่ง (RF)' : '— Auto (เรขาคณิต)'}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      min="1" max="2000" step="5"
-                      value={cellRadius || 1}
-                      onChange={(e) => setCellRadius(Number(e.target.value))}
-                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#C00000]"
-                    />
-                    <span className="text-xs font-mono font-bold text-[#C00000] w-14 text-right">
-                      {cellRadius || 'Auto'}m
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {packResult.points?.length || 0} ต้น, ครอบคลุม {packResult.coverage_pct?.toFixed(1)}% | 
-                    จาก optimize: {packResult.cell_radius_m?.toFixed(0) || 'auto'}m
+                {/* Optimized result display */}
+                {packResult && (
+                <div className="col-span-2 bg-green-50 border border-green-200 rounded-lg p-3 mb-1">
+                  <p className="text-sm font-semibold text-green-800">
+                    🗼 {packResult.points?.length || 0} ต้น | รัศมี {packResult.cell_radius_m?.toFixed(0) || '?'}m | ครอบคลุม {packResult.coverage_pct?.toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-green-600 mt-0.5">
+                    {packResult.rf_radius ? 'คำนวณจากกำลังส่ง (RF Link Budget)' : 'คำนวณจากพื้นที่ (เรขาคณิต)'}
                   </p>
                 </div>
+                )}
                 
                 {/* Antenna Height — input type="number" like single cell */}
                 <div>
@@ -1460,16 +1449,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     </div>
                   </>
                 )}
-                
-                {/* EIRP — auto display */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    กำลังส่ง (EIRP)
-                  </label>
-                  <div className="text-sm font-mono text-gray-700 bg-gray-50 rounded px-3 py-2">
-                    {autoEirp ? 'คำนวณอัตโนมัติจากรัศมีเซลล์' : `${maxEirp} dBm`}
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -1490,6 +1469,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                         model_name: propagationModel,
                         antenna_height_m: antennaHeight,
                         indoor_pct: indoorPct,
+                        grid_search: true,  // try multiple radii, pick best
                         animate: true,
                       }),
                     })

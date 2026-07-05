@@ -27,6 +27,8 @@ class PackCirclesRequest(BaseModel):
     model_name: str = "free_space"
     antenna_height_m: float = 15
     indoor_pct: float = 0       # 0-100
+    # Grid search: try multiple radii and pick best (min overspill, max coverage)
+    grid_search: bool = False
 
 
 class CirclePoint(BaseModel):
@@ -88,6 +90,50 @@ async def pack_circles_endpoint(req: PackCirclesRequest):
                   f"height={req.antenna_height_m}m, indoor={req.indoor_pct}% → radius={cell_radius:.1f}m")
         
         result = pack_circles(geojson, cell_radius, animate=req.animate)
+        
+        # Grid search: try multiple radii and pick best (min overspill, max coverage)
+        if req.grid_search:
+            base_radius = cell_radius
+            radii_to_try = [base_radius * 0.5, base_radius * 0.7, base_radius * 0.85,
+                           base_radius, base_radius * 1.2, base_radius * 1.5, base_radius * 2.0]
+            radii_to_try = [max(5, min(2000, r)) for r in radii_to_try]
+            radii_to_try = sorted(set(radii_to_try))
+            
+            import time
+            from app.services.circle_packing import _polygon_area_sqm, _extract_polygon_vertices
+            vertices = _extract_polygon_vertices(geojson)
+            poly_area = _polygon_area_sqm(vertices)
+            
+            best_score = -1
+            best_result = result
+            
+            for r in radii_to_try:
+                t0 = time.time()
+                candidate = pack_circles(geojson, r, animate=False)
+                elapsed = (time.time() - t0) * 1000
+                
+                cov = candidate["coverage_pct"] / 100
+                num = candidate["num_required"]
+                total_circle_area = num * 3.14159 * (r ** 2)
+                overspill = max(0, (total_circle_area - poly_area) / poly_area) if poly_area > 0 else 1
+                tower_score = 1.0 / max(num, 1)
+                score = cov * 0.5 + (1 - min(overspill, 2)) * 0.3 + tower_score * 0.2
+                
+                print(f"[grid_search] r={r:.0f}m: {num} towers, cov={cov*100:.1f}%, "
+                      f"overspill={overspill*100:.0f}%, score={score:.3f} ({elapsed:.0f}ms)")
+                
+                if cov >= 0.98 and score > best_score:
+                    best_score = score
+                    best_result = candidate
+            
+            if req.animate and best_result.get("cell_radius_m", 0) != cell_radius:
+                best_result = pack_circles(geojson, best_result["cell_radius_m"], animate=True)
+            
+            result = best_result
+            result["grid_search"] = True
+            print(f"[grid_search] BEST: r={result['cell_radius_m']:.0f}m, {result['num_required']} towers, "
+                  f"cov={result['coverage_pct']}%, score={best_score:.3f}")
+        
         result["rf_radius"] = req.use_rf_radius
         return result
     except Exception as e:

@@ -261,6 +261,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   const fsLinksDataRef = useRef<any[]>([])
   const imtAllocDataRef = useRef<any[]>([])
   const vertexMarkersRef = useRef<maplibregl.Marker[]>([])
+  const parcelTowerMarkersRef = useRef<maplibregl.Marker[]>([])
   const { fetchWithAuth } = useAuth()
 
   // Refs to keep event handlers current without re-initializing map
@@ -357,9 +358,9 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     mapRef.current.flyTo(opts)
   }, [centerLat, centerLon, workspaceOpen])
 
-  // Update selected-location marker
+  // Update selected-location marker (hidden in polygon mode)
   useEffect(() => {
-    if (!mapRef.current || !selectedLat || !selectedLon) return
+    if (!mapRef.current || !selectedLat || !selectedLon || parcelPolygon) return
 
     const map = mapRef.current
     if (markerRef.current) markerRef.current.remove()
@@ -539,7 +540,9 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       : 80
     map.fitBounds(bounds, { padding: { top: 80, bottom: 80, left: 80, right: paddingRight }, duration: 1000 })
 
-    // Tower markers
+    // Tower markers — clear old ones first
+    parcelTowerMarkersRef.current.forEach(m => m.remove())
+    parcelTowerMarkersRef.current = []
     if (parcelTowers && parcelTowers.length > 0) {
       parcelTowers.forEach((t, i) => {
         const el = document.createElement('div')
@@ -550,7 +553,8 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
         </svg>
         <div style="text-align:center;font-size:9px;font-weight:bold;color:#C00000;margin-top:-4px">${i+1}</div>`
         el.style.cursor = 'default'
-        new maplibregl.Marker({ element: el }).setLngLat([t.lon, t.lat]).addTo(map)
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([t.lon, t.lat]).addTo(map)
+        parcelTowerMarkersRef.current.push(marker)
       })
     }
 
