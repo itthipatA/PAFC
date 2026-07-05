@@ -787,18 +787,24 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       }
       if (data.block_limits) setBlockLimits(data.block_limits)
       
-      // For shape mode: also set blocks with enriched data
+      // For shape mode: set blocks with full interference data from backend
       if (data.blocks) {
         setBlocks(data.blocks.map((b: any) => ({
           freq_low: b.freq_low,
           freq_high: b.freq_high,
           status: b.status === 'all_clear' ? 'green' : b.status === 'fully_blocked' ? 'red' : 'gray',
           max_eirp: data.block_limits?.find((l: any) => l.freq_low === b.freq_low)?.max_eirp_dbm || (autoEirp ? effectiveEirp : maxEirp),
-          reason: b.status === 'all_clear' 
-            ? `ใช้ได้ทุกต้น (${b.available_towers}/${packResult?.points?.length || 0})`
+          i_total_dbm: b.i_total_dbm,
+          threshold_dbm: b.threshold_dbm,
+          margin_db: b.margin_db,
+          i_total_to_fs_dbm: b.i_total_to_fs_dbm,
+          i_total_to_new_imt_dbm: b.i_total_to_new_imt_dbm,
+          i_total_to_existing_imt_dbm: b.i_total_to_existing_imt_dbm,
+          reason: b.status === 'all_clear'
+            ? (b.reason || `ใช้ได้ทุกต้น (${b.available_towers}/${packResult?.points?.length || 0})`)
             : b.status === 'fully_blocked'
-            ? `ใช้ไม่ได้ — เสาที่ติด: ${(b.towers_blocked || []).join(', ')}`
-            : `บางส่วน — ติด: ${(b.towers_blocked || []).join(', ')} จาก ${packResult?.points?.length || 0} ต้น`,
+            ? (b.reason || `ใช้ไม่ได้ — เสาที่ติด: ${(b.towers_blocked || []).join(', ')}`)
+            : (b.reason || `บางส่วน — ติด: ${(b.towers_blocked || []).join(', ')} จาก ${packResult?.points?.length || 0} ต้น`),
         })))
       }
     } catch (err: any) {
@@ -1140,8 +1146,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             )}
           </div>
 
-          {/* ─── Shape Mode: Polygon Upload ─── */}
-          {antennaType === 'shape' && (
+          {/* ─── Shape Mode: Polygon Upload (hidden after upload) ─── */}
+          {antennaType === 'shape' && !packResult && (
             <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
               <h3 className="text-sm font-semibold text-[#1A1A2E]">ข้อมูลที่ดิน</h3>
 

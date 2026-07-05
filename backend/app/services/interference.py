@@ -2044,12 +2044,19 @@ class InterferenceEngine:
             else:
                 status = "partial"
             
-            # Use first tower's block as reference for freq + standard fields
+            # Use first tower's block as reference for freq + interference details
             ref_block = per_tower_results[0].blocks[bi]
             enriched_blocks.append({
                 "freq_low": ref_block.freq_low,
                 "freq_high": ref_block.freq_high,
                 "status": status,
+                "i_total_dbm": round(ref_block.i_total_dbm, 1) if ref_block.i_total_dbm is not None else None,
+                "threshold_dbm": ref_block.threshold_dbm,
+                "margin_db": round(ref_block.margin_db, 1) if ref_block.margin_db is not None else None,
+                "i_total_to_fs_dbm": round(ref_block.i_total_to_fs_dbm, 1) if ref_block.i_total_to_fs_dbm is not None else None,
+                "i_total_to_new_imt_dbm": round(ref_block.i_total_to_new_imt_dbm, 1) if ref_block.i_total_to_new_imt_dbm is not None else None,
+                "i_total_to_existing_imt_dbm": round(ref_block.i_total_to_existing_imt_dbm, 1) if ref_block.i_total_to_existing_imt_dbm is not None else None,
+                "reason": ref_block.reason,
                 "towers_blocked": towers_blocked,
                 "available_towers": len(towers) - len(towers_blocked),
                 "per_tower": tower_statuses,
