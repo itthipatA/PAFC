@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -90,6 +90,68 @@ export function MiniMap({
   // Track previous antenna type for morph transition
   const [displayAntennaType, setDisplayAntennaType] = useState<AntennaType>(antennaType)
 
+  // Zoom/Pan/Rotate state
+  const [zoom, setZoom] = useState(1)
+  const [panX, setPanX] = useState(0)
+  const [panY, setPanY] = useState(0)
+  const [rotate, setRotate] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [isRotating, setIsRotating] = useState(false)
+  const [rotateStart, setRotateStart] = useState({ x: 0, y: 0 })
+  const svgContainerRef = useRef<SVGSVGElement>(null)
+
+  // Zoom with scroll
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    setZoom(z => Math.max(0.3, Math.min(5, z * delta)))
+  }, [])
+
+  // Pan with middle-click or shift+click drag
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+      // Middle-click or Shift+Click = rotate
+      setIsRotating(true)
+      setRotateStart({ x: e.clientX, y: e.clientY })
+      e.preventDefault()
+    } else if (e.button === 0 && !e.shiftKey) {
+      // Left click = pan
+      setIsDragging(true)
+      setDragStart({ x: e.clientX - panX, y: e.clientY - panY })
+    }
+  }, [panX, panY])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isDragging) {
+      setPanX(e.clientX - dragStart.x)
+      setPanY(e.clientY - dragStart.y)
+    }
+    if (isRotating && svgContainerRef.current) {
+      const rect = svgContainerRef.current.getBoundingClientRect()
+      const cx = rect.left + rect.width / 2
+      const cy = rect.top + rect.height / 2
+      const startAngle = Math.atan2(rotateStart.y - cy, rotateStart.x - cx)
+      const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx)
+      const deltaRotate = (currentAngle - startAngle) * (180 / Math.PI)
+      setRotate(r => r + deltaRotate * 0.5)
+      setRotateStart({ x: e.clientX, y: e.clientY })
+    }
+  }, [isDragging, isRotating, dragStart, rotateStart])
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false)
+    setIsRotating(false)
+  }, [])
+
+  // Reset view
+  const resetView = useCallback(() => {
+    setZoom(1)
+    setPanX(0)
+    setPanY(0)
+    setRotate(0)
+  }, [])
+
   useEffect(() => {
     // Smooth transition: update immediately for CSS transition to work
     setDisplayAntennaType(antennaType)
@@ -164,11 +226,31 @@ export function MiniMap({
 
   return (
     <div className={`relative overflow-hidden bg-[#F5F5F0] rounded-xl border border-gray-200 ${className}`}>
+      {/* Zoom/Pan/Rotate controls */}
+      <div className="absolute top-1 right-1 z-10 flex gap-0.5">
+        <button onClick={() => setZoom(z => Math.min(5, z * 1.2))} 
+          className="bg-white/80 hover:bg-white rounded px-1.5 py-0.5 text-xs font-bold text-gray-600 border border-gray-200">+</button>
+        <button onClick={() => setZoom(z => Math.max(0.3, z * 0.8))}
+          className="bg-white/80 hover:bg-white rounded px-1.5 py-0.5 text-xs font-bold text-gray-600 border border-gray-200">−</button>
+        <button onClick={resetView}
+          className="bg-white/80 hover:bg-white rounded px-1.5 py-0.5 text-xs text-gray-500 border border-gray-200" title="รีเซ็ตมุมมอง">↺</button>
+      </div>
       {/* Grid background */}
       <svg
+        ref={svgContainerRef}
         viewBox="-120 -120 240 240"
-        className="w-full h-full"
-        style={{ minHeight: '200px' }}
+        className="w-full h-full cursor-grab"
+        style={{
+          minHeight: '200px',
+          transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px) rotate(${rotate}deg)`,
+          transformOrigin: 'center center',
+          cursor: isDragging ? 'grabbing' : isRotating ? 'crosshair' : 'grab',
+        }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
         {/* Background */}
         <defs>
