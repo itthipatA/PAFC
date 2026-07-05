@@ -1041,6 +1041,9 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               sectorBeamwidth={sectorBeamwidth}
               sectorAzimuth={sectorAzimuth}
               polygonVertices={antennaType === 'shape' ? packResult?._coords : undefined}
+              towerPoints={antennaType === 'shape' && packResult?.points 
+                ? packResult.points.map((p: any) => ({ lat: p.lat, lon: p.lon, cellRadius: packResult.cell_radius_m }))
+                : undefined}
               className="h-full"
             />
           </div>
@@ -1281,6 +1284,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                     antennaType={towerAntennaPattern === 'sector' ? 'sector' : 'omni'}
                     coverageColor="inner"
                     polygonVertices={packResult._coords}
+                    towerPoints={packResult.points?.map((p: any) => ({ lat: p.lat, lon: p.lon, cellRadius: packResult.cell_radius_m }))}
                     className="h-full"
                   />
                 </div>

@@ -17,6 +17,7 @@ export interface MiniMapProps {
   sectorBeamwidth?: number
   sectorAzimuth?: number
   polygonVertices?: [number, number][]  // [lon, lat] from GeoJSON
+  towerPoints?: { lat: number; lon: number; cellRadius?: number }[]  // per-tower positions
   className?: string
 }
 
@@ -83,6 +84,7 @@ export function MiniMap({
   sectorBeamwidth = 120,
   sectorAzimuth = 0,
   polygonVertices,
+  towerPoints,
   className = '',
 }: MiniMapProps) {
   // Track previous antenna type for morph transition
@@ -129,6 +131,23 @@ export function MiniMap({
       return `${i === 0 ? 'M' : 'L'} ${sx.toFixed(1)} ${sy.toFixed(1)}`
     }).join(' ') + ' Z'
   }, [polygonVertices, lat, lon])
+
+  // Per-tower positions → SVG coordinates
+  const towerSvgs = useMemo(() => {
+    if (!towerPoints || towerPoints.length === 0) return []
+    const cosCenter = Math.cos((lat * Math.PI) / 180)
+    const metersPerDeg = 111320
+    // Use same scale factor as polygon calculation
+    const centerLon = lon
+    const centerLat = lat
+    return towerPoints.map(t => {
+      const dx = (t.lon - centerLon) * metersPerDeg * cosCenter
+      const dy = -(t.lat - centerLat) * metersPerDeg
+      // Scale: use same logic as polygon (100 SVG units for max extent)
+      // For towers, just use the polygon's scale if available, otherwise 1
+      return { x: dx, y: dy, radius: t.cellRadius || radius }
+    })
+  }, [towerPoints, lat, lon, radius])
 
   // Pulse ring animations
   const pulseRings = [
@@ -194,6 +213,28 @@ export function MiniMap({
             strokeDasharray="4 2"
           />
         )}
+
+        {/* ─── Per-Tower Coverage Circles ─── */}
+        {towerSvgs.length > 0 && (() => {
+          const maxAbs = Math.max(...towerSvgs.map(t => Math.max(Math.abs(t.x), Math.abs(t.y))), 1)
+          const scale = 100 / maxAbs
+          const visualRadiusScale = visualRadius / (radius || 1)
+          return towerSvgs.map((t, i) => {
+            const sx = t.x * scale
+            const sy = t.y * scale
+            const vr = Math.max(3, (t.radius || radius) * visualRadiusScale * scale / 111320)
+            return (
+              <g key={i}>
+                <circle cx={sx} cy={sy} r={vr}
+                  fill="rgba(192, 0, 0, 0.15)" stroke="#C00000" strokeWidth="0.8"
+                  strokeOpacity="0.4" />
+                <circle cx={sx} cy={sy} r="2" fill="#C00000" />
+                <text x={sx} y={sy - vr - 2} textAnchor="middle"
+                  fill="#1A1A2E" fontSize="6" fontWeight="bold">{i + 1}</text>
+              </g>
+            )
+          })
+        })()}
 
         {/* ─── Coverage Circle (Omni mode) ─── */}
         {isOmni && (
