@@ -426,6 +426,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [parcelBlockResults, setParcelBlockResults] = useState<any[] | null>(null)
   // Store cached pack-circles result for shape mode
   const [packResult, setPackResult] = useState<any>(null)
+  const [gridSearchLog, setGridSearchLog] = useState<string[]>([])
 
   // ─── Sync Animation ──────────────────────────────────────────
   const [syncCoverageColor, setSyncCoverageColor] = useState<'inner' | 'mid' | 'outer'>('inner')
@@ -1474,6 +1475,8 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       }),
                     })
                     const data = await res.json()
+                    // Save grid search log
+                    if (data.grid_search_log) setGridSearchLog(data.grid_search_log)
                     if (data.steps && data.steps.length > 0) {
                       const stepDelay = 350
                       for (let i = 0; i < data.steps.length; i++) {
@@ -1498,6 +1501,23 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               <Zap className="w-4 h-4" />
               {parcelCalculating ? 'กำลัง Optimize...' : `Optimize จำนวนเสา (${packResult?.points?.length || 0} ต้น)`}
             </button>
+
+            {/* Grid Search Log */}
+            {gridSearchLog.length > 0 && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+                <h4 className="text-xs font-semibold text-gray-600 mb-2">
+                  Grid Search Log — ลอง 7 รัศมี หาค่าดีที่สุด (≥99.5% coverage)
+                </h4>
+                <div className="text-[10px] font-mono text-gray-700 space-y-0.5 max-h-[200px] overflow-y-auto">
+                  <div className="text-gray-400 mb-1">   radius | towers | cov% | overspill | score | time</div>
+                  {gridSearchLog.map((line, i) => (
+                    <div key={i} className={line.includes('BEST') ? 'text-green-700 font-bold' : ''}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Analyze button — full width */}
             <button

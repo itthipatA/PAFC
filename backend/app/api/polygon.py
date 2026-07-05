@@ -90,8 +90,9 @@ async def pack_circles_endpoint(req: PackCirclesRequest):
                   f"height={req.antenna_height_m}m, indoor={req.indoor_pct}% → radius={cell_radius:.1f}m")
         
         result = pack_circles(geojson, cell_radius, animate=req.animate)
+        rf_mode = req.use_rf_radius
         
-        # Grid search: try multiple radii and pick best (min overspill, max coverage)
+        # Grid search: try multiple radii, pick best 100% coverage with min overspill
         if req.grid_search:
             base_radius = cell_radius
             radii_to_try = [base_radius * 0.5, base_radius * 0.7, base_radius * 0.85,
@@ -106,10 +107,11 @@ async def pack_circles_endpoint(req: PackCirclesRequest):
             
             best_score = -1
             best_result = result
+            grid_log = []
             
             for r in radii_to_try:
                 t0 = time.time()
-                candidate = pack_circles(geojson, r, animate=False)
+                candidate = pack_circles(geojson, r, optimize=True, animate=False)
                 elapsed = (time.time() - t0) * 1000
                 
                 cov = candidate["coverage_pct"] / 100
@@ -119,22 +121,31 @@ async def pack_circles_endpoint(req: PackCirclesRequest):
                 tower_score = 1.0 / max(num, 1)
                 score = cov * 0.5 + (1 - min(overspill, 2)) * 0.3 + tower_score * 0.2
                 
-                print(f"[grid_search] r={r:.0f}m: {num} towers, cov={cov*100:.1f}%, "
-                      f"overspill={overspill*100:.0f}%, score={score:.3f} ({elapsed:.0f}ms)")
+                entry = (
+                    f"r={r:6.0f}m | {num:3d} ต้น | cov={cov*100:5.1f}% | "
+                    f"overspill={overspill*100:4.0f}% | score={score:.3f} | {elapsed:.0f}ms"
+                )
+                grid_log.append(entry)
                 
-                if cov >= 0.98 and score > best_score:
+                # MUST have ≥99.5% coverage (essentially 100%)
+                if cov >= 0.995 and score > best_score:
                     best_score = score
                     best_result = candidate
             
+            # Re-run best with animation if needed
             if req.animate and best_result.get("cell_radius_m", 0) != cell_radius:
-                best_result = pack_circles(geojson, best_result["cell_radius_m"], animate=True)
+                best_result = pack_circles(geojson, best_result["cell_radius_m"], 
+                                           optimize=True, animate=True)
             
             result = best_result
             result["grid_search"] = True
+            result["grid_search_log"] = grid_log
+            result["rf_radius"] = rf_mode  # preserve RF mode flag
             print(f"[grid_search] BEST: r={result['cell_radius_m']:.0f}m, {result['num_required']} towers, "
                   f"cov={result['coverage_pct']}%, score={best_score:.3f}")
         
-        result["rf_radius"] = req.use_rf_radius
+        if not req.grid_search:
+            result["rf_radius"] = rf_mode
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Circle packing failed: {str(e)}")
