@@ -2028,11 +2028,13 @@ class InterferenceEngine:
             tower_statuses = []
             for ti, result in enumerate(per_tower_results):
                 block = result.blocks[bi]
+                block_status = block.status if hasattr(block, 'status') else block.get("status", "green")
+                block_reason = block.reason if hasattr(block, 'reason') else block.get("reason", "")
                 tower_statuses.append({
                     "tower": ti + 1,
-                    "blocked": block.status != "green",
-                    "status": block.status,
-                    "reason": block.reason if block.status != "green" else "",
+                    "blocked": block_status != "green",
+                    "status": block_status,
+                    "reason": block_reason if block_status != "green" else "",
                 })
             
             towers_blocked = [ts["tower"] for ts in tower_statuses if ts["blocked"]]
@@ -2046,17 +2048,29 @@ class InterferenceEngine:
             
             # Use first tower's block as reference for freq + interference details
             ref_block = per_tower_results[0].blocks[bi]
+            # threshold is a constant from settings, not a BlockResult field
+            threshold = settings.interference_threshold_dbm
+            
+            # Handle both dataclass (BlockResult) and dict
+            freq_low = ref_block.freq_low if hasattr(ref_block, 'freq_low') else ref_block.get("freq_low")
+            freq_high = ref_block.freq_high if hasattr(ref_block, 'freq_high') else ref_block.get("freq_high")
+            i_total = ref_block.i_total_dbm if hasattr(ref_block, 'i_total_dbm') else ref_block.get("i_total_dbm")
+            i_to_fs = ref_block.i_total_to_fs_dbm if hasattr(ref_block, 'i_total_to_fs_dbm') else ref_block.get("i_total_to_fs_dbm")
+            i_to_new = ref_block.i_total_to_new_imt_dbm if hasattr(ref_block, 'i_total_to_new_imt_dbm') else ref_block.get("i_total_to_new_imt_dbm")
+            i_to_ex = ref_block.i_total_to_existing_imt_dbm if hasattr(ref_block, 'i_total_to_existing_imt_dbm') else ref_block.get("i_total_to_existing_imt_dbm")
+            reason = ref_block.reason if hasattr(ref_block, 'reason') else ref_block.get("reason", "")
+            
             enriched_blocks.append({
-                "freq_low": ref_block.freq_low,
-                "freq_high": ref_block.freq_high,
+                "freq_low": freq_low,
+                "freq_high": freq_high,
                 "status": status,
-                "i_total_dbm": round(ref_block.i_total_dbm, 1) if ref_block.i_total_dbm is not None else None,
-                "threshold_dbm": ref_block.threshold_dbm,
-                "margin_db": round(ref_block.margin_db, 1) if ref_block.margin_db is not None else None,
-                "i_total_to_fs_dbm": round(ref_block.i_total_to_fs_dbm, 1) if ref_block.i_total_to_fs_dbm is not None else None,
-                "i_total_to_new_imt_dbm": round(ref_block.i_total_to_new_imt_dbm, 1) if ref_block.i_total_to_new_imt_dbm is not None else None,
-                "i_total_to_existing_imt_dbm": round(ref_block.i_total_to_existing_imt_dbm, 1) if ref_block.i_total_to_existing_imt_dbm is not None else None,
-                "reason": ref_block.reason,
+                "i_total_dbm": round(i_total, 1) if i_total is not None else None,
+                "threshold_dbm": threshold,
+                "margin_db": round(threshold - i_total, 1) if i_total is not None else None,
+                "i_total_to_fs_dbm": round(i_to_fs, 1) if i_to_fs is not None else None,
+                "i_total_to_new_imt_dbm": round(i_to_new, 1) if i_to_new is not None else None,
+                "i_total_to_existing_imt_dbm": round(i_to_ex, 1) if i_to_ex is not None else None,
+                "reason": reason,
                 "towers_blocked": towers_blocked,
                 "available_towers": len(towers) - len(towers_blocked),
                 "per_tower": tower_statuses,
@@ -2178,12 +2192,12 @@ class InterferenceEngine:
             "verification": verification,
             "coverage": coverage_per_tower,
             "block_limits": [{
-                "freq_low": bl.freq_low,
-                "freq_high": bl.freq_high,
-                "max_eirp_dbm": bl.max_eirp_dbm,
-                "margin_db": bl.margin_db,
-                "limiting_factor": bl.limiting_factor,
-                "reducible": bl.reducible,
+                "freq_low": bl.freq_low if hasattr(bl, 'freq_low') else bl.get("freq_low"),
+                "freq_high": bl.freq_high if hasattr(bl, 'freq_high') else bl.get("freq_high"),
+                "max_eirp_dbm": bl.max_eirp_dbm if hasattr(bl, 'max_eirp_dbm') else bl.get("max_eirp_dbm"),
+                "margin_db": bl.margin_db if hasattr(bl, 'margin_db') else bl.get("margin_db"),
+                "limiting_factor": bl.limiting_factor if hasattr(bl, 'limiting_factor') else bl.get("limiting_factor"),
+                "reducible": bl.reducible if hasattr(bl, 'reducible') else bl.get("reducible"),
             } for bl in block_limits] if hasattr(first, 'block_limits') else [],
         }
         

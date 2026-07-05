@@ -159,6 +159,10 @@ def _imt_to_dict(a: IMTAllocation, blocks: list) -> dict:
         "coverage_classification": a.coverage_classification,
         # Deployment (Phase 29)
         "indoor_pct": a.indoor_pct or 0,
+        # Polygon/Shape mode (Phase 35)
+        "polygon_geojson": a.polygon_geojson,
+        "tower_positions": a.tower_positions,
+        "network_total_eirp_dbm": a.network_total_eirp_dbm,
         "status": a.status,
         "approved_by": a.approved_by,
         "valid_from": str(a.valid_from) if a.valid_from else None,

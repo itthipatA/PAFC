@@ -38,6 +38,11 @@ class IMTAllocation(Base):
     # Deployment type (Phase 29)
     indoor_pct = Column(Float, nullable=True, default=0)  # 0-100, % of indoor deployment
 
+    # Polygon/Shape mode (Phase 35)
+    polygon_geojson = Column(String, nullable=True)  # GeoJSON polygon geometry
+    tower_positions = Column(String, nullable=True)  # JSON array of {lat, lon, eirp}
+    network_total_eirp_dbm = Column(Float, nullable=True)
+
     # Status
     status = Column(String(20), default="pending")  # pending/active/rejected/expired
     approved_by = Column(String(255), nullable=True)

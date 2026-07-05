@@ -805,7 +805,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             ? (b.reason || `ใช้ได้ทุกต้น (${b.available_towers}/${packResult?.points?.length || 0})`)
             : b.status === 'fully_blocked'
             ? (b.reason || `ใช้ไม่ได้ — เสาที่ติด: ${(b.towers_blocked || []).join(', ')}`)
-            : (b.reason || `บางส่วน — ติด: ${(b.towers_blocked || []).join(', ')} จาก ${packResult?.points?.length || 0} ต้น`),
+            : (b.reason || `บางส่วน — ติด: ${(b.towers_blocked || []).join(', ')} จาก ${packResult?.points?.length || 0} base station`),
         })))
       }
     } catch (err: any) {
@@ -970,6 +970,14 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             freq_high: b.freq_high,
             status: 'allocated',
           })),
+          // Polygon/Shape mode data
+          ...(antennaType === 'shape' && packResult?._coords ? {
+            polygon_geojson: JSON.stringify({ type: 'Polygon', coordinates: [packResult._coords] }),
+            tower_positions: JSON.stringify(packResult.points?.map((p: any) => ({
+              lat: p.lat, lon: p.lon, eirp_dbm: effectiveEirp
+            })) || []),
+            network_total_eirp_dbm: effectiveEirp,
+          } : {}),
         }),
       })
 
@@ -1199,7 +1207,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   <p className="text-sm font-semibold text-green-800">Polygon พร้อมใช้งาน</p>
                   <p className="text-xs text-green-700">
                     ครอบคลุม <span className="font-bold">{packResult.coverage_pct?.toFixed(1)}%</span> |{' '}
-                    {packResult.points?.length || 0} ต้น | รัศมี {packResult.cell_radius_m || cellRadius}m
+                    {packResult.points?.length || 0} base stations | Radius {packResult.cell_radius_m || cellRadius}m
                   </p>
                   <div className="flex gap-2 mt-2">
                     <Button
@@ -1267,7 +1275,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                       }}
                     >
                       <Zap className="w-4 h-4" />
-                      Optimize จำนวนเสา
+                      Optimize Base Stations
                     </Button>
                     <button
                       onClick={() => { setPackResult(null); setParcelBlockResults(null); onPlotPolygon?.([]) }}
@@ -1360,7 +1368,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 {packResult && (
                 <div className="col-span-2 bg-green-50 border border-green-200 rounded-lg p-3 mb-1">
                   <p className="text-sm font-semibold text-green-800">
-                    🗼 {packResult.points?.length || 0} ต้น | รัศมี {packResult.cell_radius_m?.toFixed(0) || '?'}m | ครอบคลุม {packResult.coverage_pct?.toFixed(1)}%
+                    {packResult.points?.length || 0} base stations | Radius {packResult.cell_radius_m?.toFixed(0) || '?'}m | Coverage {packResult.coverage_pct?.toFixed(1)}%
                   </p>
                   <p className="text-xs text-green-600 mt-0.5">
                     {packResult.rf_radius ? 'คำนวณจากกำลังส่ง (RF Link Budget)' : 'คำนวณจากพื้นที่ (เรขาคณิต)'}
@@ -1499,7 +1507,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               className="w-full bg-[#1A1A2E] hover:bg-[#2D2D4A] text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <Zap className="w-4 h-4" />
-              {parcelCalculating ? 'กำลัง Optimize...' : `Optimize จำนวนเสา (${packResult?.points?.length || 0} ต้น)`}
+              {parcelCalculating ? 'กำลัง Optimize...' : `Optimize Base Stations (${packResult?.points?.length || 0} base stations)`}
             </button>
 
             {/* Grid Search Log */}
@@ -1518,6 +1526,39 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 </div>
               </div>
             )}
+
+            {/* Station info — same as single-cell */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                ข้อมูลสถานี
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    ชื่อสถานี *
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="เช่น BKK-IMT-01"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    ผู้ให้บริการ *
+                  </label>
+                  <input
+                    type="text"
+                    value={operator}
+                    onChange={(e) => setOperator(e.target.value)}
+                    placeholder="เช่น NT, AIS, True"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+              </div>
+            </div>
 
             {/* Analyze button — full width */}
             <button

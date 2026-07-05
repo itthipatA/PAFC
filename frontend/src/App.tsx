@@ -290,7 +290,12 @@ function AuthenticatedApp({
         </div>
       ) : tab === 'imt' ? (
         <div className="flex-1 overflow-hidden">
-          <IMTManager />
+          <IMTManager onViewPolygon={(coords, towers, centroid) => {
+            setPlottedPolygon(coords)
+            setParcelTowers(towers)
+            setParcelCentroid(centroid)
+            setTab('dashboard')  // Auto-switch to see polygon on map
+          }} />
         </div>
       ) : tab === 'polygon' ? (
         <div className="flex-1 flex flex-col overflow-hidden">

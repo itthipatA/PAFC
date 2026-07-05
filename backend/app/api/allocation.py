@@ -609,6 +609,22 @@ async def analyze_parcel_endpoint(data: dict, db: AsyncSession = Depends(get_db)
             ))
     
     engine = InterferenceEngine(propagation_model=model_name)
+    
+    # ── Coverage: auto-calculate EIRP (Phase 29) ──
+    auto_eirp = data.get("auto_eirp", True)
+    coverage_result = None
+    if auto_eirp:
+        from app.services.coverage import CoverageEngine as CovEng
+        building_loss_db = (indoor_pct / 100) * 20
+        cov_engine = CovEng(propagation_model=model_name)
+        coverage_result = cov_engine.calculate_required_eirp(
+            cell_radius_m=cell_radius,
+            bs_antenna_height_m=antenna_height,
+            bs_antenna_gain_dbi=antenna_gain,
+            building_loss_db=building_loss_db,
+        )
+        max_eirp = coverage_result.required_eirp_dbm if coverage_result else max_eirp
+    
     t_start = time_module.time()
     
     try:
@@ -635,8 +651,18 @@ async def analyze_parcel_endpoint(data: dict, db: AsyncSession = Depends(get_db)
     
     elapsed = round((time_module.time() - t_start) * 1000)
     result["elapsed_ms"] = elapsed
+    # ── Attach coverage info from CoverageEngine ──
+    if coverage_result:
+        result["coverage"] = [{
+            "tower": 1,
+            "used_eirp_dbm": coverage_result.used_eirp_dbm if hasattr(coverage_result, 'used_eirp_dbm') else max_eirp,
+            "target_rss_dbm": coverage_result.target_rss_dbm,
+            "required_eirp_dbm": coverage_result.required_eirp_dbm,
+            "cell_edge_rss_dbm": coverage_result.cell_edge_rss_dbm,
+            "coverage_classification": coverage_result.coverage_classification,
+            "shadow_margin_db": coverage_result.shadow_margin_db,
+        }]
     return result
-
 
 def _parse_wkt_center(wkt: str) -> dict | None:
     """Parse WKT POLYGON and return approximate center from first point."""

@@ -42,7 +42,7 @@ const EMPTY_FORM: IMTAllocationCreate = {
 
 // ─── IMT Detail Panel (expandable row content) ────────────────────────────
 
-function IMTDetailPanel({ alloc }: { alloc: IMTAllocation }) {
+function IMTDetailPanel({ alloc, onViewPolygon }: { alloc: IMTAllocation; onViewPolygon?: (polygonCoords: [number,number][], towers: {lat:number,lon:number,eirp_dbm?:number}[], centroid: {lat:number,lon:number}) => void }) {
   const SPECTRUM_START = 4800
   const SPECTRUM_END = 4990
   const BLOCK_WIDTH = 10
@@ -208,11 +208,61 @@ function IMTDetailPanel({ alloc }: { alloc: IMTAllocation }) {
           <span className="font-semibold">Usable:</span> {usableMhz} MHz
         </span>
       </div>
+
+      {/* Polygon/Shape Mode Info */}
+      {(alloc as any).polygon_geojson && (
+        <div className="border border-gray-200 rounded-lg p-3 bg-white">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-semibold text-gray-600">Polygon (Shape Mode)</div>
+            {onViewPolygon && (
+              <button
+                onClick={() => {
+                  try {
+                    const geo = typeof (alloc as any).polygon_geojson === 'string'
+                      ? JSON.parse((alloc as any).polygon_geojson) : (alloc as any).polygon_geojson
+                    const coords = geo.coordinates?.[0]?.map((c: number[]) => [c[0], c[1]] as [number,number]) || []
+                    const twRaw = (alloc as any).tower_positions
+                    const towers = twRaw ? (typeof twRaw === 'string' ? JSON.parse(twRaw) : twRaw) : []
+                    onViewPolygon(coords, towers, { lat: alloc.center_lat, lon: alloc.center_lon })
+                  } catch {}
+                }}
+                className="text-[10px] px-2 py-1 bg-[#C00000] text-white rounded hover:bg-[#8B0000] transition-colors"
+              >
+                Show on Map
+              </button>
+            )}
+          </div>
+          <div className="text-xs text-gray-500 space-y-1">
+            <div>Type: <span className="font-mono text-gray-800">{(alloc as any).antenna_type || 'omni'}</span></div>
+            {(alloc as any).tower_positions && (() => {
+              try {
+                const towers = typeof (alloc as any).tower_positions === 'string' 
+                  ? JSON.parse((alloc as any).tower_positions) 
+                  : (alloc as any).tower_positions
+                return (
+                  <div>
+                    <span className="font-semibold">Base Stations:</span> {towers.length}
+                    {towers.map((t: any, i: number) => (
+                      <div key={i} className="ml-2 text-[10px] font-mono">
+                        #{i+1}: ({t.lat?.toFixed(5)}, {t.lon?.toFixed(5)}) 
+                        {t.eirp_dbm != null && ` — ${t.eirp_dbm} dBm`}
+                      </div>
+                    ))}
+                  </div>
+                )
+              } catch { return <div className="text-red-400">Invalid tower data</div> }
+            })()}
+            {(alloc as any).network_total_eirp_dbm != null && (
+              <div>Network Total EIRP: <span className="font-mono font-bold text-[#C00000]">{(alloc as any).network_total_eirp_dbm} dBm</span></div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-export default function IMTManager() {
+export default function IMTManager({ onViewPolygon }: { onViewPolygon?: (polygonCoords: [number,number][], towers: {lat:number,lon:number,eirp_dbm?:number}[], centroid: {lat:number,lon:number}) => void }) {
   const { fetchWithAuth } = useAuth()
 
   const [allocations, setAllocations] = useState<IMTAllocation[]>([])
@@ -486,7 +536,7 @@ export default function IMTManager() {
                     {expandedId === alloc.id && (
                       <tr key={`${alloc.id}-detail`}>
                         <td colSpan={9} className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-                          <IMTDetailPanel alloc={alloc} />
+                          <IMTDetailPanel alloc={alloc} onViewPolygon={onViewPolygon} />
                         </td>
                       </tr>
                     )}

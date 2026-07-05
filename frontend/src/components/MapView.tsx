@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
@@ -311,6 +311,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     })
 
     mapRef.current = map
+    map.on('load', () => setMapReady(true))
 
     return () => {
       // Clean up all markers
@@ -391,6 +392,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
 
   // Highlight related stations — fly to bounds + pulse markers
   const highlightInProgressRef = useRef(false)
+  const [mapReady, setMapReady] = useState(false)
 
   useEffect(() => {
     if (!highlightStationNames || highlightStationNames.length === 0 || !mapRef.current) return
@@ -569,7 +571,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       el.title = 'ศูนย์กลาง Polygon'
       new maplibregl.Marker({ element: el }).setLngLat([parcelCentroid.lon, parcelCentroid.lat]).addTo(map)
     }
-  }, [parcelPolygon, parcelTowers, parcelCentroid, view3D, workspaceOpen])
+  }, [parcelPolygon, parcelTowers, parcelCentroid, view3D, workspaceOpen, mapReady])
 
   // ─── Polygon Drawing Layers (Live Lines + Draggable Vertices) ──────────
   useEffect(() => {
