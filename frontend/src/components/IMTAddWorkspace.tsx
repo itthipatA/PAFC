@@ -1440,7 +1440,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
             >
               <Search className="w-4 h-4" />
-              {parcelCalculating ? 'กำลังคำนวณ...' : 'วิเคราะห์การรบกวน'}
+              {parcelCalculating ? 'กำลังคำนวณ...' : 'Analyze'}
             </button>
             </>
           )}
@@ -1780,7 +1780,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
               >
                 <Search className="w-4 h-4" />
-                {loading ? 'กำลังคำนวณ...' : 'วิเคราะห์การรบกวน'}
+                {loading ? 'กำลังคำนวณ...' : 'Analyze'}
               </button>
             </div>
           </section>
@@ -2121,19 +2121,19 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                           <div>
                             <span className="text-gray-400">EIRP ที่ใช้:</span>{' '}
                             <span className="font-mono font-bold text-gray-800">
-                              {coverageInfo.used_eirp_dbm.toFixed(1)} dBm
+                              {coverageInfo.used_eirp_dbm != null ? coverageInfo.used_eirp_dbm.toFixed(1) : 'N/A'} dBm
                             </span>
                           </div>
                           <div>
                             <span className="text-gray-400">EIRP ที่ต้องการ:</span>{' '}
                             <span className="font-mono font-bold text-gray-800">
-                              {coverageInfo.required_eirp_dbm.toFixed(1)} dBm
+                              {coverageInfo.required_eirp_dbm != null ? coverageInfo.required_eirp_dbm.toFixed(1) : 'N/A'} dBm
                             </span>
                           </div>
                           <div>
                             <span className="text-gray-400">RSS ขอบเซลล์:</span>{' '}
                             <span className="font-mono font-bold text-gray-800">
-                              {coverageInfo.cell_edge_rss_dbm.toFixed(1)} dBm
+                              {coverageInfo.cell_edge_rss_dbm != null ? coverageInfo.cell_edge_rss_dbm.toFixed(1) : 'N/A'} dBm
                             </span>
                           </div>
                           <div>
