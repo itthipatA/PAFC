@@ -681,7 +681,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         method: 'POST',
         body: JSON.stringify({
           polygon: { type: 'Polygon', coordinates: [coords] },
-          cell_radius_m: cellRadius || 500,
+          cell_radius_m: 0,  // 0 = auto-calculate from polygon geometry
           animate: true,
         }),
       })
@@ -1040,6 +1040,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
               isAnimating={sync.isAnimating}
               sectorBeamwidth={sectorBeamwidth}
               sectorAzimuth={sectorAzimuth}
+              polygonVertices={antennaType === 'shape' ? packResult?._coords : undefined}
               className="h-full"
             />
           </div>
@@ -1202,7 +1203,7 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                               method: 'POST',
                               body: JSON.stringify({
                                 polygon: { type: 'Polygon', coordinates: [coords] },
-                                cell_radius_m: cellRadius,
+                                cell_radius_m: cellRadius || 0,  // 0 = auto, or user override
                                 animate: true,
                               }),
                             })
@@ -1270,6 +1271,20 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             <>
             {/* Step 2: Propagation Model — SAME as single cell */}
             <div className="mb-4">
+              {/* Mini polygon preview */}
+              {packResult?._coords && (
+                <div className="mb-4 h-[160px]">
+                  <MiniMap
+                    lat={packResult.centroid?.lat || lat}
+                    lon={packResult.centroid?.lon || lon}
+                    radius={packResult.cell_radius_m || cellRadius}
+                    antennaType={towerAntennaPattern === 'sector' ? 'sector' : 'omni'}
+                    coverageColor="inner"
+                    polygonVertices={packResult._coords}
+                    className="h-full"
+                  />
+                </div>
+              )}
               <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
                 2. Propagation Model
               </h3>
@@ -1325,16 +1340,26 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 พารามิเตอร์วิทยุ
               </h3>
               <div className="grid grid-cols-2 gap-3">
-                {/* Cell Radius — display from optimization, NOT a slider */}
+                {/* Cell Radius — auto from optimize, user can override */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    รัศมีเซลล์ (m) — จาก Optimize
+                    รัศมีเซลล์ (m) {cellRadius > 0 ? `— ปรับเอง: ${cellRadius}m` : '— Auto'}
                   </label>
-                  <div className="text-lg font-bold text-[#1A1A2E]">
-                    {packResult.cell_radius_m || cellRadius} m
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="1" max="2000" step="5"
+                      value={cellRadius || 1}
+                      onChange={(e) => setCellRadius(Number(e.target.value))}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#C00000]"
+                    />
+                    <span className="text-xs font-mono font-bold text-[#C00000] w-14 text-right">
+                      {cellRadius || 'Auto'}m
+                    </span>
                   </div>
-                  <p className="text-xs text-gray-400">
-                    {packResult.points?.length || 0} ต้น, ครอบคลุม {packResult.coverage_pct?.toFixed(1)}%
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {packResult.points?.length || 0} ต้น, ครอบคลุม {packResult.coverage_pct?.toFixed(1)}% | 
+                    จาก optimize: {packResult.cell_radius_m?.toFixed(0) || 'auto'}m
                   </p>
                 </div>
                 

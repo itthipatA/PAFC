@@ -16,6 +16,7 @@ export interface MiniMapProps {
   isAnimating?: boolean
   sectorBeamwidth?: number
   sectorAzimuth?: number
+  polygonVertices?: [number, number][]  // [lon, lat] from GeoJSON
   className?: string
 }
 
@@ -81,6 +82,7 @@ export function MiniMap({
   isAnimating = false,
   sectorBeamwidth = 120,
   sectorAzimuth = 0,
+  polygonVertices,
   className = '',
 }: MiniMapProps) {
   // Track previous antenna type for morph transition
@@ -106,6 +108,27 @@ export function MiniMap({
 
   // Sector wedge path
   const wedgePath = sectorWedgePath(visualRadius, sectorBeamwidth, sectorAzimuth)
+
+  // Polygon vertices → SVG path (projected relative to center)
+  const polyPath = useMemo(() => {
+    if (!polygonVertices || polygonVertices.length < 3) return ''
+    // Compute bounds to auto-scale
+    const lons = polygonVertices.map(v => v[0])
+    const lats = polygonVertices.map(v => v[1])
+    const cosCenter = Math.cos((lat * Math.PI) / 180)
+    const metersPerDeg = 111320
+    // Convert to meters relative to center
+    const dxs = lons.map(l => (l - lon) * metersPerDeg * cosCenter)
+    const dys = lats.map(l => -(l - lat) * metersPerDeg)  // negative: SVG y-axis
+    // Auto-scale to fit viewBox (-110 to 110)
+    const maxAbs = Math.max(...dxs.map(Math.abs), ...dys.map(Math.abs))
+    const scale = maxAbs > 0 ? 100 / maxAbs : 1  // 100 SVG units for the furthest point
+    return polygonVertices.map((v, i) => {
+      const sx = dxs[i] * scale
+      const sy = dys[i] * scale
+      return `${i === 0 ? 'M' : 'L'} ${sx.toFixed(1)} ${sy.toFixed(1)}`
+    }).join(' ') + ' Z'
+  }, [polygonVertices, lat, lon])
 
   // Pulse ring animations
   const pulseRings = [
@@ -160,6 +183,17 @@ export function MiniMap({
         {/* Crosshair at center */}
         <line x1="-10" y1="0" x2="10" y2="0" stroke="rgba(0,0,0,0.15)" strokeWidth="0.5" />
         <line x1="0" y1="-10" x2="0" y2="10" stroke="rgba(0,0,0,0.15)" strokeWidth="0.5" />
+
+        {/* ─── Polygon Boundary (from upload) ─── */}
+        {polyPath && (
+          <path
+            d={polyPath}
+            fill="rgba(192, 0, 0, 0.08)"
+            stroke="#C00000"
+            strokeWidth="1.5"
+            strokeDasharray="4 2"
+          />
+        )}
 
         {/* ─── Coverage Circle (Omni mode) ─── */}
         {isOmni && (

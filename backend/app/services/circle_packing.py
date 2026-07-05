@@ -477,7 +477,7 @@ def _grils_solve(
 
 def pack_circles(
     geojson: Dict[str, Any],
-    cell_radius_m: float,
+    cell_radius_m: float = 0,
     optimize: bool = True,
     animate: bool = False,
 ) -> Dict[str, Any]:
@@ -486,7 +486,7 @@ def pack_circles(
     
     Args:
         geojson: GeoJSON Polygon
-        cell_radius_m: รัศมี coverage ต่อเสา (เมตร)
+        cell_radius_m: รัศมี coverage ต่อเสา (เมตร). ถ้า <= 0 → auto-calculate จาก polygon size
         optimize: True = GRILS optimal, False = hexagonal grid fast
         animate: True = return animation steps for frontend playback
     
@@ -495,6 +495,19 @@ def pack_circles(
     vertices = _extract_polygon_vertices(geojson)
     ref_lat = sum(v[0] for v in vertices) / len(vertices)
     cos_lat = max(math.cos(math.radians(ref_lat)), 0.0001)
+    
+    # 0. Auto-determine cell radius from polygon geometry
+    if cell_radius_m <= 0:
+        # Calculate polygon bounding box characteristic dimension
+        lats = [v[0] for v in vertices]
+        lons = [v[1] for v in vertices]
+        lat_span = (max(lats) - min(lats)) * 111320  # meters
+        lon_span = (max(lons) - min(lons)) * 111320 * cos_lat
+        poly_width = max(lat_span, lon_span)
+        # Start with radius = poly_width / 4 (allows ~4 towers across polygon)
+        cell_radius_m = poly_width / 4
+        cell_radius_m = max(cell_radius_m, 5)   # Minimum 5m
+        cell_radius_m = min(cell_radius_m, 2000) # Maximum 2000m
     
     # 1. Centroid
     centroid = _chebyshev_center(vertices)
@@ -507,6 +520,17 @@ def pack_circles(
     else:
         points = _pack_hex(vertices, cell_radius_m, ref_lat, cos_lat)
         coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
+    
+    # 2b. If coverage < 90%, try smaller radius for better coverage
+    retry_count = 0
+    while coverage_pct < 90 and cell_radius_m > 5 and retry_count < 3:
+        cell_radius_m = cell_radius_m * 0.7  # Reduce radius → more towers → better coverage
+        retry_count += 1
+        if optimize and len(vertices) >= 3:
+            points, coverage_pct, steps = _pack_optimal(vertices, cell_radius_m, ref_lat, cos_lat, animate)
+        else:
+            points = _pack_hex(vertices, cell_radius_m, ref_lat, cos_lat)
+            coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
     
     # 3. Centroid coverage
     centroid_pct = _calculate_coverage(
