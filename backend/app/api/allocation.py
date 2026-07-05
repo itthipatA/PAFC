@@ -13,6 +13,8 @@ from app.services.interference import (
     InterferenceEngine, FSLinkData, IMTNeighborData,
 )
 from app.services.coverage import CoverageEngine
+from app.services.narrative_log import generate_narrative_log
+import time as time_module
 
 router = APIRouter()
 
@@ -144,6 +146,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
 
     # Run 3-phase interference analysis
     engine = InterferenceEngine(propagation_model=model_name)
+    t_start = time_module.time()
     result = engine.analyze(
         center_lat=center_lat,
         center_lon=center_lon,
@@ -249,6 +252,48 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         
         # Trade-off suggestion (when conflicts exist + auto_eirp)
         "tradeoff": _compute_tradeoff(result, coverage_result, max_eirp, auto_eirp, model_name, antenna_height, antenna_gain),
+
+        # Narrative log — engine-generated explanation of ALL calculations
+        "narrative_log": generate_narrative_log(
+            center_lat=center_lat,
+            center_lon=center_lon,
+            cell_radius=cell_radius,
+            antenna_height=antenna_height,
+            antenna_gain=antenna_gain,
+            max_eirp=max_eirp,
+            model_name=model_name,
+            indoor_pct=indoor_pct,
+            pairs=result.pairs,
+            pair_results=result.pair_results,
+            blocks=result.blocks,
+            block_limits=result.block_limits,
+            fs_links_checked=len(fs_links),
+            neighbor_imts_checked=len(neighbor_imts),
+            spatial_filter_km=engine._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts),
+            elapsed_ms=(time_module.time() - t_start) * 1000,
+            computation_time_ms=result.computation_time_ms,
+            coverage=({
+                "auto_eirp": auto_eirp,
+                "propagation_model": model_name,
+                "used_eirp_dbm": round(max_eirp, 1) if max_eirp else None,
+                "cell_edge_rss_dbm": round(coverage_result.cell_edge_rss_dbm, 1) if coverage_result else None,
+                "required_eirp_dbm": round(coverage_result.required_eirp_dbm, 1) if coverage_result else None,
+                "actual_path_loss_db": round(coverage_result.actual_path_loss_db, 1) if coverage_result else None,
+                "coverage_classification": coverage_result.coverage_classification if coverage_result else None,
+                "target_rss_dbm": coverage_result.target_rss_dbm if coverage_result else None,
+                "shadow_margin_db": coverage_result.shadow_margin_db if coverage_result else None,
+            } if auto_eirp else None),
+            assumptions=engine.get_assumptions(
+                antenna_type=str(data.get("antenna_type", "omni") or "omni"),
+                sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
+                sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
+                cell_radius=cell_radius,
+                auto_eirp=auto_eirp,
+                model_params=data.get("model_params", {}) or {},
+            ),
+            tradeoff=_compute_tradeoff(result, coverage_result, max_eirp, auto_eirp, model_name, antenna_height, antenna_gain),
+            verification=result.verification,
+        ),
     }
 
 
