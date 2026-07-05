@@ -63,6 +63,7 @@ class IMTNeighborData:
     antenna_type: str = "omni"  # "omni" | "sector"
     sector_beamwidth_deg: float = 120  # deg — only for sector type
     sector_azimuth_deg: float = 0  # deg from True North — only for sector type
+    parcel_id: str = ""  # "" = independent, non-empty = part of parcel (skip intra-parcel IMT↔IMT)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -582,6 +583,8 @@ class InterferenceEngine:
         sector_azimuth_deg: float = 0,
         model_params: Optional[dict] = None,
         indoor_pct: float = 0,
+        new_parcel_id: str = "",
+        skip_same_parcel: bool = False,
     ) -> InterferenceResult:
         """
         Full three-phase analysis.
@@ -617,6 +620,8 @@ class InterferenceEngine:
             antenna_type=antenna_type,
             sector_beamwidth_deg=sector_beamwidth_deg,
             sector_azimuth_deg=sector_azimuth_deg,
+            skip_same_parcel=skip_same_parcel,
+            new_parcel_id=new_parcel_id,
         )
 
         # ── Phase 1: Calculate ──
@@ -701,6 +706,8 @@ class InterferenceEngine:
         antenna_type: str = "omni",
         sector_beamwidth_deg: float = 120,
         sector_azimuth_deg: float = 0,
+        skip_same_parcel: bool = False,
+        new_parcel_id: str = "",
     ) -> list[InterferencePair]:
         """
         Phase 0: Identify all potential victim/interferer pairs.
@@ -878,6 +885,10 @@ class InterferenceEngine:
         # ── ➂ & ➃ NEW_IMT ↔ EXISTING_IMT (bidirectional) ──
         for imt in neighbor_imts:
             dist = haversine_m(center_lat, center_lon, imt.center_lat, imt.center_lon)
+
+            # Skip same-parcel neighbors (towers in the same parcel share frequencies)
+            if skip_same_parcel and new_parcel_id and imt.parcel_id == new_parcel_id:
+                continue
 
             # Per-IMT spatial filter: each neighbor IMT has its own cell_radius
             imt_spatial_limit_m = (cell_radius + imt.cell_radius + 
@@ -1930,6 +1941,126 @@ class InterferenceEngine:
 
         checks["all_pass"] = all(c["pass"] for c in checks.values())
         return checks
+
+    def analyze_parcel(
+        self,
+        towers: list[dict],
+        cell_radius: float,
+        antenna_height: float,
+        antenna_gain: float,
+        max_eirp: float,
+        fs_links: list[FSLinkData],
+        existing_imts: list[IMTNeighborData],
+        band_start: Optional[float] = None,
+        band_end: Optional[float] = None,
+        antenna_type: str = "omni",
+        sector_beamwidth_deg: float = 120,
+        sector_azimuth_deg: float = 0,
+        model_params: Optional[dict] = None,
+        indoor_pct: float = 0,
+    ) -> dict:
+        """
+        Analyze all towers in a parcel together as a single IMT system.
+        
+        Runs analyze() per tower with skip_same_parcel=True, then aggregates:
+        - All towers share the same frequency block (sfn / cellular)
+        - IMT↔IMT between towers is SKIPPED (same system)
+        - Phase 2 aggregation correctly accounts for all towers
+        
+        Returns:
+            {
+                "parcel_towers": N,
+                "blocks": [{status, towers_blocked, per_tower, ...}, ...]
+            }
+        """
+        import uuid
+        parcel_id = f"parcel_{uuid.uuid4().hex[:8]}"
+        
+        # Build neighbor list: existing IMTs + other towers in parcel
+        all_neighbor_imts = list(existing_imts)
+        for i, t in enumerate(towers):
+            all_neighbor_imts.append(IMTNeighborData(
+                id=f"parcel_tower_{i}",
+                name=f"เสา {i+1}",
+                center_lat=t["lat"],
+                center_lon=t["lon"],
+                cell_radius=cell_radius,
+                freq_low=band_start or settings.band_start_mhz,
+                freq_high=band_end or settings.band_end_mhz,
+                max_eirp=max_eirp,
+                antenna_gain=antenna_gain,
+                antenna_height=antenna_height,
+                antenna_type=antenna_type,
+                sector_beamwidth_deg=sector_beamwidth_deg,
+                sector_azimuth_deg=sector_azimuth_deg,
+                parcel_id=parcel_id,
+            ))
+        
+        # Run analyze() per tower
+        per_tower_results = []
+        for i, t in enumerate(towers):
+            result = self.analyze(
+                center_lat=t["lat"],
+                center_lon=t["lon"],
+                cell_radius=cell_radius,
+                antenna_height=antenna_height,
+                antenna_gain=antenna_gain,
+                max_eirp=max_eirp,
+                fs_links=fs_links,
+                neighbor_imts=all_neighbor_imts,
+                requested_band_start=band_start,
+                requested_band_end=band_end,
+                antenna_type=antenna_type,
+                sector_beamwidth_deg=sector_beamwidth_deg,
+                sector_azimuth_deg=sector_azimuth_deg,
+                model_params=model_params,
+                indoor_pct=indoor_pct,
+                new_parcel_id=parcel_id,
+                skip_same_parcel=True,
+            )
+            per_tower_results.append(result)
+        
+        # Aggregate: per-block status across all towers
+        enriched_blocks = []
+        num_blocks = len(per_tower_results[0].blocks) if per_tower_results else 0
+        
+        for bi in range(num_blocks):
+            tower_statuses = []
+            for ti, result in enumerate(per_tower_results):
+                block = result.blocks[bi]
+                tower_statuses.append({
+                    "tower": ti + 1,
+                    "blocked": block.status != "green",
+                    "status": block.status,
+                    "reason": block.reason if block.status != "green" else "",
+                })
+            
+            towers_blocked = [ts["tower"] for ts in tower_statuses if ts["blocked"]]
+            
+            if len(towers_blocked) == 0:
+                status = "all_clear"
+            elif len(towers_blocked) == len(towers):
+                status = "fully_blocked"
+            else:
+                status = "partial"
+            
+            # Get reference block from first tower
+            ref_block = per_tower_results[0].blocks[bi]
+            
+            enriched_blocks.append({
+                "freq_low": ref_block.freq_low,
+                "freq_high": ref_block.freq_high,
+                "status": status,
+                "towers_blocked": towers_blocked,
+                "available_towers": len(towers) - len(towers_blocked),
+                "per_tower": tower_statuses,
+            })
+        
+        return {
+            "parcel_towers": len(towers),
+            "parcel_id": parcel_id,
+            "blocks": enriched_blocks,
+        }
 
 
         # ═══════════════════════════════════════════════════════════════

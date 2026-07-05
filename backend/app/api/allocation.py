@@ -140,6 +140,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
                     antenna_height=float(getattr(imt, 'antenna_height', 15) or 15),
                     antenna_type=str(getattr(imt, 'antenna_type', 'omni') or 'omni'),
                     sector_beamwidth_deg=float(getattr(imt, 'sector_beamwidth_deg', 120) or 120),
+                    parcel_id=str(getattr(imt, 'parcel_id', '') or ''),
                     sector_azimuth_deg=float(getattr(imt, 'sector_azimuth_deg', 0) or 0),
                 )
             )
@@ -470,6 +471,7 @@ async def pre_screen(data: dict, db: AsyncSession = Depends(get_db)):
                     antenna_height=float(getattr(imt, 'antenna_height', 15) or 15),
                     antenna_type=str(getattr(imt, 'antenna_type', 'omni') or 'omni'),
                     sector_beamwidth_deg=float(getattr(imt, 'sector_beamwidth_deg', 120) or 120),
+                    parcel_id=str(getattr(imt, 'parcel_id', '') or ''),
                     sector_azimuth_deg=float(getattr(imt, 'sector_azimuth_deg', 0) or 0),
                 )
             )
@@ -519,6 +521,116 @@ async def pre_screen(data: dict, db: AsyncSession = Depends(get_db)):
             },
         },
     }
+
+
+@router.post("/analyze-parcel")
+async def analyze_parcel_endpoint(data: dict, db: AsyncSession = Depends(get_db)):
+    """
+    Multi-tower parcel analysis.
+    ...
+    """
+    from app.core.config import get_settings
+    settings = get_settings()
+    
+    towers = data.get("towers", [])
+    if not towers or len(towers) < 1:
+        raise HTTPException(status_code=400, detail="Need at least 1 tower")
+    
+    cell_radius = float(data.get("cell_radius_m", 500))
+    antenna_height = float(data.get("antenna_height", 15))
+    antenna_gain = float(data.get("antenna_gain", 12))
+    max_eirp = float(data.get("max_eirp", 23))
+    model_name = str(data.get("model_name", "free_space"))
+    band_start = float(data.get("band_start", settings.band_start_mhz))
+    band_end = float(data.get("band_end", settings.band_end_mhz))
+    model_params = data.get("model_params")
+    indoor_pct = float(data.get("indoor_pct", 0))
+    antenna_type = str(data.get("antenna_type", "omni") or "omni")
+    sector_beamwidth_deg = float(data.get("sector_beamwidth_deg", 120) or 120)
+    sector_azimuth_deg = float(data.get("sector_azimuth_deg", 0) or 0)
+    
+    # Get FS links
+    db_fs = db.query(FSLink).all()
+    fs_links = []
+    for fs in db_fs:
+        fs_links.append(FSLinkData(
+            id=str(fs.id),
+            name=str(fs.name),
+            tx_lat=float(fs.tx_lat),
+            tx_lon=float(fs.tx_lon),
+            tx_altitude=float(fs.tx_altitude or 0),
+            rx_lat=float(fs.rx_lat),
+            rx_lon=float(fs.rx_lon),
+            rx_altitude=float(fs.rx_altitude or 0),
+            freq_low=float(fs.freq_low),
+            freq_high=float(fs.freq_high),
+            bandwidth=float(fs.bandwidth),
+            tx_power=float(fs.tx_power),
+            tx_antenna_gain=float(fs.tx_antenna_gain),
+            rx_antenna_gain=float(fs.rx_antenna_gain or 0),
+        ))
+    
+    # Get existing IMTs
+    imt_raw = db.query(IMTAllocation).filter(IMTAllocation.deleted == False).all()
+    neighbor_imts = []
+    for imt in imt_raw:
+        blocks_db = db.query(SpectrumBlock).filter(
+            SpectrumBlock.imt_allocation_id == imt.id
+        ).all()
+        blocks_by_imt = {}
+        for b in blocks_db:
+            aid = str(b.imt_allocation_id)
+            if aid not in blocks_by_imt:
+                blocks_by_imt[aid] = []
+            blocks_by_imt[aid].append(b)
+        
+        imt_id = str(imt.id)
+        blocks = blocks_by_imt.get(imt_id, [])
+        center = _parse_wkt_center(imt.area_wkt)
+        if center is None or not blocks:
+            continue
+        
+        for block in blocks:
+            neighbor_imts.append(IMTNeighborData(
+                id=imt_id,
+                name=str(imt.name),
+                center_lat=center["lat"],
+                center_lon=center["lon"],
+                cell_radius=float(imt.cell_radius),
+                freq_low=float(block.freq_low),
+                freq_high=float(block.freq_high),
+                max_eirp=float(getattr(imt, 'max_eirp', 23) or 23),
+                antenna_gain=float(getattr(imt, 'antenna_gain', 12) or 12),
+                antenna_height=float(getattr(imt, 'antenna_height', 15) or 15),
+                antenna_type=str(getattr(imt, 'antenna_type', 'omni') or 'omni'),
+                sector_beamwidth_deg=float(getattr(imt, 'sector_beamwidth_deg', 120) or 120),
+                sector_azimuth_deg=float(getattr(imt, 'sector_azimuth_deg', 0) or 0),
+                parcel_id=str(getattr(imt, 'parcel_id', '') or ''),
+            ))
+    
+    engine = InterferenceEngine(propagation_model=model_name)
+    t_start = time_module.time()
+    
+    result = engine.analyze_parcel(
+        towers=towers,
+        cell_radius=cell_radius,
+        antenna_height=antenna_height,
+        antenna_gain=antenna_gain,
+        max_eirp=max_eirp,
+        fs_links=fs_links,
+        existing_imts=neighbor_imts,
+        band_start=band_start,
+        band_end=band_end,
+        antenna_type=antenna_type,
+        sector_beamwidth_deg=sector_beamwidth_deg,
+        sector_azimuth_deg=sector_azimuth_deg,
+        model_params=model_params,
+        indoor_pct=indoor_pct,
+    )
+    
+    elapsed = round((time_module.time() - t_start) * 1000)
+    result["elapsed_ms"] = elapsed
+    return result
 
 
 def _parse_wkt_center(wkt: str) -> dict | None:
