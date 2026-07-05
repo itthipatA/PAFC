@@ -50,21 +50,17 @@ function AuthenticatedApp({
   const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
   const [highlightStationNames, setHighlightStationNames] = useState<HighlightStation[] | undefined>(undefined)
 
-  // Parcel mode shared state between PolygonCreator tab and Dashboard
-  const [parcelMode, setParcelMode] = useState<'single' | 'parcel'>('single')
-  const [parcelData, setParcelData] = useState<{
-    polygon: [number, number][]
-    towers: { lat: number; lon: number }[]
-    cell_radius_m: number
-  } | null>(null)
+  // Plotted polygon for dashboard map display
+  const [plottedPolygon, setPlottedPolygon] = useState<[number, number][] | null>(null)
+  const [parcelTowers, setParcelTowers] = useState<{ lat: number; lon: number }[]>([])
+  const [parcelCentroid, setParcelCentroid] = useState<{ lat: number; lon: number } | null>(null)
+  const [parcelView3D, setParcelView3D] = useState(false)
 
   // Polygon creator state
   const [showPolygonWorkspace, setShowPolygonWorkspace] = useState(false)
   const [polygonClosing, setPolygonClosing] = useState(false)
   const [polygonVertices, setPolygonVertices] = useState<[number, number][]>([])
-  const [polygonPackResults, setPolygonPackResults] = useState<any>(null)
   const [polygonDrawingMode, setPolygonDrawingMode] = useState(false)
-  const [polygonView3D, setPolygonView3D] = useState(false)
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)
@@ -220,13 +216,25 @@ function AuthenticatedApp({
               แผนที่จัดสรรคลื่นความถี่ 4800-4990 MHz
             </h2>
             {!showDashboardWorkspace && (
-              <button
-                onClick={handleOpenWorkspace}
-                className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
-              >
-                <PlusCircle className="w-4 h-4" />
-                เพิ่ม IMT
-              </button>
+              <div className="flex items-center gap-2">
+                {plottedPolygon && (
+                  <button
+                    onClick={() => setParcelView3D(!parcelView3D)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                      parcelView3D ? 'bg-[#C00000] text-white border-[#C00000]' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {parcelView3D ? '2D' : '3D'}
+                  </button>
+                )}
+                <button
+                  onClick={handleOpenWorkspace}
+                  className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  เพิ่ม IMT
+                </button>
+              </div>
             )}
           </div>
 
@@ -244,6 +252,10 @@ function AuthenticatedApp({
               clickMode="pan"
               workspaceOpen={showDashboardWorkspace}
               highlightStationNames={highlightStationNames}
+              parcelPolygon={plottedPolygon}
+              parcelTowers={parcelTowers}
+              parcelCentroid={parcelCentroid}
+              view3D={parcelView3D}
             />
 
             {(showDashboardWorkspace || workspaceClosing) && (
@@ -257,40 +269,14 @@ function AuthenticatedApp({
                   mode="panel"
                   onCellRadiusChange={setWorkspaceCellRadius}
                   onConfirmLocation={handleConfirmLocation}
-                  onShowStations={(stations) => {
-                    // Trigger re-render by setting a new array reference
-                    setHighlightStationNames(stations.length > 0 ? [...stations] : undefined)
+                  onPlotPolygon={(vertices) => {
+                    setPlottedPolygon(vertices.length > 0 ? vertices : null)
                   }}
-                  parcelMode={parcelMode}
-                  onParcelModeChange={setParcelMode}
-                  parcelData={parcelData}
-                  onClearParcel={() => setParcelData(null)}
-                  onSavePolygon={() => {
-                    // Trigger polygon download when IMT is saved in parcel mode
-                    if (parcelData && parcelData.polygon.length >= 3) {
-                      const polygonCoords = [...parcelData.polygon]
-                      if (
-                        polygonCoords[0][0] !== polygonCoords[polygonCoords.length - 1][0] ||
-                        polygonCoords[0][1] !== polygonCoords[polygonCoords.length - 1][1]
-                      ) {
-                        polygonCoords.push(polygonCoords[0])
-                      }
-                      const feature = {
-                        type: 'Feature' as const,
-                        geometry: { type: 'Polygon' as const, coordinates: [polygonCoords] },
-                        properties: { name: 'ที่ดิน_IMT' },
-                      }
-                      const blob = new Blob([JSON.stringify(feature, null, 2)], {
-                        type: 'application/geo+json',
-                      })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = 'ที่ดิน_IMT.geojson'
-                      document.body.appendChild(a)
-                      a.click()
-                      document.body.removeChild(a)
-                      URL.revokeObjectURL(url)
+                  onCentroidUpdate={(c) => setParcelCentroid(c)}
+                  onShowStations={(stations) => {
+                    setHighlightStationNames(stations.length > 0 ? [...stations] : undefined)
+                    if (stations.length > 0 && stations[0].type === 'new_imt') {
+                      setParcelTowers(stations.map(s => ({ lat: (s as any).lat, lon: (s as any).lon })))
                     }
                   }}
                 />
@@ -317,7 +303,6 @@ function AuthenticatedApp({
                 onClick={() => {
                   setShowPolygonWorkspace(true)
                   setPolygonVertices([])
-                  setPolygonPackResults(null)
                 }}
                 className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
               >
@@ -334,6 +319,13 @@ function AuthenticatedApp({
                   setPolygonVertices(prev => [...prev, [lon, lat]])
                 }
               }}
+              onVertexDrag={(index, lon, lat) => {
+                setPolygonVertices(prev => {
+                  const next = [...prev]
+                  next[index] = [lon, lat]
+                  return next
+                })
+              }}
               selectedLat={selectedLat}
               selectedLon={selectedLon}
               blocks={[]}
@@ -345,8 +337,6 @@ function AuthenticatedApp({
               workspaceOpen={showPolygonWorkspace}
               highlightStationNames={undefined}
               polygonVertices={polygonVertices}
-              packResults={polygonPackResults}
-              view3D={polygonView3D}
             />
             {(showPolygonWorkspace || polygonClosing) && (
               <div
@@ -362,23 +352,12 @@ function AuthenticatedApp({
                       setPolygonClosing(false)
                       setPolygonDrawingMode(false)
                       setPolygonVertices([])
-                      setPolygonPackResults(null)
                     }, 600)
                   }}
                   vertices={polygonVertices}
                   onVerticesChange={setPolygonVertices}
-                  packResults={polygonPackResults}
-                  onPackResultsChange={setPolygonPackResults}
                   drawingMode={polygonDrawingMode}
                   onDrawingModeChange={setPolygonDrawingMode}
-                  dashboardRefreshKey={dashboardRefreshKey}
-                  onDashboardRefresh={() => setDashboardRefreshKey(k => k + 1)}
-                  view3D={polygonView3D}
-                  onView3DChange={setPolygonView3D}
-                  onParcelReady={(data) => {
-                    setParcelData(data)
-                    setParcelMode('parcel')
-                  }}
                 />
               </div>
             )}

@@ -24,7 +24,7 @@ class IMTAllocation(Base):
     antenna_gain = Column(Float, nullable=True)        # dBi
 
     # Antenna Pattern (Phase 17)
-    antenna_type = Column(String(20), nullable=True, default="omni")  # omni | sector
+    antenna_type = Column(String(20), nullable=True, default="omni")  # omni | sector | shape
     sector_beamwidth_deg = Column(Float, nullable=True, default=120)  # deg — only for sector
     sector_azimuth_deg = Column(Float, nullable=True, default=0)      # deg from True North
 

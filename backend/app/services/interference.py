@@ -60,7 +60,7 @@ class IMTNeighborData:
     antenna_gain: float = 12  # dBi (used for VICTIM receiver gain only)
     antenna_height: float = 15  # m (default)
     # Antenna pattern (Phase 17)
-    antenna_type: str = "omni"  # "omni" | "sector"
+    antenna_type: str = "omni"  # "omni" | "sector" | "shape"
     sector_beamwidth_deg: float = 120  # deg — only for sector type
     sector_azimuth_deg: float = 0  # deg from True North — only for sector type
     parcel_id: str = ""  # "" = independent, non-empty = part of parcel (skip intra-parcel IMT↔IMT)
@@ -288,7 +288,7 @@ def sector_antenna_discrimination_db(
     - Omni: 0 dB (no discrimination)
     - Sector: 0 dB if in beam, -20 dB front-to-back ratio otherwise
     """
-    if antenna_type == "omni":
+    if antenna_type == "omni" or antenna_type == "shape":
         return 0.0
     
     # Bearing from IMT to target
@@ -2044,9 +2044,8 @@ class InterferenceEngine:
             else:
                 status = "partial"
             
-            # Get reference block from first tower
+            # Use first tower's block as reference for freq + standard fields
             ref_block = per_tower_results[0].blocks[bi]
-            
             enriched_blocks.append({
                 "freq_low": ref_block.freq_low,
                 "freq_high": ref_block.freq_high,
@@ -2056,13 +2055,111 @@ class InterferenceEngine:
                 "per_tower": tower_statuses,
             })
         
+        # ── Aggregate pairs across ALL towers (deduplicate by name+direction) ──
+        all_pairs = []
+        seen_pair_keys = set()
+        for result in per_tower_results:
+            for p in (result.pairs if hasattr(result, 'pairs') else []):
+                key = (p.interferer_name, p.victim_name, p.direction)
+                if key not in seen_pair_keys:
+                    seen_pair_keys.add(key)
+                    all_pairs.append(p)
+
+        # ── Aggregate pair_results across ALL towers (no dedup — different tower positions) ──
+        all_pair_results = []
+        for result in per_tower_results:
+            for pr in (result.pair_results if hasattr(result, 'pair_results') else []):
+                all_pair_results.append(pr)
+
+        # ── Aggregate narrative_log across ALL towers with headers ──
+        combined_narrative = []
+        for ti, result in enumerate(per_tower_results):
+            t = towers[ti]
+            combined_narrative.append(
+                f"=== เสา {ti+1} (lat={t['lat']:.7f}, lon={t['lon']:.7f}) ==="
+            )
+            log = result.narrative_log if hasattr(result, 'narrative_log') else []
+            combined_narrative.extend(log)
+
+        # ── Aggregate summary across ALL towers (worst-case per risk level) ──
+        max_high = 0
+        max_medium = 0
+        max_low = 0
+        for result in per_tower_results:
+            if hasattr(result, 'pairs'):
+                max_high = max(max_high, sum(1 for p in result.pairs if p.preliminary_risk == "HIGH"))
+                max_medium = max(max_medium, sum(1 for p in result.pairs if p.preliminary_risk == "MEDIUM"))
+                max_low = max(max_low, sum(1 for p in result.pairs if p.preliminary_risk == "LOW"))
+
+        # ── Coverage: array of coverage info per tower ──
+        coverage_per_tower = []
+        for ti, result in enumerate(per_tower_results):
+            if hasattr(result, 'coverage') and result.coverage:
+                coverage_per_tower.append({
+                    "tower": ti + 1,
+                    "used_eirp_dbm": result.coverage.used_eirp_dbm,
+                    "target_rss_dbm": result.coverage.target_rss_dbm,
+                })
+            else:
+                coverage_per_tower.append({
+                    "tower": ti + 1,
+                    "used_eirp_dbm": None,
+                    "target_rss_dbm": None,
+                })
+
+        # ── Verification: use first tower (same checks apply to all) ──
+        first = per_tower_results[0]
+        verification = first.verification if hasattr(first, 'verification') and first.verification else {}
+
         return {
             "parcel_towers": len(towers),
-            "parcel_id": parcel_id,
             "blocks": enriched_blocks,
+            "pairs": [{
+                "interferer_type": p.interferer_type,
+                "interferer_name": p.interferer_name,
+                "victim_type": p.victim_type,
+                "victim_name": p.victim_name,
+                "direction": p.direction,
+                "freq_overlap_low": p.freq_overlap_low,
+                "freq_overlap_high": p.freq_overlap_high,
+                "distance_m": p.distance_m,
+                "within_beam": p.within_beam,
+                "estimated_i_dbm": round(p.estimated_i_dbm, 1),
+                "preliminary_risk": p.preliminary_risk,
+            } for p in all_pairs],
+            "pair_results": [{
+                "pair": {
+                    "interferer_type": pr.pair.interferer_type,
+                    "interferer_name": pr.pair.interferer_name,
+                    "victim_type": pr.pair.victim_type,
+                    "victim_name": pr.pair.victim_name,
+                    "direction": pr.pair.direction,
+                    "freq_overlap_low": pr.pair.freq_overlap_low,
+                    "freq_overlap_high": pr.pair.freq_overlap_high,
+                    "distance_m": pr.pair.distance_m,
+                    "within_beam": pr.pair.within_beam,
+                    "estimated_i_dbm": round(pr.pair.estimated_i_dbm, 1),
+                    "preliminary_risk": pr.pair.preliminary_risk,
+                },
+                "interferer": pr.pair.interferer_name,
+                "victim": pr.pair.victim_name,
+                "i_dbm": round(pr.i_dbm, 1) if pr.i_dbm is not None else None,
+                "threshold_dbm": round(pr.threshold_dbm, 1) if pr.threshold_dbm is not None else None,
+                "margin_db": round(pr.margin_db, 1) if pr.margin_db is not None else None,
+                "verdict": pr.verdict,
+                "detail": pr.detail,
+            } for pr in all_pair_results],
+            "narrative_log": combined_narrative,
+            "summary": {
+                "total_pairs": len(all_pairs),
+                "high_risk": max_high,
+                "medium_risk": max_medium,
+                "low_risk": max_low,
+            },
+            "verification": verification,
+            "coverage": coverage_per_tower,
         }
-
-
+        
         # ═══════════════════════════════════════════════════════════════
         # BACKWARD COMPATIBILITY — Public API (used by allocation.py)
         # ═══════════════════════════════════════════════════════════════

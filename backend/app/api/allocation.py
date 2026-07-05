@@ -3,7 +3,7 @@ Spectrum Allocation Engine — API endpoint v2
 POST /api/allocate/analyze   → Full 3-phase analysis
 POST /api/allocate/pre-screen → Phase 0 only (pre-scan)
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.database import get_db
@@ -611,22 +611,27 @@ async def analyze_parcel_endpoint(data: dict, db: AsyncSession = Depends(get_db)
     engine = InterferenceEngine(propagation_model=model_name)
     t_start = time_module.time()
     
-    result = engine.analyze_parcel(
-        towers=towers,
-        cell_radius=cell_radius,
-        antenna_height=antenna_height,
-        antenna_gain=antenna_gain,
-        max_eirp=max_eirp,
-        fs_links=fs_links,
-        existing_imts=neighbor_imts,
-        band_start=band_start,
-        band_end=band_end,
-        antenna_type=antenna_type,
-        sector_beamwidth_deg=sector_beamwidth_deg,
-        sector_azimuth_deg=sector_azimuth_deg,
-        model_params=model_params,
-        indoor_pct=indoor_pct,
-    )
+    try:
+        result = engine.analyze_parcel(
+            towers=towers,
+            cell_radius=cell_radius,
+            antenna_height=antenna_height,
+            antenna_gain=antenna_gain,
+            max_eirp=max_eirp,
+            fs_links=fs_links,
+            existing_imts=neighbor_imts,
+            band_start=band_start,
+            band_end=band_end,
+            antenna_type=antenna_type,
+            sector_beamwidth_deg=sector_beamwidth_deg,
+            sector_azimuth_deg=sector_azimuth_deg,
+            model_params=model_params,
+            indoor_pct=indoor_pct,
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Engine error: {str(e)}")
     
     elapsed = round((time_module.time() - t_start) * 1000)
     result["elapsed_ms"] = elapsed

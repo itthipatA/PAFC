@@ -22,6 +22,10 @@ interface MapViewProps {
   workspaceOpen?: boolean
   highlightStationNames?: HighlightStation[]
   polygonVertices?: [number, number][]
+  onVertexDrag?: (index: number, lon: number, lat: number) => void
+  parcelPolygon?: [number, number][] | null
+  parcelTowers?: { lat: number; lon: number }[]
+  parcelCentroid?: { lat: number; lon: number } | null
   packResults?: {
     points: { lat: number; lon: number; type: string }[]
     centroid: { lat: number; lon: number }
@@ -248,7 +252,7 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames, polygonVertices, packResults, view3D }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames, polygonVertices, onVertexDrag, parcelPolygon, parcelTowers, parcelCentroid, packResults, view3D }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
@@ -256,7 +260,16 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   const imtMarkersRef = useRef<maplibregl.Marker[]>([])
   const fsLinksDataRef = useRef<any[]>([])
   const imtAllocDataRef = useRef<any[]>([])
+  const vertexMarkersRef = useRef<maplibregl.Marker[]>([])
   const { fetchWithAuth } = useAuth()
+
+  // Refs to keep event handlers current without re-initializing map
+  const clickModeRef = useRef(clickMode)
+  clickModeRef.current = clickMode
+  const onMapClickRef = useRef(onMapClick)
+  onMapClickRef.current = onMapClick
+  const onVertexDragRef = useRef(onVertexDrag)
+  onVertexDragRef.current = onVertexDrag
 
   // Init map
   useEffect(() => {
@@ -290,11 +303,9 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     map.on('dragend', () => { map.getCanvas().style.cursor = 'grab' })
 
     map.on('click', (e) => {
-      if (clickMode === 'place') {
-        onMapClick(e.lngLat.lat, e.lngLat.lng)
-      }
-      if (clickMode === 'draw_polygon') {
-        onMapClick(e.lngLat.lat, e.lngLat.lng)
+      const mode = clickModeRef.current
+      if (mode === 'place' || mode === 'draw_polygon') {
+        onMapClickRef.current(e.lngLat.lat, e.lngLat.lng)
       }
     })
 
@@ -473,55 +484,156 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     }
   }, [highlightStationNames, centerLat, centerLon, workspaceOpen])
 
-  // ─── Polygon Drawing Layers ────────────────────────────────────────────
+  // ─── Parcel Polygon Rendering (from IMT workspace shape mode) ─────────
   useEffect(() => {
     if (!mapRef.current) return
     const map = mapRef.current
 
-    // Clean up previous polygon layers
-    const sourcesToRemove = ['polygon-land', 'polygon-vertices', 'pack-circles', 'centroid-marker']
+    const srcId = 'parcel-polygon'
+    const fillId = 'parcel-polygon-layer'
+    const outlineId = 'parcel-polygon-outline'
+
+    // Clean up
+    if (map.getLayer(fillId)) map.removeLayer(fillId)
+    if (map.getLayer(outlineId)) map.removeLayer(outlineId)
+    if (map.getLayer('parcel-extrusion-3d')) map.removeLayer('parcel-extrusion-3d')
+    if (map.getSource(srcId)) map.removeSource(srcId)
+
+    if (!parcelPolygon || parcelPolygon.length < 3) return
+
+    const coords: [number, number][] = [...parcelPolygon]
+    if (coords[0][0] !== coords[coords.length - 1][0] ||
+        coords[0][1] !== coords[coords.length - 1][1]) {
+      coords.push(coords[0])
+    }
+
+    map.addSource(srcId, {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] }, properties: {} },
+    })
+    map.addLayer({
+      id: fillId, type: 'fill', source: srcId,
+      paint: { 'fill-color': '#C00000', 'fill-opacity': 0.12 },
+    })
+    map.addLayer({
+      id: outlineId, type: 'line', source: srcId,
+      paint: { 'line-color': '#C00000', 'line-width': 2, 'line-opacity': 0.7 },
+    })
+
+    // 3D extrusion
+    if (view3D) {
+      map.addLayer({
+        id: 'parcel-extrusion-3d', type: 'fill-extrusion', source: srcId,
+        paint: { 'fill-extrusion-color': '#C00000', 'fill-extrusion-height': 80, 'fill-extrusion-opacity': 0.6, 'fill-extrusion-base': 0 },
+      })
+      map.easeTo({ pitch: 55, duration: 800 })
+    } else {
+      if (map.getLayer('parcel-extrusion-3d')) map.removeLayer('parcel-extrusion-3d')
+    }
+
+    // Fit bounds to polygon with workspace-aware padding
+    const bounds = new maplibregl.LngLatBounds()
+    coords.forEach(c => bounds.extend(c))
+    const paddingRight = workspaceOpen && containerRef.current
+      ? containerRef.current.offsetWidth * 0.6
+      : 80
+    map.fitBounds(bounds, { padding: { top: 80, bottom: 80, left: 80, right: paddingRight }, duration: 1000 })
+
+    // Tower markers
+    if (parcelTowers && parcelTowers.length > 0) {
+      parcelTowers.forEach((t, i) => {
+        const el = document.createElement('div')
+        el.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C00000" stroke-width="2">
+          <path d="M12 2L2 22h20L12 2z"/>
+          <line x1="12" y1="9" x2="12" y2="15"/>
+          <line x1="9" y1="22" x2="15" y2="22"/>
+        </svg>
+        <div style="text-align:center;font-size:9px;font-weight:bold;color:#C00000;margin-top:-4px">${i+1}</div>`
+        el.style.cursor = 'default'
+        new maplibregl.Marker({ element: el }).setLngLat([t.lon, t.lat]).addTo(map)
+      })
+    }
+
+    // Centroid marker
+    if (parcelCentroid) {
+      const el = document.createElement('div')
+      el.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="#C00000" stroke="#C00000" stroke-width="1">
+        <circle cx="12" cy="12" r="4" fill="white"/>
+        <path d="M12 2l1.5 6.5L20 7l-5 4.5L18 18l-6-3.5L6 18l3-6.5L4 7l6.5 1.5z"/>
+      </svg>`
+      el.style.cursor = 'default'
+      el.title = 'ศูนย์กลาง Polygon'
+      new maplibregl.Marker({ element: el }).setLngLat([parcelCentroid.lon, parcelCentroid.lat]).addTo(map)
+    }
+  }, [parcelPolygon, parcelTowers, parcelCentroid, view3D, workspaceOpen])
+
+  // ─── Polygon Drawing Layers (Live Lines + Draggable Vertices) ──────────
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current
+
+    // Clean up previous polygon/vertex layers & markers
+    const sourcesToRemove = ['polygon-land', 'polygon-line', 'polygon-vertices', 'pack-circles', 'centroid-marker']
     sourcesToRemove.forEach(src => {
       if (map.getLayer(src + '-layer')) map.removeLayer(src + '-layer')
       if (map.getLayer(src + '-outline')) map.removeLayer(src + '-outline')
       if (map.getLayer(src + '-label')) map.removeLayer(src + '-label')
       if (map.getSource(src)) map.removeSource(src)
     })
+    // Clean up vertex HTML markers
+    vertexMarkersRef.current.forEach(m => m.remove())
+    vertexMarkersRef.current = []
 
-    // A. Draw polygon fill if we have enough vertices
-    if (polygonVertices && polygonVertices.length >= 3) {
-      // Close the polygon by appending first vertex
-      const coords: [number, number][] = [...polygonVertices]
-      if (
-        coords[0][0] !== coords[coords.length - 1][0] ||
-        coords[0][1] !== coords[coords.length - 1][1]
-      ) {
-        coords.push(coords[0])
-      }
+    if (!polygonVertices || polygonVertices.length === 0) return
 
-      const polygonGeoJSON: GeoJSON.Feature = {
+    const vertices = polygonVertices
+
+    // A. Draw connecting LineString (2+ vertices — real-time lines between clicks)
+    if (vertices.length >= 2) {
+      const lineCoords: [number, number][] = [...vertices]
+      // If not closed, show open line
+      const lineGeoJSON: GeoJSON.Feature = {
         type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [coords],
-        },
+        geometry: { type: 'LineString', coordinates: lineCoords },
         properties: {},
       }
-
-      map.addSource('polygon-land', {
+      map.addSource('polygon-line', {
         type: 'geojson',
-        data: polygonGeoJSON,
+        data: lineGeoJSON,
       })
+      map.addLayer({
+        id: 'polygon-line-layer',
+        type: 'line',
+        source: 'polygon-line',
+        paint: {
+          'line-color': '#C00000',
+          'line-width': 2.5,
+          'line-opacity': 0.8,
+          'line-dasharray': [6, 3],
+        },
+      })
+    }
 
+    // B. Draw polygon fill + solid outline (3+ vertices => closed shape)
+    if (vertices.length >= 3) {
+      const coords: [number, number][] = [...vertices]
+      // Close polygon
+      if (coords[0][0] !== coords[coords.length - 1][0] ||
+          coords[0][1] !== coords[coords.length - 1][1]) {
+        coords.push(coords[0])
+      }
+      const polyGeoJSON: GeoJSON.Feature = {
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [coords] },
+        properties: {},
+      }
+      map.addSource('polygon-land', { type: 'geojson', data: polyGeoJSON })
       map.addLayer({
         id: 'polygon-land-layer',
         type: 'fill',
         source: 'polygon-land',
-        paint: {
-          'fill-color': '#C00000',
-          'fill-opacity': 0.15,
-        },
+        paint: { 'fill-color': '#C00000', 'fill-opacity': 0.12 },
       })
-
       map.addLayer({
         id: 'polygon-land-outline',
         type: 'line',
@@ -529,113 +641,108 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
         paint: {
           'line-color': '#C00000',
           'line-width': 2,
-          'line-opacity': 0.6,
-          'line-dasharray': [4, 2],
-        },
-      })
-
-      // B. Vertex markers
-      const vertexFeatures: GeoJSON.Feature[] = polygonVertices.map(
-        (v: [number, number], i: number) => ({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: v },
-          properties: { index: i + 1 },
-        })
-      )
-
-      map.addSource('polygon-vertices', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: vertexFeatures },
-      })
-
-      map.addLayer({
-        id: 'polygon-vertices-layer',
-        type: 'circle',
-        source: 'polygon-vertices',
-        paint: {
-          'circle-radius': 6,
-          'circle-color': '#C00000',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#FFFFFF',
+          'line-opacity': 0.7,
         },
       })
     }
 
-    // C. Pack result circles
+    // C. Draggable HTML vertex markers
+    const isDrawing = clickMode === 'draw_polygon'
+
+    vertices.forEach((v, i) => {
+      const el = document.createElement('div')
+      el.style.cssText = isDrawing
+        ? 'cursor: crosshair; pointer-events: none'
+        : 'cursor: grab'
+      el.innerHTML = `<svg width="20" height="20" viewBox="0 0 20 20">
+        <circle cx="10" cy="10" r="7" fill="#C00000" stroke="#FFFFFF" stroke-width="2.5"/>
+        <text x="10" y="14" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="bold">${i + 1}</text>
+      </svg>`
+      el.title = `จุดที่ ${i + 1}`
+
+      const marker = new maplibregl.Marker({ element: el, draggable: false })
+        .setLngLat(v)
+        .addTo(map)
+
+      // Drag behavior (only when NOT in draw mode)
+      if (!isDrawing && onVertexDragRef.current) {
+        el.style.cursor = 'grab'
+
+        const onMouseDown = (e: MouseEvent) => {
+          e.stopPropagation()
+          e.preventDefault()
+          el.style.cursor = 'grabbing'
+
+          const onMouseMove = (ev: MouseEvent) => {
+            const lngLat = map.unproject([ev.clientX, ev.clientY])
+            marker.setLngLat([lngLat.lng, lngLat.lat])
+          }
+
+          const onMouseUp = (ev: MouseEvent) => {
+            el.style.cursor = 'grab'
+            const lngLat = map.unproject([ev.clientX, ev.clientY])
+            onVertexDragRef.current!(i, lngLat.lng, lngLat.lat)
+            window.removeEventListener('mousemove', onMouseMove)
+            window.removeEventListener('mouseup', onMouseUp)
+          }
+
+          window.addEventListener('mousemove', onMouseMove)
+          window.addEventListener('mouseup', onMouseUp)
+        }
+
+        el.addEventListener('mousedown', onMouseDown)
+      }
+
+      vertexMarkersRef.current.push(marker)
+    })
+
+    // D. Pack result circles
     if (packResults && packResults.points && packResults.points.length > 0) {
       const cellRadiusM = packResults.cell_radius_m || 500
-
       const circleFeatures: any[] = []
       packResults.points.forEach((p) => {
         try {
-          const c = circle([p.lon, p.lat], cellRadiusM / 1000, {
-            steps: 64,
-            units: 'kilometers',
-          })
+          const c = circle([p.lon, p.lat], cellRadiusM / 1000, { steps: 64, units: 'kilometers' })
           circleFeatures.push(c)
-        } catch (_e) {
-          // skip invalid circle
-        }
+        } catch (_e) { /* skip invalid circle */ }
       })
-
       if (circleFeatures.length > 0) {
         map.addSource('pack-circles', {
           type: 'geojson',
           data: { type: 'FeatureCollection', features: circleFeatures },
         })
-
         map.addLayer({
-          id: 'pack-circles-layer',
-          type: 'fill',
-          source: 'pack-circles',
-          paint: {
-            'fill-color': '#16A34A',
-            'fill-opacity': 0.1,
-          },
+          id: 'pack-circles-layer', type: 'fill', source: 'pack-circles',
+          paint: { 'fill-color': '#16A34A', 'fill-opacity': 0.1 },
         })
-
         map.addLayer({
-          id: 'pack-circles-outline',
-          type: 'line',
-          source: 'pack-circles',
-          paint: {
-            'line-color': '#16A34A',
-            'line-width': 1,
-            'line-opacity': 0.5,
-          },
+          id: 'pack-circles-outline', type: 'line', source: 'pack-circles',
+          paint: { 'line-color': '#16A34A', 'line-width': 1, 'line-opacity': 0.5 },
         })
       }
     }
 
-    // D. Centroid marker
+    // E. Centroid marker
     if (packResults && packResults.centroid) {
-      const centroidFeature: GeoJSON.Feature = {
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [packResults.centroid.lon, packResults.centroid.lat],
-        },
-        properties: {},
-      }
-
       map.addSource('centroid-marker', {
         type: 'geojson',
-        data: centroidFeature,
-      })
-
-      map.addLayer({
-        id: 'centroid-marker-layer',
-        type: 'circle',
-        source: 'centroid-marker',
-        paint: {
-          'circle-radius': 8,
-          'circle-color': '#F59E0B',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#FFFFFF',
+        data: {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [packResults.centroid.lon, packResults.centroid.lat] },
+          properties: {},
         },
       })
+      map.addLayer({
+        id: 'centroid-marker-layer', type: 'circle', source: 'centroid-marker',
+        paint: { 'circle-radius': 8, 'circle-color': '#F59E0B', 'circle-stroke-width': 2, 'circle-stroke-color': '#FFFFFF' },
+      })
     }
-  }, [polygonVertices, packResults])
+
+    return () => {
+      vertexMarkersRef.current.forEach(m => m.remove())
+      vertexMarkersRef.current = []
+    }
+  }, [polygonVertices, packResults, clickMode])
 
   // ─── 3D Polygon View ──────────────────────────────────────────────────
   useEffect(() => {

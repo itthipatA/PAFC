@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
-import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal, ChevronUp, ChevronDown, ChevronRight, Eye, Upload, Calculator } from 'lucide-react'
+import { Search, Save, ArrowLeft, PlusCircle, CheckCircle, Shield, XCircle, MapPin, AlertTriangle, Zap, ArrowRight, ToggleLeft, ToggleRight, Radio, Signal, ChevronUp, ChevronDown, ChevronRight, Eye, Upload, Calculator, Octagon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { MAP_STYLES } from './MapView'
 import type { BlockResult, BlockEirpLimit, Pair, PairResult as PairResultType, AnalyzeSummary, BackendVerification, CoverageInfo, TradeOff, AssumptionItem } from '../types'
@@ -16,16 +16,8 @@ interface IMTAddWorkspaceProps {
   onCellRadiusChange?: (r: number) => void
   onConfirmLocation?: (lat: number, lon: number, cellRadius: number) => void
   onShowStations?: (stations: HighlightStation[]) => void
-  // Parcel mode props
-  parcelMode?: 'single' | 'parcel'
-  onParcelModeChange?: (mode: 'single' | 'parcel') => void
-  parcelData?: {
-    polygon: [number, number][]
-    towers: { lat: number; lon: number }[]
-    cell_radius_m: number
-  } | null
-  onClearParcel?: () => void
-  onSavePolygon?: () => void
+  onPlotPolygon?: (vertices: [number, number][]) => void
+  onCentroidUpdate?: (c: {lat: number, lon: number} | null) => void
 }
 
 const LAYER_IDS = {
@@ -404,7 +396,7 @@ function directionLabelForLog(direction: string): string {
 
 
 
-export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusChange, onConfirmLocation, onShowStations, parcelMode: externalParcelMode, onParcelModeChange, parcelData: externalParcelData, onClearParcel, onSavePolygon }: IMTAddWorkspaceProps) {
+export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusChange, onConfirmLocation, onShowStations, onPlotPolygon, onCentroidUpdate }: IMTAddWorkspaceProps) {
   const { fetchWithAuth } = useAuth()
 
   // Form state
@@ -420,20 +412,20 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   const [blockLimits, setBlockLimits] = useState<BlockEirpLimit[]>([])
   const [tradeoff, setTradeoff] = useState<TradeOff | null>(null)
   const [propagationModel, setPropagationModel] = useState('free_space')
-  const [antennaType, setAntennaType] = useState('omni')
+  const [antennaType, setAntennaType] = useState('shape')
   const [sectorBeamwidth, setSectorBeamwidth] = useState(120)
   const [sectorAzimuth, setSectorAzimuth] = useState(0)
+  const [towerAntennaPattern, setTowerAntennaPattern] = useState<'omni' | 'sector'>('omni')
   const [modelParams, setModelParams] = useState<Record<string, any>>({})
   const [name, setName] = useState('')
   const [operator, setOperator] = useState('')
 
-  // Parcel mode state
-  const [internalParcelMode, setInternalParcelMode] = useState<'single' | 'parcel'>('single')
-  const actualParcelMode = externalParcelMode ?? internalParcelMode
-  const actualParcelData = externalParcelData ?? null
+  // Parcel/Shape mode state
   const [parcelCalculating, setParcelCalculating] = useState(false)
   const [parcelCalcError, setParcelCalcError] = useState('')
   const [parcelBlockResults, setParcelBlockResults] = useState<any[] | null>(null)
+  // Store cached pack-circles result for shape mode
+  const [packResult, setPackResult] = useState<any>(null)
 
   // ─── Sync Animation ──────────────────────────────────────────
   const [syncCoverageColor, setSyncCoverageColor] = useState<'inner' | 'mid' | 'outer'>('inner')
@@ -655,6 +647,13 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
     }
   }, [lat, lon, cellRadius, antennaHeight, antennaGain, maxEirp, autoEirp, propagationModel, fetchWithAuth])
 
+  // ─── Draw polygon on mini map when pack result loads ─────────────────
+  useEffect(() => {
+    if (antennaType === 'shape' && packResult?._coords && miniMapRef.current) {
+      drawMiniPolygon(miniMapRef.current, packResult._coords)
+    }
+  }, [packResult, antennaType])
+
   // ─── Parcel Mode Handlers ─────────────────────────────────────────────
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -677,29 +676,61 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
         throw new Error('Polygon ต้องมีอย่างน้อย 3 จุดมุม')
       }
 
-      // Call circle packing API to get tower positions
+      // Call circle packing API with animation
       const res = await fetchWithAuth('/api/polygon/pack-circles', {
         method: 'POST',
         body: JSON.stringify({
           polygon: { type: 'Polygon', coordinates: [coords] },
           cell_radius_m: cellRadius || 500,
+          animate: true,
         }),
       })
-      const packResult = await res.json()
+      const packResultData = await res.json()
 
-      // Update location from centroid
-      if (packResult.centroid) {
-        setLat(packResult.centroid.lat)
-        setLon(packResult.centroid.lon)
+      if (packResultData.centroid) {
+        setLat(packResultData.centroid.lat)
+        setLon(packResultData.centroid.lon)
+        onCentroidUpdate?.(packResultData.centroid)
+      }
+      
+      // Play animation steps
+      if (packResultData.steps && packResultData.steps.length > 0) {
+        setParcelCalculating(true)
+        const stepDelay = 350
+        for (let i = 0; i < packResultData.steps.length; i++) {
+          const step = packResultData.steps[i]
+          setTimeout(() => {
+            setPackResult({
+              ...packResultData,
+              points: step.points,
+              coverage_pct: step.cov_pct,
+              _step: i + 1,
+              _total_steps: packResultData.steps.length,
+              _action: step.action,
+              _coords: coords,
+            })
+          }, i * stepDelay)
+        }
+        setTimeout(() => {
+          setPackResult({ ...packResultData, _step: packResultData.steps.length, _total_steps: packResultData.steps.length, _action: 'done', _coords: coords })
+          setParcelCalculating(false)
+        }, packResultData.steps.length * stepDelay)
+      } else {
+        setPackResult({ ...packResultData, _coords: coords })
       }
 
-      // Notify parent
-      onParcelModeChange?.('parcel')
-      if (externalParcelMode == null) setInternalParcelMode('parcel')
+      // Plot polygon on dashboard map
+      onPlotPolygon?.(coords)
 
-      // Show towers on map
+      // Send centroid to parent for star marker
+      if (packResultData.centroid) {
+        onCentroidUpdate?.({ lat: packResultData.centroid.lat, lon: packResultData.centroid.lon })
+      }
+
+      // Show towers on map + notify location
+      onConfirmLocation?.(packResultData.centroid.lat, packResultData.centroid.lon, packResultData.cell_radius_m || cellRadius)
       onShowStations?.(
-        packResult.points.map((p: any) => ({ name: `Tower`, type: 'new_imt' as const, lat: p.lat, lon: p.lon })),
+        packResultData.points.map((p: any) => ({ name: `Tower`, type: 'new_imt' as const, lat: p.lat, lon: p.lon })),
       )
     } catch (err: any) {
       setParcelCalcError(err.message || 'ไฟล์ไม่ถูกต้อง')
@@ -707,38 +738,68 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
   }
 
   const handleParcelAnalyze = async () => {
-    if (!actualParcelData) return
+    if (!packResult || !packResult.points) return
     setParcelCalculating(true)
     setParcelCalcError('')
     setParcelBlockResults(null)
+    setLogLines([])
+    setBlocks([])
+    setPairs([])
+    setPairResults([])
 
     try {
       const effectiveEirp = autoEirp
         ? (coverageInfo?.used_eirp_dbm ?? estimateEirp(cellRadius, propagationModel))
         : maxEirp
 
+      const towers = packResult.points.map((p: any) => ({ lat: p.lat, lon: p.lon }))
+      const cellRadiusM = packResult.cell_radius_m || cellRadius
+
       const res = await fetchWithAuth('/api/allocate/analyze-parcel', {
         method: 'POST',
         body: JSON.stringify({
-          towers: actualParcelData.towers,
-          cell_radius_m: actualParcelData.cell_radius_m,
+          towers,
+          cell_radius_m: cellRadiusM,
           antenna_height: antennaHeight,
           antenna_gain: autoEirp ? (coverageInfo?.used_eirp_dbm ? antennaGain : 12) : antennaGain,
           max_eirp: effectiveEirp,
           model_name: propagationModel,
           model_params: modelParams,
           indoor_pct: indoorPct,
-          antenna_type: antennaType,
+          antenna_type: towerAntennaPattern,
           sector_beamwidth_deg: sectorBeamwidth,
           sector_azimuth_deg: sectorAzimuth,
         }),
       })
 
       const data = await res.json()
+      // Populate ALL state — same as single-tower handleCalculate
+      setLogLines(data.narrative_log || [])
       setParcelBlockResults(data.blocks || [])
-      // Use backend narrative log if provided
-      if (data.narrative_log) {
-        setLogLines(data.narrative_log)
+      if (data.pairs) setPairs(data.pairs)
+      if (data.pair_results) setPairResults(data.pair_results)
+      if (data.summary) setAnalysisSummary(data.summary)
+      if (data.verification) setBackendVerification(data.verification)
+      if (data.coverage) {
+        // Coverage is now per-tower array — use first tower's for single-value display
+        const cov = Array.isArray(data.coverage) ? data.coverage[0] : data.coverage
+        setCoverageInfo(cov)
+      }
+      if (data.block_limits) setBlockLimits(data.block_limits)
+      
+      // For shape mode: also set blocks with enriched data
+      if (data.blocks) {
+        setBlocks(data.blocks.map((b: any) => ({
+          freq_low: b.freq_low,
+          freq_high: b.freq_high,
+          status: b.status === 'all_clear' ? 'green' : b.status === 'fully_blocked' ? 'red' : 'gray',
+          max_eirp: data.block_limits?.find((l: any) => l.freq_low === b.freq_low)?.max_eirp_dbm || (autoEirp ? effectiveEirp : maxEirp),
+          reason: b.status === 'all_clear' 
+            ? `ใช้ได้ทุกต้น (${b.available_towers}/${packResult?.points?.length || 0})`
+            : b.status === 'fully_blocked'
+            ? `ใช้ไม่ได้ — เสาที่ติด: ${(b.towers_blocked || []).join(', ')}`
+            : `บางส่วน — ติด: ${(b.towers_blocked || []).join(', ')} จาก ${packResult?.points?.length || 0} ต้น`,
+        })))
       }
     } catch (err: any) {
       setParcelCalcError(err.message || 'การวิเคราะห์ล้มเหลว')
@@ -911,10 +972,6 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
       }
 
       setSavedMessage('บันทึก IMT สำเร็จ')
-      // Trigger polygon download for parcel mode
-      if (actualParcelMode === 'parcel' && actualParcelData) {
-        onSavePolygon?.()
-      }
       setTimeout(() => onBack(), 1200)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการบันทึก')
@@ -1024,81 +1081,180 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
             </button>
           )}
 
-          {/* ─── Mode Toggle ─── */}
-          <div className="bg-white border border-gray-200 rounded-lg p-3">
-            <h3 className="text-xs font-semibold text-gray-500 mb-2">ประเภทการคำนวณ</h3>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="mode"
-                  checked={actualParcelMode === 'single'}
-                  onChange={() => {
-                    if (externalParcelMode != null) {
-                      onParcelModeChange?.('single')
-                    } else {
-                      setInternalParcelMode('single')
-                    }
-                    setParcelBlockResults(null)
-                  }}
-                  className="accent-[#C00000]"
-                />
-                <span className="text-sm">เสาเดี่ยว</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="mode"
-                  checked={actualParcelMode === 'parcel'}
-                  onChange={() => {
-                    if (externalParcelMode != null) {
-                      onParcelModeChange?.('parcel')
-                    } else {
-                      setInternalParcelMode('parcel')
-                    }
-                  }}
-                  className="accent-[#C00000]"
-                />
-                <span className="text-sm">หลายเสา (Parcel)</span>
-              </label>
+          {/* ─── Antenna Type Selector ─── */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-[#1A1A2E] mb-3">ประเภทการคำนวณ</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAntennaType('shape')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  antennaType === 'shape'
+                    ? 'bg-[#C00000] text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Octagon className="w-4 h-4" />
+                Shape (Polygon)
+              </button>
+              <button
+                onClick={() => setAntennaType('omni')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  antennaType !== 'shape'
+                    ? 'bg-[#C00000] text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Radio className="w-4 h-4" />
+                Single Cell
+              </button>
             </div>
+            {antennaType !== 'shape' && (
+              <div className="flex gap-2 mt-3 ml-2 pl-4 border-l-2 border-gray-200">
+                <button
+                  onClick={() => setAntennaType('omni')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    antennaType === 'omni'
+                      ? 'bg-[#1A1A2E] text-white'
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  <Radio className="w-3 h-3 inline mr-1" />
+                  Omni
+                </button>
+                <button
+                  onClick={() => setAntennaType('sector')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    antennaType === 'sector'
+                      ? 'bg-[#1A1A2E] text-white'
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  <Signal className="w-3 h-3 inline mr-1" />
+                  Sector
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* ─── Parcel Mode UI ─── */}
-          {actualParcelMode === 'parcel' && (
+          {/* ─── Shape Mode: Polygon Upload ─── */}
+          {antennaType === 'shape' && (
             <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
               <h3 className="text-sm font-semibold text-[#1A1A2E]">ข้อมูลที่ดิน</h3>
 
-              {/* File upload area */}
-              {!actualParcelData ? (
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">ลากไฟล์ .geojson มาวาง หรือ</p>
-                  <label className="inline-block mt-2 px-4 py-2 bg-[#C00000] text-white rounded-lg text-sm cursor-pointer hover:bg-[#8B0000]">
-                    เลือกไฟล์
-                    <input
-                      type="file"
-                      accept=".geojson,.json"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </label>
-                  <p className="text-xs text-gray-400 mt-2">หรือสร้าง polygon จาก tab "สร้างโพลีกอน" แล้วกลับมา</p>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">ลากไฟล์ .geojson มาวาง หรือ</p>
+                <label className="inline-block mt-2 px-4 py-2 bg-[#C00000] text-white rounded-lg text-sm cursor-pointer hover:bg-[#8B0000]">
+                  เลือกไฟล์
+                  <input
+                    type="file"
+                    accept=".geojson,.json"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+                <p className="text-xs text-gray-400 mt-2">หรือสร้าง polygon จาก tab "สร้างโพลีกอน" แล้วกลับมา</p>
+              </div>
+
+              {parcelCalcError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  {parcelCalcError}
                 </div>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">ที่ดินพร้อมใช้งาน</p>
-                      <p className="text-xs text-gray-500">
-                        {actualParcelData.towers.length} ต้น | รัศมี {actualParcelData.cell_radius_m}m | {actualParcelData.polygon.length} จุดมุม
-                      </p>
+              )}
+
+              {/* Pack result summary */}
+              {packResult && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
+                  {/* Animation progress */}
+                  {packResult._step != null && packResult._total_steps != null && packResult._action !== 'done' && (
+                    <div className="space-y-1 mb-2">
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>
+                          {packResult._action === 'init' && 'กำลังวาง grid เริ่มต้น...'}
+                          {packResult._action === 'remove' && 'กำลัง optimize จำนวนเสา...'}
+                          {packResult._action === 'gapfill' && 'กำลังเติมให้ครอบคลุม...'}
+                          {packResult._action === 'shift' && 'กำลัง optimize ตำแหน่ง...'}
+                        </span>
+                        <span>{packResult._step}/{packResult._total_steps}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div
+                          className="bg-[#C00000] h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${(packResult._step / packResult._total_steps) * 100}%` }}
+                        />
+                      </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        onClearParcel?.()
-                        setParcelBlockResults(null)
+                  )}
+                  <p className="text-sm font-semibold text-green-800">Polygon พร้อมใช้งาน</p>
+                  <p className="text-xs text-green-700">
+                    ครอบคลุม <span className="font-bold">{packResult.coverage_pct?.toFixed(1)}%</span> |{' '}
+                    {packResult.points?.length || 0} ต้น | รัศมี {packResult.cell_radius_m || cellRadius}m
+                  </p>
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        if (packResult?._coords) {
+                          setParcelCalculating(true)
+                          try {
+                            const coords = packResult._coords
+                            const res = await fetchWithAuth('/api/polygon/pack-circles', {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                polygon: { type: 'Polygon', coordinates: [coords] },
+                                cell_radius_m: cellRadius,
+                                animate: true,
+                              }),
+                            })
+                            const data = await res.json()
+                            // Play animation steps — same as handleFileUpload
+                            if (data.steps && data.steps.length > 0) {
+                              const stepDelay = 350
+                              for (let i = 0; i < data.steps.length; i++) {
+                                const step = data.steps[i]
+                                setTimeout(() => {
+                                  setPackResult({
+                                    ...data,
+                                    points: step.points,
+                                    coverage_pct: step.cov_pct,
+                                    _step: i + 1,
+                                    _total_steps: data.steps.length,
+                                    _action: step.action,
+                                    _coords: coords,
+                                  })
+                                }, i * stepDelay)
+                                // Update towers on map during animation
+                                setTimeout(() => {
+                                  onShowStations?.(
+                                    step.points.map((p: any) => ({ name: 'Tower', type: 'new_imt' as const, lat: p.lat, lon: p.lon })),
+                                  )
+                                }, i * stepDelay)
+                              }
+                              setTimeout(() => {
+                                setPackResult({ ...data, _step: data.steps.length, _total_steps: data.steps.length, _action: 'done', _coords: coords })
+                                setParcelCalculating(false)
+                                onShowStations?.(
+                                  data.points.map((p: any) => ({ name: 'Tower', type: 'new_imt' as const, lat: p.lat, lon: p.lon })),
+                                )
+                              }, data.steps.length * stepDelay)
+                            } else {
+                              setPackResult({ ...data, _coords: coords })
+                              setParcelCalculating(false)
+                              onShowStations?.(
+                                data.points.map((p: any) => ({ name: 'Tower', type: 'new_imt' as const, lat: p.lat, lon: p.lon })),
+                              )
+                            }
+                          } catch {
+                            setParcelCalculating(false)
+                          }
+                        }
                       }}
+                    >
+                      <Zap className="w-4 h-4" />
+                      Optimize จำนวนเสา
+                    </Button>
+                    <button
+                      onClick={() => { setPackResult(null); setParcelBlockResults(null); onPlotPolygon?.([]) }}
                       className="text-xs text-red-500 hover:underline"
                     >
                       ล้าง
@@ -1106,25 +1262,191 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                   </div>
                 </div>
               )}
-
-              {/* Parcel error */}
-              {parcelCalcError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  {parcelCalcError}
-                </div>
-              )}
-
-              {/* When parcel data loaded, show Analyze button */}
-              {actualParcelData && (
-                <Button variant="primary" loading={parcelCalculating} onClick={handleParcelAnalyze}>
-                  <Calculator className="w-4 h-4" />
-                  วิเคราะห์การรบกวน (Parcel)
-                </Button>
-              )}
             </div>
           )}
 
-          {/* SECTION 1: Input Form */}
+          {/* ─── Shape Mode: Radio Params (after polygon upload) ─── */}
+          {antennaType === 'shape' && packResult && (
+            <>
+            {/* Step 2: Propagation Model — SAME as single cell */}
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                2. Propagation Model
+              </h3>
+              <select
+                value={propagationModel}
+                onChange={(e) => {
+                  const newModel = e.target.value
+                  setPropagationModel(newModel)
+                  setCoverageInfo(null)
+                }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+              >
+                <option value="free_space">Free Space (ITU-R P.525)</option>
+                <option value="p452">ITU-R P.452 (Interference)</option>
+                <option value="p2108">ITU-R P.2108 (Clutter Loss)</option>
+                <option value="p1411">ITU-R P.1411 (Short-Range)</option>
+                <option value="hata">Hata/COST-231</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                {PROPAGATION_MODEL_INFO[propagationModel]?.description}
+              </p>
+              {/* Model-specific params */}
+              {PROPAGATION_MODEL_INFO[propagationModel]?.params?.map((p: any) => (
+                <div key={p.name} className="mt-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    {p.label} {p.unit && `(${p.unit})`}
+                  </label>
+                  {p.name === 'clutter_type' || p.name === 'environment' ? (
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      value={modelParams[p.name] ?? p.defaultValue}
+                      onChange={(e) => setModelParams(prev => ({...prev, [p.name]: e.target.value}))}
+                    >
+                      <option value="urban">Urban (เมือง)</option>
+                      <option value="suburban">Suburban (ชานเมือง)</option>
+                      <option value="rural">Rural (ชนบท)</option>
+                      <option value="water">Water (พื้นน้ำ)</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="number"
+                      defaultValue={p.defaultValue}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Radio params — same grid-cols-2 as single cell */}
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b border-gray-100">
+                พารามิเตอร์วิทยุ
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Cell Radius — display from optimization, NOT a slider */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    รัศมีเซลล์ (m) — จาก Optimize
+                  </label>
+                  <div className="text-lg font-bold text-[#1A1A2E]">
+                    {packResult.cell_radius_m || cellRadius} m
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    {packResult.points?.length || 0} ต้น, ครอบคลุม {packResult.coverage_pct?.toFixed(1)}%
+                  </p>
+                </div>
+                
+                {/* Antenna Height — input type="number" like single cell */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    ความสูงเสาอากาศ (m AGL)
+                  </label>
+                  <input
+                    type="number"
+                    value={antennaHeight}
+                    onChange={(e) => setAntennaHeight(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  />
+                </div>
+                
+                {/* Indoor % — same slider as single cell */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    สัดส่วน Indoor (%)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="0" max="100" step="10"
+                      value={indoorPct}
+                      onChange={(e) => setIndoorPct(Number(e.target.value))}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#C00000]"
+                    />
+                    <span className="text-sm font-mono font-bold text-[#C00000] w-10 text-right">
+                      {indoorPct}%
+                    </span>
+                  </div>
+                  {indoorPct > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      building_loss ≈ {(indoorPct / 100 * 20).toFixed(0)} dB
+                      {indoorPct >= 70 ? ' — indoor เด่น' : indoorPct >= 30 ? ' — ผสม indoor/outdoor' : ' — outdoor เด่น'}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Antenna Pattern — omni/sector dropdown */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    สายอากาศ
+                  </label>
+                  <select
+                    value={towerAntennaPattern}
+                    onChange={(e) => {
+                      setTowerAntennaPattern(e.target.value as 'omni' | 'sector')
+                      setCoverageInfo(null)
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                  >
+                    <option value="omni">Omni — รอบทิศทาง</option>
+                    <option value="sector">Sector — แบบเซกเตอร์</option>
+                  </select>
+                </div>
+                
+                {towerAntennaPattern === 'sector' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Sector Beamwidth (deg)
+                      </label>
+                      <input
+                        type="number"
+                        value={sectorBeamwidth}
+                        onChange={(e) => setSectorBeamwidth(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Sector Azimuth (deg)
+                      </label>
+                      <input
+                        type="number"
+                        value={sectorAzimuth}
+                        onChange={(e) => setSectorAzimuth(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                {/* EIRP — auto display */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    กำลังส่ง (EIRP)
+                  </label>
+                  <div className="text-sm font-mono text-gray-700 bg-gray-50 rounded px-3 py-2">
+                    {autoEirp ? 'คำนวณอัตโนมัติจากรัศมีเซลล์' : `${maxEirp} dBm`}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Analyze button — full width */}
+            <button
+              onClick={handleParcelAnalyze}
+              disabled={parcelCalculating}
+              className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+            >
+              <Search className="w-4 h-4" />
+              {parcelCalculating ? 'กำลังคำนวณ...' : 'วิเคราะห์การรบกวน'}
+            </button>
+            </>
+          )}
+
+          {/* SECTION 1: Input Form — hidden for shape mode */}
+          {antennaType !== 'shape' && (
           <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             {/* Step 1: Location — FIRST */}
             <div className="mb-4">
@@ -1458,60 +1780,10 @@ export default function IMTAddWorkspace({ onBack, mode = 'full', onCellRadiusCha
                 className="w-full bg-[#C00000] hover:bg-[#8B0000] text-white font-semibold py-3 rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
               >
                 <Search className="w-4 h-4" />
-                {loading ? 'กำลังคำนวณ...' : 'Analyze'}
+                {loading ? 'กำลังคำนวณ...' : 'วิเคราะห์การรบกวน'}
               </button>
             </div>
           </section>
-
-          {/* ─── Parcel Results Display ─── */}
-          {actualParcelMode === 'parcel' && parcelBlockResults && parcelBlockResults.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3 animate-fade-in-up">
-              <h3 className="text-sm font-semibold text-[#1A1A2E]">
-                ผลการวิเคราะห์ (Parcel — {actualParcelData?.towers.length} ต้น)
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="px-2 py-1.5 text-left">Block</th>
-                      <th className="px-2 py-1.5 text-left">สถานะ</th>
-                      <th className="px-2 py-1.5 text-left">เสาที่ใช้ได้</th>
-                      <th className="px-2 py-1.5 text-left">เสาที่ติด</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {parcelBlockResults.map((b: any, i: number) => (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-2 py-1 font-mono">{b.freq_low}-{b.freq_high}</td>
-                        <td className="px-2 py-1">
-                          <span
-                            className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${
-                              b.status === 'all_clear'
-                                ? 'bg-green-100 text-green-700'
-                                : b.status === 'fully_blocked'
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            {b.status === 'all_clear'
-                              ? 'ใช้ได้ทั้งหมด'
-                              : b.status === 'fully_blocked'
-                              ? 'ใช้ไม่ได้'
-                              : 'บางส่วน'}
-                          </span>
-                        </td>
-                        <td className="px-2 py-1">
-                          {b.available_towers}/{actualParcelData?.towers.length}
-                        </td>
-                        <td className="px-2 py-1 text-red-600">
-                          {b.towers_blocked?.length > 0 ? `ต้นที่ ${b.towers_blocked.join(', ')}` : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           )}
 
           {/* ─── DIVIDER 1: between Input+Analyze and Log ─── */}
@@ -2776,6 +3048,38 @@ function drawMiniCellRadius(map: maplibregl.Map, lat: number, lon: number, radiu
     })
   } catch (e) {
     console.warn('Failed to draw mini cell radius:', e)
+  }
+}
+
+function drawMiniPolygon(map: maplibregl.Map, coords: [number, number][]) {
+  const srcId = 'mini-polygon-src'
+  const fillId = 'mini-polygon-fill'
+  const outlineId = 'mini-polygon-outline'
+  
+  try {
+    if (map.getLayer(fillId)) map.removeLayer(fillId)
+    if (map.getLayer(outlineId)) map.removeLayer(outlineId)
+    if (map.getSource(srcId)) map.removeSource(srcId)
+    
+    if (!coords || coords.length < 3) return
+    
+    const closed: [number, number][] = [...coords]
+    if (closed[0][0] !== closed[closed.length-1][0] || closed[0][1] !== closed[closed.length-1][1]) {
+      closed.push(closed[0])
+    }
+    
+    map.addSource(srcId, {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [closed] }, properties: {} },
+    })
+    map.addLayer({ id: fillId, type: 'fill', source: srcId, paint: { 'fill-color': '#C00000', 'fill-opacity': 0.12 } })
+    map.addLayer({ id: outlineId, type: 'line', source: srcId, paint: { 'line-color': '#C00000', 'line-width': 2 } })
+    
+    const bounds = new maplibregl.LngLatBounds()
+    closed.forEach(c => bounds.extend(c))
+    map.fitBounds(bounds, { padding: 20, duration: 500 })
+  } catch (e) {
+    console.warn('Failed to draw mini polygon:', e)
   }
 }
 
