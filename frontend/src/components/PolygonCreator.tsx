@@ -232,6 +232,33 @@ export default function PolygonCreator({
           <div className="text-sm text-gray-600">
             จำนวนจุด: <span className="font-bold text-[#C00000]">{vertices.length}</span>
           </div>
+
+          {/* Vertex coordinates */}
+          {vertices.length > 0 && (
+            <div className="mt-3">
+              <h4 className="text-xs font-semibold text-gray-500 mb-2">พิกัดจุดมุม</h4>
+              <div className="max-h-[200px] overflow-y-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left text-gray-500 font-medium">มุม</th>
+                      <th className="px-2 py-1.5 text-left text-gray-500 font-medium">ละติจูด</th>
+                      <th className="px-2 py-1.5 text-left text-gray-500 font-medium">ลองจิจูด</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {vertices.map((v, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-2 py-1 font-mono text-gray-400">{i + 1}</td>
+                        <td className="px-2 py-1 font-mono text-gray-700">{v[1].toFixed(7)}</td>
+                        <td className="px-2 py-1 font-mono text-gray-700">{v[0].toFixed(7)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Section 2: Coverage Calculation */}

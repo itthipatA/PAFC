@@ -308,7 +308,7 @@ function AuthenticatedApp({
             />
             {(showPolygonWorkspace || polygonClosing) && (
               <div
-                className={`absolute inset-y-0 right-0 w-[60%] min-w-[400px] bg-white border-l border-gray-300 shadow-2xl z-20 ${
+                className={`absolute inset-y-0 right-0 w-[40%] min-w-[380px] bg-white border-l border-gray-300 shadow-2xl z-20 ${
                   polygonClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
                 }`}
               >
