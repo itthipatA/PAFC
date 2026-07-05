@@ -1962,10 +1962,18 @@ class InterferenceEngine:
         """
         Analyze all towers in a parcel together as a single IMT system.
         
-        Runs analyze() per tower with skip_same_parcel=True, then aggregates:
-        - All towers share the same frequency block (sfn / cellular)
-        - IMT↔IMT between towers is SKIPPED (same system)
-        - Phase 2 aggregation correctly accounts for all towers
+        ENGINEERING ASSUMPTIONS (explicit):
+        1. SFN (Single Frequency Network): All towers in same parcel share 
+           the SAME frequency block — like 5G NR private network deployment.
+           IMT↔IMT interference between same-parcel towers is SKIPPED.
+        2. Cross-tower aggregation: For interference direction ➀ (IMT→FS) 
+           and ➂ (IMT→EXISTING), power from ALL towers is combined using
+           I_combined = 10·log₁₀(Σ 10^(I/10)) — additive in linear domain.
+        3. Downlink-only: Interference analysis covers BS→UE (downlink).
+           Uplink (UE→BS) is not modeled (UE power is low + power-controlled).
+        4. Coverage overlap: Coverage is union of circles (conservative).
+           Overlapping coverage between nearby towers is not modeled 
+           (macrodiversity benefit excluded by design — worst-case analysis).
         
         Returns:
             {
@@ -2020,45 +2028,127 @@ class InterferenceEngine:
             )
             per_tower_results.append(result)
         
-        # Aggregate: per-block status across all towers
+        # ── Cross-Tower Interference Aggregation (Phase 35m - Gap 1 Fix) ──
+        # In SFN (Single Frequency Network), ALL towers transmit on the same block.
+        # Direction ➀ (IMT→FS): all towers are interferers → combine power: 10·log₁₀(Σ 10^(I/10))
+        # Direction ②+④ (FS+EXIST→NEW_IMT): each tower is separate victim → take MAX (worst case)
+        # Direction ③ (IMT→EXISTING): all towers are interferers → combine power
+        import math as _math
+        
         enriched_blocks = []
         num_blocks = len(per_tower_results[0].blocks) if per_tower_results else 0
         
+        def _get_val(block, attr: str):
+            """Safe access for both dataclass and dict."""
+            return getattr(block, attr) if hasattr(block, attr) else block.get(attr) if isinstance(block, dict) else None
+        
+        def _combine_power(values: list) -> float | None:
+            """Combine interference power: dBm → linear → sum → dBm."""
+            valid = [v for v in values if v is not None and v > -200]
+            if not valid:
+                return None
+            linear = sum(10 ** (v / 10) for v in valid)
+            return 10 * _math.log10(linear) if linear > 0 else None
+        
+        threshold = settings.interference_threshold_dbm
+        
         for bi in range(num_blocks):
+            # Collect per-block values from ALL towers
+            all_i_to_fs = []
+            all_i_to_new = []
+            all_i_to_ex = []
             tower_statuses = []
+            
             for ti, result in enumerate(per_tower_results):
                 block = result.blocks[bi]
-                block_status = block.status if hasattr(block, 'status') else block.get("status", "green")
-                block_reason = block.reason if hasattr(block, 'reason') else block.get("reason", "")
+                i_fs = _get_val(block, 'i_total_to_fs_dbm')
+                i_new = _get_val(block, 'i_total_to_new_imt_dbm')
+                i_ex = _get_val(block, 'i_total_to_existing_imt_dbm')
+                
+                if i_fs is not None:
+                    all_i_to_fs.append(i_fs)
+                if i_new is not None:
+                    all_i_to_new.append(i_new)
+                if i_ex is not None:
+                    all_i_to_ex.append(i_ex)
+                
+                block_status = _get_val(block, 'status') or "green"
+                block_reason = _get_val(block, 'reason') or ""
                 tower_statuses.append({
                     "tower": ti + 1,
                     "blocked": block_status != "green",
                     "status": block_status,
                     "reason": block_reason if block_status != "green" else "",
+                    "i_to_fs_dbm": round(i_fs, 1) if i_fs is not None else None,
                 })
             
-            towers_blocked = [ts["tower"] for ts in tower_statuses if ts["blocked"]]
+            # Combined values (engineering rationale above)
+            i_to_fs_combined = _combine_power(all_i_to_fs) if all_i_to_fs else None
+            # For NEW_IMT victim: worst-case tower (each tower is separate victim)
+            i_to_new_combined = max(all_i_to_new) if all_i_to_new else None
+            # For EXISTING_IMT victim: all towers are interferers
+            i_to_ex_combined = _combine_power(all_i_to_ex) if all_i_to_ex else None
             
-            if len(towers_blocked) == 0:
-                status = "all_clear"
-            elif len(towers_blocked) == len(towers):
+            # I_total = worst of the three per-victim aggregates
+            i_total = max(
+                v for v in [i_to_fs_combined, i_to_new_combined, i_to_ex_combined]
+                if v is not None
+            ) if any(v is not None for v in [i_to_fs_combined, i_to_new_combined, i_to_ex_combined]) else None
+            
+            # Re-evaluate block status with combined values
+            combined_blocked = (
+                (i_to_fs_combined is not None and i_to_fs_combined > threshold) or
+                (i_to_new_combined is not None and i_to_new_combined > threshold) or
+                (i_to_ex_combined is not None and i_to_ex_combined > threshold)
+            )
+            
+            # Per-tower blocked status (individual) + combined status
+            towers_blocked_individual = [ts["tower"] for ts in tower_statuses if ts["blocked"]]
+            
+            # Build reason with aggregation detail
+            reason_parts = []
+            if i_to_fs_combined is not None and len(all_i_to_fs) > 1:
+                per_tower_str = ", ".join(f"T{i+1}={v:.1f}" for i, v in enumerate(all_i_to_fs))
+                reason_parts.append(
+                    f"IMT→FS (combined {len(towers)} towers): "
+                    f"I_total={i_to_fs_combined:.1f} dBm [{per_tower_str}]"
+                )
+            elif i_to_fs_combined is not None:
+                reason_parts.append(f"IMT→FS: I_total={i_to_fs_combined:.1f} dBm")
+            
+            if i_to_new_combined is not None and len(all_i_to_new) > 1:
+                reason_parts.append(
+                    f"→NEW_IMT (worst tower): I_total={i_to_new_combined:.1f} dBm"
+                )
+            elif i_to_new_combined is not None:
+                reason_parts.append(f"→NEW_IMT: I_total={i_to_new_combined:.1f} dBm")
+            
+            if i_to_ex_combined is not None and len(all_i_to_ex) > 1:
+                per_tower_str = ", ".join(f"T{i+1}={v:.1f}" for i, v in enumerate(all_i_to_ex))
+                reason_parts.append(
+                    f"→EXISTING (combined {len(towers)} towers): "
+                    f"I_total={i_to_ex_combined:.1f} dBm [{per_tower_str}]"
+                )
+            elif i_to_ex_combined is not None:
+                reason_parts.append(f"→EXISTING: I_total={i_to_ex_combined:.1f} dBm")
+            
+            combined_reason = " | ".join(reason_parts) if reason_parts else "No interference"
+            
+            # Status: combined takes priority (all towers contribute)
+            if combined_blocked:
                 status = "fully_blocked"
+            elif towers_blocked_individual:
+                if len(towers_blocked_individual) == len(towers):
+                    status = "fully_blocked"
+                else:
+                    status = "partial"
             else:
-                status = "partial"
+                status = "all_clear"
             
-            # Use first tower's block as reference for freq + interference details
+            # Reference block for frequency info
             ref_block = per_tower_results[0].blocks[bi]
-            # threshold is a constant from settings, not a BlockResult field
-            threshold = settings.interference_threshold_dbm
-            
-            # Handle both dataclass (BlockResult) and dict
-            freq_low = ref_block.freq_low if hasattr(ref_block, 'freq_low') else ref_block.get("freq_low")
-            freq_high = ref_block.freq_high if hasattr(ref_block, 'freq_high') else ref_block.get("freq_high")
-            i_total = ref_block.i_total_dbm if hasattr(ref_block, 'i_total_dbm') else ref_block.get("i_total_dbm")
-            i_to_fs = ref_block.i_total_to_fs_dbm if hasattr(ref_block, 'i_total_to_fs_dbm') else ref_block.get("i_total_to_fs_dbm")
-            i_to_new = ref_block.i_total_to_new_imt_dbm if hasattr(ref_block, 'i_total_to_new_imt_dbm') else ref_block.get("i_total_to_new_imt_dbm")
-            i_to_ex = ref_block.i_total_to_existing_imt_dbm if hasattr(ref_block, 'i_total_to_existing_imt_dbm') else ref_block.get("i_total_to_existing_imt_dbm")
-            reason = ref_block.reason if hasattr(ref_block, 'reason') else ref_block.get("reason", "")
+            freq_low = _get_val(ref_block, 'freq_low')
+            freq_high = _get_val(ref_block, 'freq_high')
             
             enriched_blocks.append({
                 "freq_low": freq_low,
@@ -2067,13 +2157,21 @@ class InterferenceEngine:
                 "i_total_dbm": round(i_total, 1) if i_total is not None else None,
                 "threshold_dbm": threshold,
                 "margin_db": round(threshold - i_total, 1) if i_total is not None else None,
-                "i_total_to_fs_dbm": round(i_to_fs, 1) if i_to_fs is not None else None,
-                "i_total_to_new_imt_dbm": round(i_to_new, 1) if i_to_new is not None else None,
-                "i_total_to_existing_imt_dbm": round(i_to_ex, 1) if i_to_ex is not None else None,
-                "reason": reason,
-                "towers_blocked": towers_blocked,
-                "available_towers": len(towers) - len(towers_blocked),
+                "i_total_to_fs_dbm": round(i_to_fs_combined, 1) if i_to_fs_combined is not None else None,
+                "i_total_to_new_imt_dbm": round(i_to_new_combined, 1) if i_to_new_combined is not None else None,
+                "i_total_to_existing_imt_dbm": round(i_to_ex_combined, 1) if i_to_ex_combined is not None else None,
+                "reason": combined_reason,
+                "towers_blocked": towers_blocked_individual,
+                "available_towers": len(towers) - len(towers_blocked_individual),
                 "per_tower": tower_statuses,
+                # Cross-tower aggregation metadata
+                "_aggregation": {
+                    "method": "combined_power",
+                    "num_towers": len(towers),
+                    "i_to_fs_per_tower": [round(v, 1) for v in all_i_to_fs],
+                    "i_to_new_per_tower": [round(v, 1) for v in all_i_to_new],
+                    "i_to_ex_per_tower": [round(v, 1) for v in all_i_to_ex],
+                },
             })
         
         # ── Aggregate pairs across ALL towers (deduplicate by name+direction) ──
