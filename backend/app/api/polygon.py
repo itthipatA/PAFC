@@ -50,8 +50,16 @@ async def pack_circles_endpoint(req: PackCirclesRequest):
     """
     คำนวณตำแหน่งวาง Base Station ให้ cover polygon ทั้งหมด
     
-    - ถ้า polygon เล็ก/เรียบง่าย → single tower (ใช้ centroid)
-    - ถ้า polygon ใหญ่/รูปแปลก → multi-tower (hexagonal grid)
+    Algorithm: "Hex-Init GRILS + SA"
+    1. Auto-calculate cell_radius จากพื้นที่ polygon (Shoelace formula) 
+       ถ้า cell_radius_m <= 0
+    2. Hex Grid — วาง honeycomb pattern ครอบคลุม polygon
+    3. Greedy Removal — ตัดจุดซ้ำซ้อนที่ coverage ลด <0.5%
+    4. Gap Fill — revert ถ้า coverage ต่ำกว่า 99%
+    5. Local Shift — ปรับตำแหน่ง 8 ทิศ 3 passes
+    6. Simulated Annealing — หลุด local minima ด้วย Metropolis criterion
+    
+    Ref: Nurmela & Östergård (2000) "Covering a Polygon with Equal Circles"
     """
     try:
         geojson = {

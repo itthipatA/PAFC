@@ -76,6 +76,37 @@ def _point_to_segment_m(
     return math.sqrt((px - proj_x) ** 2 + (py - proj_y) ** 2)
 
 
+# ── Polygon Area (Shoelace formula on projected coords) ──────────
+
+def _polygon_area_sqm(vertices: List[Tuple[float, float]]) -> float:
+    """
+    คำนวณพื้นที่ polygon (ตารางเมตร) ด้วย Shoelace formula
+    ใช้ Equirectangular projection ที่ centroid เพื่อความแม่นยำ
+    
+    Reference: B. Braden, "The Surveyor's Area Formula"
+    The College Mathematics Journal, Vol. 17, No. 4 (1986)
+    """
+    if len(vertices) < 3:
+        return 0.0
+    
+    ref_lat = sum(v[0] for v in vertices) / len(vertices)
+    cos_lat = math.cos(math.radians(ref_lat))
+    meters_per_deg_lat = 111_320
+    meters_per_deg_lon = 111_320 * max(cos_lat, 0.0001)
+    
+    xs = [v[1] * meters_per_deg_lon for v in vertices]
+    ys = [v[0] * meters_per_deg_lat for v in vertices]
+    
+    n = len(vertices)
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        area += xs[i] * ys[j]
+        area -= xs[j] * ys[i]
+    
+    return abs(area) / 2.0
+
+
 # ── GeoJSON Utils ──────────────────────────────────────────────────
 
 def _extract_polygon_vertices(geojson: Dict[str, Any]) -> List[Tuple[float, float]]:
@@ -496,18 +527,24 @@ def pack_circles(
     ref_lat = sum(v[0] for v in vertices) / len(vertices)
     cos_lat = max(math.cos(math.radians(ref_lat)), 0.0001)
     
-    # 0. Auto-determine cell radius from polygon geometry
+    # 0. Auto-determine cell radius from polygon AREA (not bounding box)
     if cell_radius_m <= 0:
-        # Calculate polygon bounding box characteristic dimension
-        lats = [v[0] for v in vertices]
-        lons = [v[1] for v in vertices]
-        lat_span = (max(lats) - min(lats)) * 111320  # meters
-        lon_span = (max(lons) - min(lons)) * 111320 * cos_lat
-        poly_width = max(lat_span, lon_span)
-        # Start with radius = poly_width / 4 (allows ~4 towers across polygon)
-        cell_radius_m = poly_width / 4
-        cell_radius_m = max(cell_radius_m, 5)   # Minimum 5m
-        cell_radius_m = min(cell_radius_m, 2000) # Maximum 2000m
+        # Calculate actual polygon area using Shoelace formula
+        area_m2 = _polygon_area_sqm(vertices)
+        
+        # Circle packing: N circles of radius r cover area A with efficiency η ≈ 0.9069 (hex)
+        # A = N × π × r² × η  →  r = √(A / (N × π × η))
+        # Target: reasonable number of towers for private network (9 towers default)
+        # This gives good coverage without being too sparse or too dense
+        TARGET_TOWERS = 9
+        HEX_EFFICIENCY = 0.9069
+        
+        cell_radius_m = math.sqrt(area_m2 / (TARGET_TOWERS * math.pi * HEX_EFFICIENCY))
+        cell_radius_m = max(cell_radius_m, 5)     # Minimum 5m
+        cell_radius_m = min(cell_radius_m, 2000)   # Maximum 2000m
+        
+        # Log the calculation for transparency
+        print(f"[pack_circles] Auto cell_radius: area={area_m2:.0f}m² → radius={cell_radius_m:.1f}m (target ~{TARGET_TOWERS} towers)")
     
     # 1. Centroid
     centroid = _chebyshev_center(vertices)
@@ -523,7 +560,7 @@ def pack_circles(
     
     # 2b. If coverage < 90%, try smaller radius for better coverage
     retry_count = 0
-    while coverage_pct < 90 and cell_radius_m > 5 and retry_count < 3:
+    while coverage_pct < 0.90 and cell_radius_m > 5 and retry_count < 3:
         cell_radius_m = cell_radius_m * 0.7  # Reduce radius → more towers → better coverage
         retry_count += 1
         if optimize and len(vertices) >= 3:
@@ -568,7 +605,21 @@ def _pack_optimal(
     animate: bool = False,
 ) -> Tuple[List[Dict[str, Any]], float, Optional[List[dict]]]:
     """
-    Optimal packing via Iterative Removal + Local Refinement
+    Optimal packing via Hex Grid → Greedy Removal → Local Shift → Simulated Annealing
+    
+    Algorithm: "Hex-Init GRILS + SA" (Hexagonal Grid-Initialized Greedy Randomized 
+    Iterated Local Search with Simulated Annealing refinement)
+    
+    Reference: K. Nurmela & P. Östergård, "Covering a Polygon with Equal Circles"
+    (2000) — adapts hexagonal covering approach for irregular polygon boundaries.
+    SA phase replaces deterministic local search when stuck in local minima.
+    
+    Phases:
+    1. Hex Grid — maximum coverage (hexagonal packing, η=0.9069)
+    2. Greedy Removal — eliminate redundant circles (drop <0.5% coverage)
+    3. Gap Fill — revert to hex grid if coverage falls below 99%
+    4. Local Shift — 8-direction refinement, 3 passes (greedy descent)
+    5. Simulated Annealing — escape local minima (temperature schedule)
     
     If animate=True, returns steps[] for frontend animation playback.
     Each step: {action, points, cov_pct, action_idx?}
@@ -662,6 +713,58 @@ def _pack_optimal(
             
             if not any_improved:
                 break
+    
+    # Phase 5: Simulated Annealing — escape local minima
+    if len(points) > 2:
+        best_points = [dict(p) for p in points]
+        best_cov = _calculate_coverage(best_points, cell_radius_m, vertices)
+        current = [dict(p) for p in points]
+        current_cov = best_cov
+        
+        # SA parameters
+        T_start = 0.02    # Initial temperature (coverage drop tolerance)
+        T_end = 0.0005     # Final temperature
+        cooling_rate = 0.85
+        max_iter = 30
+        shift_m = cell_radius_m * 0.10
+        
+        T = T_start
+        while T > T_end:
+            for _ in range(max_iter):
+                # Randomly perturb one tower
+                pi = random.randint(0, len(current) - 1)
+                angle = random.random() * 2 * math.pi
+                dist = shift_m * random.random()
+                dlat_m = dist * math.cos(angle)
+                dlon_m = dist * math.sin(angle)
+                
+                old_lat, old_lon = current[pi]["lat"], current[pi]["lon"]
+                new_lat, new_lon = _latlon_offset(old_lat, old_lon, dlon_m, dlat_m)
+                
+                frac = _circle_fraction_in_polygon(new_lat, new_lon, cell_radius_m, vertices)
+                if frac < 0.05:
+                    continue
+                
+                test = [dict(p) for p in current]
+                test[pi] = {"lat": round(new_lat, 7), "lon": round(new_lon, 7), "type": "packed"}
+                new_cov = _calculate_coverage(test, cell_radius_m, vertices)
+                
+                delta = new_cov - current_cov
+                
+                # Accept if better, or with probability if worse (Metropolis criterion)
+                if delta > 0 or random.random() < math.exp(delta / T):
+                    current = test
+                    current_cov = new_cov
+                    
+                    if current_cov > best_cov:
+                        best_points = [dict(p) for p in current]
+                        best_cov = current_cov
+                        _record("sa_improve", best_points, {"temp": round(T, 4), "cov": round(best_cov * 100, 1)})
+            
+            T *= cooling_rate
+        
+        points = best_points
+        _record("sa_done", points, {"final_cov": round(best_cov * 100, 1)})
     
     coverage_pct = _calculate_coverage(points, cell_radius_m, vertices)
     _record("done", points, {"final_cov": round(coverage_pct * 100, 1), "total": len(points)})
