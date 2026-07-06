@@ -17,8 +17,9 @@
 ## Loop Engineering
 
 - **Loop Ready:** 100/100 — L3 Production Loop
+- **Pre-Commit Gate:** ✅ Active (pre-commit-gate.py + watchdog cronjob `98d0c801235d` every 30 min)
 - **Understand-Anything Graph:** ✅ exists (46 nodes, 83 edges)
-- **`.loop/` files:** context.md, conventions.md, pitfalls.md, state.md, config.json
+- **`.loop/` files:** context.md, conventions.md, pitfalls.md, state.md, config.json, loop-gate.py, pre-commit-gate.py
 
 ## Last Session
 
