@@ -1,0 +1,11 @@
+{
+  "project": "PAFC",
+  "services": [
+    {"name": "backend", "port": 8001, "path": "/api/health"},
+    {"name": "frontend", "port": 5173}
+  ],
+  "checks": {
+    "git_enabled": true,
+    "services_enabled": true
+  }
+}
