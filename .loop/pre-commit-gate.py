@@ -94,9 +94,9 @@ GATES = {
     },
     "impact": {
         "name": "Impact Analysis",
-        "description": "Phase 2.5 cascading trace completed",
+        "description": "Phase 2.5 cascading trace completed + verified",
         "weight": 15,
-        "objective": False,  # self-report
+        "objective": True,   # auto-check: impact-plan.md exists + impact-map.md updated
         "critical": True,
     },
 }
@@ -175,6 +175,26 @@ def check_understand_graph():
     return False, "No knowledge-graph.json — run 'understand' first"
 
 
+def check_impact_analysis():
+    """เช็คว่า impact-plan.md มีอยู่ + impact-map.md อัพเดทล่าสุด"""
+    plan_path = os.path.join(LOOP_DIR, "impact-plan.md")
+    map_path = os.path.join(LOOP_DIR, "impact-map.md")
+
+    plan_exists = os.path.exists(plan_path)
+    map_exists = os.path.exists(map_path)
+
+    if plan_exists and map_exists:
+        plan_mtime = datetime.fromtimestamp(os.path.getmtime(plan_path))
+        map_mtime = datetime.fromtimestamp(os.path.getmtime(map_path))
+        return True, f"impact-plan: {plan_mtime.strftime('%H:%M')}, impact-map: {map_mtime.strftime('%H:%M')}"
+    elif plan_exists:
+        return False, "impact-plan.md exists but no impact-map.md — run impact-verify"
+    elif map_exists:
+        return False, "impact-map.md exists but no impact-plan.md — run impact-predict"
+    else:
+        return False, "No impact analysis — run impact-predict first"
+
+
 # ── Self-report (--mark) ────────────────────────────────
 def mark_gate(state, gate_id, detail=""):
     """บันทึกว่า gate นี้ผ่านแล้ว"""
@@ -211,6 +231,8 @@ def evaluate(state):
                 state["loop_score"] = loop_score
             elif gate_id == "understand":
                 passed, detail = check_understand_graph()
+            elif gate_id == "impact":
+                passed, detail = check_impact_analysis()
             else:
                 passed, detail = False, "Unknown objective gate"
 
