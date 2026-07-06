@@ -1,0 +1,44 @@
+{
+  "session_id": "20260706-124813",
+  "created": "2026-07-06T05:48:13.416317+00:00",
+  "gates": {
+    "loop": {
+      "passed": true,
+      "timestamp": "2026-07-06T05:48:14.215373+00:00",
+      "detail": "Score: 100/100 — L3 (Production Loop)"
+    },
+    "understand": {
+      "passed": true,
+      "timestamp": "2026-07-06T05:48:14.215437+00:00",
+      "detail": "Exists (46,137 bytes, updated 2026-07-03 10:12)"
+    },
+    "graphify": {
+      "passed": false,
+      "timestamp": "",
+      "detail": ""
+    },
+    "honcho": {
+      "passed": true,
+      "timestamp": "2026-07-06T05:49:27.872931+00:00",
+      "detail": "test-init session"
+    },
+    "obsidian": {
+      "passed": false,
+      "timestamp": "",
+      "detail": ""
+    },
+    "l1gate": {
+      "passed": true,
+      "timestamp": "2026-07-06T05:49:27.892058+00:00",
+      "detail": "test-init session"
+    },
+    "impact": {
+      "passed": true,
+      "timestamp": "2026-07-06T05:48:14.215456+00:00",
+      "detail": "impact-plan: 12:36, impact-map: 12:36"
+    }
+  },
+  "project": "PAFC",
+  "loop_score": 100,
+  "updated": "2026-07-06T05:49:27.892146+00:00"
+}
