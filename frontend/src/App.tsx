@@ -267,17 +267,12 @@ function AuthenticatedApp({
                 <IMTAddWorkspace
                   onBack={handleCloseWorkspace}
                   mode="panel"
-                  onCellRadiusChange={setWorkspaceCellRadius}
-                  onConfirmLocation={handleConfirmLocation}
                   onPlotPolygon={(vertices) => {
                     setPlottedPolygon(vertices.length > 0 ? vertices : null)
                   }}
                   onCentroidUpdate={(c) => setParcelCentroid(c)}
                   onShowStations={(stations) => {
                     setHighlightStationNames(stations.length > 0 ? [...stations] : undefined)
-                    if (stations.length > 0 && stations[0].type === 'new_imt') {
-                      setParcelTowers(stations.map(s => ({ lat: (s as any).lat, lon: (s as any).lon })))
-                    }
                   }}
                 />
               </div>

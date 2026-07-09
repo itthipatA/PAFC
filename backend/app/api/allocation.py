@@ -1,678 +1,219 @@
 """
-Spectrum Allocation Engine — API endpoint v2
-POST /api/allocate/analyze   → Full 3-phase analysis
-POST /api/allocate/pre-screen → Phase 0 only (pre-scan)
+Spectrum Allocation API — PAFC Phase 36 (Simplified)
+
+POST /api/allocate/check-availability → Channel availability (PN + FS LoS rules)
+POST /api/allocate/save               → Save allocation with selected blocks
+POST /api/allocate/list               → List existing allocations
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.database import get_db
-from app.models.fs_link import FSLink
 from app.models.imt import IMTAllocation, SpectrumBlock
-from app.services.interference import (
-    InterferenceEngine, FSLinkData, IMTNeighborData,
-)
-from app.services.coverage import CoverageEngine
-from app.services.narrative_log import generate_narrative_log
-import time as time_module
+from app.services.channel_checker import ChannelChecker, _parse_polygon_coords
+import uuid
+import json
+from datetime import date
 
 router = APIRouter()
 
 
-@router.post("/analyze")
-async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
+@router.post("/check-availability")
+async def check_availability(data: dict, db: AsyncSession = Depends(get_db)):
     """
-    Full 3-phase interference analysis for a proposed IMT allocation.
-
-    Phase 0: Victim/Interferer Identification (pre-screen)
-    Phase 1: Detailed I[dBm] calculation per pair
-    Phase 2: Aggregate to 10 MHz block status
-
+    Check which 10 MHz blocks (4800-4990 MHz) are available.
+    
     Request body:
     {
-        "center_lat": 13.75,
-        "center_lon": 100.5,
-        "cell_radius": 500,
-        "antenna_height": 15,
-        "antenna_gain": 12,
-        "max_eirp": 23,
-        "model": "free_space"  // optional
+        "polygon_geojson": {...},       // GeoJSON Polygon
+        "pn_buffer_km": 2.0             // optional, default 2.0 km
+    }
+    
+    Response:
+    {
+        "blocks": [
+            {"freq_low": 4800, "freq_high": 4810, "status": "available",
+             "reason": "ว่าง — สามารถจัดสรรได้ (4800-4810 MHz)"},
+            {"freq_low": 4810, "freq_high": 4820, "status": "blocked_by_fs",
+             "blocked_by": ["FS: THAICOM-Link1 (THAICOM)"],
+             "reason": "ไม่สามารถจัดสรร — FS Link ..."}
+        ],
+        "polygon_area_km2": 3.456,
+        "pn_buffer_km": 2.0,
+        "existing_imt_count": 3,
+        "existing_fs_count": 5,
+        "summary": "ตรวจสอบคลื่นความถี่ 4800-4990 MHz (19 ช่อง): ✅ ว่าง 15 ช่อง, 🔴 ติด PN 2 ช่อง, 🔴 ติด FS (LoS) 2 ช่อง"
     }
     """
-    center_lat = float(data["center_lat"])
-    center_lon = float(data["center_lon"])
-    cell_radius = float(data["cell_radius"])
-    antenna_height = float(data["antenna_height"])
-    antenna_gain = float(data.get("antenna_gain", 0))
-    model_name = data.get("model", "free_space")
-    indoor_pct = float(data.get("indoor_pct", 0))  # Phase 29
-
-    # ── Coverage: auto-calculate EIRP if requested ──
-    auto_eirp = data.get("auto_eirp", False)
-    coverage_result = None
-
-    if auto_eirp:
-        # Phase 29: building_loss from indoor %
-        MAX_BUILDING_LOSS_DB = 20
-        building_loss_db = (indoor_pct / 100) * MAX_BUILDING_LOSS_DB
-        cov_engine = CoverageEngine(propagation_model=model_name)
-        coverage_result = cov_engine.calculate_required_eirp(
-            cell_radius_m=cell_radius,
-            bs_antenna_height_m=antenna_height,
-            bs_antenna_gain_dbi=antenna_gain,
-            target_rss_dbm=data.get("target_rss"),
-            shadow_margin_db=data.get("shadow_margin"),
-            building_loss_db=data.get("building_loss", building_loss_db),
-            ue_antenna_gain_dbi=data.get("ue_antenna_gain"),
-        )
-        max_eirp = coverage_result.required_eirp_dbm
-    else:
-        max_eirp = float(data["max_eirp"])
-
-    # Query active FS links
-    fs_query = select(FSLink).where(FSLink.status == "active")
-    fs_result = await db.execute(fs_query)
-    fs_links_raw = fs_result.scalars().all()
-
-    fs_links = [
-        FSLinkData(
-            id=str(fs.id),
-            name=fs.name,
-            tx_lat=fs.tx_lat, tx_lon=fs.tx_lon,
-            tx_altitude=fs.tx_altitude or 0,
-            rx_lat=fs.rx_lat, rx_lon=fs.rx_lon,
-            rx_altitude=fs.rx_altitude or 0,
-            freq_low=fs.freq_low, freq_high=fs.freq_high,
-            bandwidth=fs.bandwidth,
-            tx_power=fs.tx_power,
-            tx_antenna_gain=fs.tx_antenna_gain,
-            rx_antenna_gain=fs.rx_antenna_gain or 0,
-            beamwidth_deg=float(getattr(fs, 'beamwidth_deg', 3.0) or 3.0),
-        )
-        for fs in fs_links_raw
-    ]
-
-    # Query active IMT allocations with their spectrum blocks
-    imt_query = select(IMTAllocation).where(IMTAllocation.status == "active")
-    imt_result = await db.execute(imt_query)
-    imt_raw = imt_result.scalars().all()
-
-    # Batch query all spectrum blocks for active IMTs
-    imt_ids = [str(imt.id) for imt in imt_raw]
-    blocks_by_imt = {}
-    if imt_ids:
-        block_query = select(SpectrumBlock).where(
-            SpectrumBlock.allocation_id.in_(imt_ids)
-        ).where(SpectrumBlock.status == "allocated")
-        block_result = await db.execute(block_query)
-        for block in block_result.scalars().all():
-            aid = str(block.allocation_id)
-            if aid not in blocks_by_imt:
-                blocks_by_imt[aid] = []
-            blocks_by_imt[aid].append(block)
-
-    # Build neighbor IMT data — ONE entry per allocated block per neighbor
-    # Now includes EIRP parameters for bidirectional analysis
-    neighbor_imts = []
-    for imt in imt_raw:
-        imt_id = str(imt.id)
-        blocks = blocks_by_imt.get(imt_id, [])
-
-        center = _parse_wkt_center(imt.area_wkt)
-        if center is None:
-            continue
-
-        if not blocks:
-            continue
-
-        for block in blocks:
-            neighbor_imts.append(
-                IMTNeighborData(
-                    id=imt_id,
-                    name=str(imt.name),
-                    center_lat=center["lat"],
-                    center_lon=center["lon"],
-                    cell_radius=float(imt.cell_radius),
-                    freq_low=float(block.freq_low),
-                    freq_high=float(block.freq_high),
-                    max_eirp=float(getattr(imt, 'max_eirp', 23) or 23),
-                    antenna_gain=float(getattr(imt, 'antenna_gain', 12) or 12),
-                    antenna_height=float(getattr(imt, 'antenna_height', 15) or 15),
-                    antenna_type=str(getattr(imt, 'antenna_type', 'omni') or 'omni'),
-                    sector_beamwidth_deg=float(getattr(imt, 'sector_beamwidth_deg', 120) or 120),
-                    parcel_id=str(getattr(imt, 'parcel_id', '') or ''),
-                    sector_azimuth_deg=float(getattr(imt, 'sector_azimuth_deg', 0) or 0),
-                )
-            )
-
-    # Run 3-phase interference analysis
-    engine = InterferenceEngine(propagation_model=model_name)
-    t_start = time_module.time()
-    result = engine.analyze(
-        center_lat=center_lat,
-        center_lon=center_lon,
-        cell_radius=cell_radius,
-        antenna_height=antenna_height,
-        antenna_gain=antenna_gain,
-        max_eirp=max_eirp,
-        fs_links=fs_links,
-        neighbor_imts=neighbor_imts,
-        antenna_type=str(data.get("antenna_type", "omni") or "omni"),
-        sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
-        sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
-        model_params=data.get("model_params", {}) or {},
-        indoor_pct=indoor_pct,  # Phase 29
+    polygon_geojson = data.get("polygon_geojson")
+    if not polygon_geojson:
+        raise HTTPException(status_code=400, detail="polygon_geojson is required")
+    
+    pn_buffer_km = float(data.get("pn_buffer_km", 2.0))
+    
+    # Parse polygon coordinates
+    try:
+        coords = _parse_polygon_coords(polygon_geojson)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Cannot parse polygon: {e}")
+    
+    if len(coords) < 3:
+        raise HTTPException(status_code=400, detail="Polygon must have at least 3 vertices")
+    
+    # Run channel checker
+    checker = ChannelChecker(db)
+    result = await checker.check(
+        polygon_coords=coords,
+        pn_buffer_km=pn_buffer_km,
     )
-
+    
+    # Serialize
     return {
-        # Engineering assumptions (สมมุติฐาน) — now dynamic based on user-selected values
-        "assumptions": engine.get_assumptions(
-            antenna_type=str(data.get("antenna_type", "omni") or "omni"),
-            sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
-            sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
-            cell_radius=cell_radius,
-            auto_eirp=auto_eirp,
-            model_params=data.get("model_params", {}) or {},
-        ),
-
-        # Phase 0: Identified pairs
-        "pairs": [
-            {
-                "interferer_type": p.interferer_type,
-                "interferer_id": p.interferer_id,
-                "interferer_name": p.interferer_name,
-                "victim_type": p.victim_type,
-                "victim_id": p.victim_id,
-                "victim_name": p.victim_name,
-                "direction": p.direction,
-                "freq_overlap_low": p.freq_overlap_low,
-                "freq_overlap_high": p.freq_overlap_high,
-                "distance_m": p.distance_m,
-                "within_beam": p.within_beam,
-                "estimated_i_dbm": round(p.estimated_i_dbm, 1),
-                "preliminary_risk": p.preliminary_risk,
-            }
-            for p in result.pairs
-        ],
-
-        # Phase 1: Detailed calculations
-        "pair_results": [
-            {
-                "direction": pr.pair.direction,
-                "interferer": f"{pr.pair.interferer_name} ({pr.pair.interferer_type})",
-                "victim": f"{pr.pair.victim_name} ({pr.pair.victim_type})",
-                "i_dbm": round(pr.i_dbm, 1),
-                "threshold_dbm": pr.threshold_dbm,
-                "margin_db": round(pr.margin_db, 1),
-                "path_loss_db": round(pr.path_loss_db, 1),
-                "effective_distance_m": round(pr.effective_distance_m, 0),
-                "verdict": pr.verdict,
-                "detail": pr.detail,
-            }
-            for pr in result.pair_results
-        ],
-
-        # Phase 2: Block results
         "blocks": [
             {
                 "freq_low": b.freq_low,
                 "freq_high": b.freq_high,
                 "status": b.status,
-                "max_eirp": b.max_eirp,
+                "blocked_by": b.blocked_by,
                 "reason": b.reason,
-                "i_total_dbm": round(b.i_total_dbm, 1) if b.i_total_dbm > -200 else None,
-                "i_total_to_new_imt_dbm": round(b.i_total_to_new_imt_dbm, 1) if b.i_total_to_new_imt_dbm > -200 else None,
-                "i_total_to_fs_dbm": round(b.i_total_to_fs_dbm, 1) if b.i_total_to_fs_dbm > -200 else None,
-                "i_total_to_existing_imt_dbm": round(b.i_total_to_existing_imt_dbm, 1) if b.i_total_to_existing_imt_dbm > -200 else None,
             }
             for b in result.blocks
         ],
-
-        # Metadata
+        "polygon_area_km2": result.polygon_area_km2,
+        "pn_buffer_km": result.pn_buffer_km,
+        "existing_imt_count": result.existing_imt_count,
+        "existing_fs_count": result.existing_fs_count,
         "summary": result.summary,
-        "verification": result.verification,
-        "computation_time_ms": result.computation_time_ms,
-
-        # Phase 3: Per-block EIRP limits
-        "block_limits": result.block_limits,
-        "model_used": model_name,
-        "neighbor_imts_checked": len(neighbor_imts),
-        "fs_links_checked": len(fs_links),
-        "spatial_filter_km": round(engine._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts), 1),
-        "coverage": ({
-            "auto_eirp": auto_eirp,
-            "propagation_model": model_name,
-            "used_eirp_dbm": round(max_eirp, 1) if max_eirp else None,
-            "cell_edge_rss_dbm": round(coverage_result.cell_edge_rss_dbm, 1) if coverage_result else None,
-            "required_eirp_dbm": round(coverage_result.required_eirp_dbm, 1) if coverage_result else None,
-            "actual_path_loss_db": round(coverage_result.actual_path_loss_db, 1) if coverage_result else None,
-            "coverage_classification": coverage_result.coverage_classification if coverage_result else None,
-            "target_rss_dbm": coverage_result.target_rss_dbm if coverage_result else None,
-            "shadow_margin_db": coverage_result.shadow_margin_db if coverage_result else None,
-        } if auto_eirp else None),
-        
-        # Trade-off suggestion (when conflicts exist + auto_eirp)
-        "tradeoff": _compute_tradeoff(result, coverage_result, max_eirp, auto_eirp, model_name, antenna_height, antenna_gain),
-
-        # Narrative log — engine-generated explanation of ALL calculations
-        "narrative_log": generate_narrative_log(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            cell_radius=cell_radius,
-            antenna_height=antenna_height,
-            antenna_gain=antenna_gain,
-            max_eirp=max_eirp,
-            model_name=model_name,
-            indoor_pct=indoor_pct,
-            pairs=result.pairs,
-            pair_results=result.pair_results,
-            blocks=result.blocks,
-            block_limits=result.block_limits,
-            fs_links_checked=len(fs_links),
-            neighbor_imts_checked=len(neighbor_imts),
-            spatial_filter_km=engine._compute_spatial_filter_km(cell_radius, fs_links, neighbor_imts),
-            elapsed_ms=(time_module.time() - t_start) * 1000,
-            computation_time_ms=result.computation_time_ms,
-            coverage=({
-                "auto_eirp": auto_eirp,
-                "propagation_model": model_name,
-                "used_eirp_dbm": round(max_eirp, 1) if max_eirp else None,
-                "cell_edge_rss_dbm": round(coverage_result.cell_edge_rss_dbm, 1) if coverage_result else None,
-                "required_eirp_dbm": round(coverage_result.required_eirp_dbm, 1) if coverage_result else None,
-                "actual_path_loss_db": round(coverage_result.actual_path_loss_db, 1) if coverage_result else None,
-                "coverage_classification": coverage_result.coverage_classification if coverage_result else None,
-                "target_rss_dbm": coverage_result.target_rss_dbm if coverage_result else None,
-                "shadow_margin_db": coverage_result.shadow_margin_db if coverage_result else None,
-            } if auto_eirp else None),
-            assumptions=engine.get_assumptions(
-                antenna_type=str(data.get("antenna_type", "omni") or "omni"),
-                sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
-                sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
-                cell_radius=cell_radius,
-                auto_eirp=auto_eirp,
-                model_params=data.get("model_params", {}) or {},
-            ),
-            tradeoff=_compute_tradeoff(result, coverage_result, max_eirp, auto_eirp, model_name, antenna_height, antenna_gain),
-            verification=result.verification,
-        ),
     }
 
 
-def _compute_tradeoff(result, coverage_result, max_eirp, auto_eirp, model_name, antenna_height, antenna_gain):
+@router.post("/save")
+async def save_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     """
-    When conflicts exist and auto_eirp was used, suggest EIRP reduction
-    that avoids conflicts while maximizing coverage radius.
+    Save an IMT allocation with selected blocks.
     
-    Power-based conflicts (IMT→FS, FS→IMT) can be resolved by reducing EIRP.
-    Distance-based conflicts (IMT↔IMT co-channel) require relocation.
+    Request body:
+    {
+        "name": "โรงงาน A",
+        "operator": "บริษัท เอกชน จำกัด",
+        "polygon_geojson": {...},
+        "selected_blocks": [
+            {"freq_low": 4800, "freq_high": 4810},
+            {"freq_low": 4820, "freq_high": 4830}
+        ]
+    }
     """
-    if not auto_eirp or not coverage_result:
-        return None
+    name = data.get("name", "").strip()
+    operator = data.get("operator", "").strip()
+    polygon_geojson = data.get("polygon_geojson")
+    selected_blocks = data.get("selected_blocks", [])
     
-    conflicts = [pr for pr in result.pair_results if pr.verdict == "CONFLICT"]
-    if not conflicts:
-        return None
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    if not operator:
+        raise HTTPException(status_code=400, detail="operator is required")
+    if not selected_blocks:
+        raise HTTPException(status_code=400, detail="selected_blocks is required")
     
-    # Separate power-based and distance-based conflicts
-    power_conflicts = [pr for pr in conflicts 
-                       if pr.pair.direction in ("IMT→FS", "FS→IMT")]
-    distance_conflicts = [pr for pr in conflicts 
-                          if pr.pair.direction == "IMT↔IMT_COCHANNEL"]
+    # Parse polygon for WKT
+    coords = []
+    if polygon_geojson:
+        try:
+            coords = _parse_polygon_coords(polygon_geojson)
+        except Exception:
+            pass
     
-    conflicting_names = list(set(
-        pr.pair.victim_name if pr.pair.interferer_type == "NEW_IMT"
-        else pr.pair.interferer_name
-        for pr in conflicts
-    ))
-    
-    # Find required EIRP reduction from power-based conflicts
-    if power_conflicts:
-        # Each conflict: I[dBm] exceeds threshold by margin_db
-        # To avoid: reduce EIRP by (I - threshold) = margin_db
-        max_margin = max(pr.margin_db for pr in power_conflicts)
-        suggested_eirp = max_eirp - max_margin
-        
-        # Clamp to reasonable minimum (0 dBm)
-        suggested_eirp = max(suggested_eirp, 0)
+    # Create WKT from coords
+    if coords:
+        wkt_coords = ", ".join(f"{c[0]} {c[1]}" for c in coords)
+        wkt_coords += f", {coords[0][0]} {coords[0][1]}"  # closing vertex
+        area_wkt = f"POLYGON(({wkt_coords}))"
     else:
-        # Only distance-based conflicts — EIRP reduction won't help
-        suggested_eirp = max_eirp
+        area_wkt = "POLYGON((0 0, 0 0, 0 0, 0 0))"
     
-    # Calculate achievable radius at suggested EIRP
-    from app.services.coverage import CoverageEngine
-    cov = CoverageEngine(propagation_model=model_name)
-    suggested_radius = cov.calculate_achievable_radius(
-        eirp_dbm=suggested_eirp,
-        bs_antenna_height_m=antenna_height,
-        bs_antenna_gain_dbi=antenna_gain,
-        target_rss_dbm=coverage_result.target_rss_dbm,
-        shadow_margin_db=coverage_result.shadow_margin_db,
-        building_loss_db=coverage_result.building_loss_db,
-        ue_antenna_gain_dbi=coverage_result.ue_antenna_gain_dbi,
+    # Create IMT allocation
+    allocation_id = uuid.uuid4()
+    imt = IMTAllocation(
+        id=allocation_id,
+        name=name,
+        operator=operator,
+        area_wkt=area_wkt,
+        cell_radius=500,  # default — not critical in simplified mode
+        antenna_height=15,
+        max_eirp=23,
+        antenna_type="shape",
+        polygon_geojson=json.dumps(polygon_geojson) if isinstance(polygon_geojson, dict) else polygon_geojson,
+        status="active",
+        valid_from=date.today(),
     )
+    db.add(imt)
     
-    original_radius = coverage_result.cell_radius_m
-    reduction_pct = ((original_radius - suggested_radius) / original_radius * 100) if original_radius > 0 else 0
+    # Create spectrum blocks
+    for blk in selected_blocks:
+        sb = SpectrumBlock(
+            allocation_id=allocation_id,
+            freq_low=float(blk["freq_low"]),
+            freq_high=float(blk["freq_high"]),
+            status="allocated",
+        )
+        db.add(sb)
     
-    # Build message
-    if power_conflicts and distance_conflicts:
-        message = (
-            f"ลด EIRP จาก {max_eirp:.1f} → {suggested_eirp:.1f} dBm (แก้ power conflicts) "
-            f"→ รัศมี {original_radius:.0f}m → {suggested_radius:.0f}m (ลดลง {reduction_pct:.0f}%) "
-            f"⚠️ co-channel conflicts ยังคงอยู่ — ต้องย้ายตำแหน่ง"
-        )
-        resolution = "partial"
-    elif power_conflicts:
-        if reduction_pct < 5:
-            message = (
-                f"EIRP reduction {max_eirp:.1f} → {suggested_eirp:.1f} dBm "
-                f"resolves conflicts with minimal coverage impact "
-                f"(radius {original_radius:.0f}m → {suggested_radius:.0f}m, −{reduction_pct:.0f}%)"
-            )
-        else:
-            message = (
-                f"ลด EIRP จาก {max_eirp:.1f} → {suggested_eirp:.1f} dBm "
-                f"→ รัศมี {original_radius:.0f}m → {suggested_radius:.0f}m (ลดลง {reduction_pct:.0f}%)"
-            )
-        resolution = "eirp_reduction"
-    else:
-        message = (
-            f"⚠️ ทุก conflict เป็น distance-based (co-channel) — "
-            f"การลด EIRP ไม่ช่วย ต้องย้ายตำแหน่ง"
-        )
-        resolution = "relocation_required"
+    await db.commit()
     
     return {
-        "resolution_type": resolution,
-        "original_radius_m": round(original_radius, 0),
-        "original_eirp_dbm": round(max_eirp, 1),
-        "suggested_radius_m": round(suggested_radius, 0),
-        "suggested_eirp_dbm": round(suggested_eirp, 1),
-        "radius_reduction_pct": round(reduction_pct, 0),
-        "conflicting_systems": conflicting_names,
-        "message": message,
+        "status": "ok",
+        "allocation_id": str(allocation_id),
+        "name": name,
+        "blocks_saved": len(selected_blocks),
     }
 
 
-@router.post("/pre-screen")
-async def pre_screen(data: dict, db: AsyncSession = Depends(get_db)):
-    """
-    Phase 0 only — victim/interferer identification without full calculation.
-    Fast pre-scan to show which systems could interfere.
-    """
-    center_lat = float(data["center_lat"])
-    center_lon = float(data["center_lon"])
-    cell_radius = float(data["cell_radius"])
-    antenna_height = float(data.get("antenna_height", 15))
-    antenna_gain = float(data.get("antenna_gain", 0))
-    max_eirp = float(data.get("max_eirp", 23))
-    model_name = data.get("model", "free_space")
-
-    # Query FS links (simplified — same as analyze)
-    fs_query = select(FSLink).where(FSLink.status == "active")
-    fs_result = await db.execute(fs_query)
-    fs_links_raw = fs_result.scalars().all()
-
-    fs_links = [
-        FSLinkData(
-            id=str(fs.id),
-            name=fs.name,
-            tx_lat=fs.tx_lat, tx_lon=fs.tx_lon,
-            tx_altitude=fs.tx_altitude or 0,
-            rx_lat=fs.rx_lat, rx_lon=fs.rx_lon,
-            rx_altitude=fs.rx_altitude or 0,
-            freq_low=fs.freq_low, freq_high=fs.freq_high,
-            bandwidth=fs.bandwidth,
-            tx_power=fs.tx_power,
-            tx_antenna_gain=fs.tx_antenna_gain,
-            rx_antenna_gain=fs.rx_antenna_gain or 0,
-            beamwidth_deg=float(getattr(fs, 'beamwidth_deg', 3.0) or 3.0),
-        )
-        for fs in fs_links_raw
-    ]
-
-    # Query IMT neighbors (simplified)
-    imt_query = select(IMTAllocation).where(IMTAllocation.status == "active")
-    imt_result = await db.execute(imt_query)
-    imt_raw = imt_result.scalars().all()
-
-    imt_ids = [str(imt.id) for imt in imt_raw]
-    blocks_by_imt = {}
-    if imt_ids:
-        block_query = select(SpectrumBlock).where(
-            SpectrumBlock.allocation_id.in_(imt_ids)
-        ).where(SpectrumBlock.status == "allocated")
-        block_result = await db.execute(block_query)
-        for block in block_result.scalars().all():
-            aid = str(block.allocation_id)
-            if aid not in blocks_by_imt:
-                blocks_by_imt[aid] = []
-            blocks_by_imt[aid].append(block)
-
-    neighbor_imts = []
-    for imt in imt_raw:
-        imt_id = str(imt.id)
-        blocks = blocks_by_imt.get(imt_id, [])
-        center = _parse_wkt_center(imt.area_wkt)
-        if center is None or not blocks:
-            continue
-        for block in blocks:
-            neighbor_imts.append(
-                IMTNeighborData(
-                    id=imt_id,
-                    name=str(imt.name),
-                    center_lat=center["lat"],
-                    center_lon=center["lon"],
-                    cell_radius=float(imt.cell_radius),
-                    freq_low=float(block.freq_low),
-                    freq_high=float(block.freq_high),
-                    max_eirp=float(getattr(imt, 'max_eirp', 23) or 23),
-                    antenna_gain=float(getattr(imt, 'antenna_gain', 12) or 12),
-                    antenna_height=float(getattr(imt, 'antenna_height', 15) or 15),
-                    antenna_type=str(getattr(imt, 'antenna_type', 'omni') or 'omni'),
-                    sector_beamwidth_deg=float(getattr(imt, 'sector_beamwidth_deg', 120) or 120),
-                    parcel_id=str(getattr(imt, 'parcel_id', '') or ''),
-                    sector_azimuth_deg=float(getattr(imt, 'sector_azimuth_deg', 0) or 0),
-                )
-            )
-
-    engine = InterferenceEngine(propagation_model=model_name)
-    pairs = engine.phase0_identify_pairs(
-        center_lat=center_lat, center_lon=center_lon,
-        cell_radius=cell_radius,
-        antenna_height=antenna_height,
-        antenna_gain=antenna_gain,
-        max_eirp=max_eirp,
-        fs_links=fs_links,
-        neighbor_imts=neighbor_imts,
-        antenna_type=str(data.get("antenna_type", "omni") or "omni"),
-        sector_beamwidth_deg=float(data.get("sector_beamwidth_deg", 120) or 120),
-        sector_azimuth_deg=float(data.get("sector_azimuth_deg", 0) or 0),
-        model_params=data.get("model_params", {}) or {},
-    )
-
-    return {
-        "pairs": [
-            {
-                "interferer_type": p.interferer_type,
-                "interferer_name": p.interferer_name,
-                "victim_type": p.victim_type,
-                "victim_name": p.victim_name,
-                "direction": p.direction,
-                "freq_overlap_low": p.freq_overlap_low,
-                "freq_overlap_high": p.freq_overlap_high,
-                "distance_m": p.distance_m,
-                "within_beam": p.within_beam,
-                "estimated_i_dbm": round(p.estimated_i_dbm, 1),
-                "preliminary_risk": p.preliminary_risk,
-            }
-            for p in pairs
-        ],
-        "summary": {
-            "total_pairs": len(pairs),
-            "high_risk": sum(1 for p in pairs if p.preliminary_risk == "HIGH"),
-            "medium_risk": sum(1 for p in pairs if p.preliminary_risk == "MEDIUM"),
-            "low_risk": sum(1 for p in pairs if p.preliminary_risk == "LOW"),
-            "directions": {
-                "IMT→FS": sum(1 for p in pairs if p.direction == "IMT→FS"),
-                "FS→IMT": sum(1 for p in pairs if p.direction == "FS→IMT"),
-                "IMT↔IMT_COCHANNEL": sum(1 for p in pairs if p.direction == "IMT↔IMT_COCHANNEL"),
-                "IMT↔IMT_ADJACENT": sum(1 for p in pairs if p.direction == "IMT↔IMT_ADJACENT"),
-            },
-        },
-    }
-
-
-@router.post("/analyze-parcel")
-async def analyze_parcel_endpoint(data: dict, db: AsyncSession = Depends(get_db)):
-    """
-    Multi-tower parcel analysis.
-    ...
-    """
-    from app.core.config import get_settings
-    settings = get_settings()
+@router.get("/list")
+async def list_allocations(db: AsyncSession = Depends(get_db)):
+    """List all IMT allocations with their spectrum blocks."""
+    query = select(IMTAllocation).order_by(IMTAllocation.created_at.desc())
+    result = await db.execute(query)
+    allocations = result.scalars().all()
     
-    towers = data.get("towers", [])
-    if not towers or len(towers) < 1:
-        raise HTTPException(status_code=400, detail="Need at least 1 tower")
-    
-    cell_radius = float(data.get("cell_radius_m", 500))
-    antenna_height = float(data.get("antenna_height", 15))
-    antenna_gain = float(data.get("antenna_gain", 12))
-    max_eirp = float(data.get("max_eirp", 23))
-    model_name = str(data.get("model_name", "free_space"))
-    band_start = float(data.get("band_start", settings.band_start_mhz))
-    band_end = float(data.get("band_end", settings.band_end_mhz))
-    model_params = data.get("model_params")
-    indoor_pct = float(data.get("indoor_pct", 0))
-    antenna_type = str(data.get("antenna_type", "omni") or "omni")
-    sector_beamwidth_deg = float(data.get("sector_beamwidth_deg", 120) or 120)
-    sector_azimuth_deg = float(data.get("sector_azimuth_deg", 0) or 0)
-    
-    # Get FS links (async)
-    fs_query = select(FSLink).where(FSLink.status == "active")
-    fs_result = await db.execute(fs_query)
-    fs_links_raw = fs_result.scalars().all()
-    
-    fs_links = []
-    for fs in fs_links_raw:
-        fs_links.append(FSLinkData(
-            id=str(fs.id),
-            name=str(fs.name),
-            tx_lat=float(fs.tx_lat),
-            tx_lon=float(fs.tx_lon),
-            tx_altitude=float(fs.tx_altitude or 0),
-            rx_lat=float(fs.rx_lat),
-            rx_lon=float(fs.rx_lon),
-            rx_altitude=float(fs.rx_altitude or 0),
-            freq_low=float(fs.freq_low),
-            freq_high=float(fs.freq_high),
-            bandwidth=float(fs.bandwidth),
-            tx_power=float(fs.tx_power),
-            tx_antenna_gain=float(fs.tx_antenna_gain),
-            rx_antenna_gain=float(fs.rx_antenna_gain or 0),
-        ))
-    
-    # Get existing IMTs (async)
-    imt_query = select(IMTAllocation).where(IMTAllocation.status == "active")
-    imt_result = await db.execute(imt_query)
-    imt_raw = imt_result.scalars().all()
-    
-    neighbor_imts = []
-    for imt in imt_raw:
-        block_query = select(SpectrumBlock).where(
+    items = []
+    for imt in allocations:
+        # Get blocks for this allocation
+        sb_query = select(SpectrumBlock).where(
             SpectrumBlock.allocation_id == imt.id
         )
-        block_result = await db.execute(block_query)
-        blocks = block_result.scalars().all()
+        sb_result = await db.execute(sb_query)
+        blocks = sb_result.scalars().all()
         
-        center = _parse_wkt_center(imt.area_wkt)
-        if center is None or not blocks:
-            continue
-        
-        for block in blocks:
-            neighbor_imts.append(IMTNeighborData(
-                id=str(imt.id),
-                name=str(imt.name),
-                center_lat=center["lat"],
-                center_lon=center["lon"],
-                cell_radius=float(imt.cell_radius),
-                freq_low=float(block.freq_low),
-                freq_high=float(block.freq_high),
-                max_eirp=float(getattr(imt, 'max_eirp', 23) or 23),
-                antenna_gain=float(getattr(imt, 'antenna_gain', 12) or 12),
-                antenna_height=float(getattr(imt, 'antenna_height', 15) or 15),
-                antenna_type=str(getattr(imt, 'antenna_type', 'omni') or 'omni'),
-                sector_beamwidth_deg=float(getattr(imt, 'sector_beamwidth_deg', 120) or 120),
-                sector_azimuth_deg=float(getattr(imt, 'sector_azimuth_deg', 0) or 0),
-                parcel_id=str(getattr(imt, 'parcel_id', '') or ''),
-            ))
+        items.append({
+            "id": str(imt.id),
+            "name": imt.name,
+            "operator": imt.operator,
+            "status": imt.status,
+            "blocks": [
+                {"freq_low": b.freq_low, "freq_high": b.freq_high}
+                for b in blocks
+            ],
+            "polygon_geojson": imt.polygon_geojson,
+            "created_at": str(imt.created_at) if imt.created_at is not None else None,
+        })
     
-    engine = InterferenceEngine(propagation_model=model_name)
-    
-    # ── Coverage: auto-calculate EIRP (Phase 29) ──
-    auto_eirp = data.get("auto_eirp", True)
-    coverage_result = None
-    if auto_eirp:
-        from app.services.coverage import CoverageEngine as CovEng
-        building_loss_db = (indoor_pct / 100) * 20
-        cov_engine = CovEng(propagation_model=model_name)
-        coverage_result = cov_engine.calculate_required_eirp(
-            cell_radius_m=cell_radius,
-            bs_antenna_height_m=antenna_height,
-            bs_antenna_gain_dbi=antenna_gain,
-            building_loss_db=building_loss_db,
-        )
-        max_eirp = coverage_result.required_eirp_dbm if coverage_result else max_eirp
-    
-    t_start = time_module.time()
-    
-    try:
-        result = engine.analyze_parcel(
-            towers=towers,
-            cell_radius=cell_radius,
-            antenna_height=antenna_height,
-            antenna_gain=antenna_gain,
-            max_eirp=max_eirp,
-            fs_links=fs_links,
-            existing_imts=neighbor_imts,
-            band_start=band_start,
-            band_end=band_end,
-            antenna_type=antenna_type,
-            sector_beamwidth_deg=sector_beamwidth_deg,
-            sector_azimuth_deg=sector_azimuth_deg,
-            model_params=model_params,
-            indoor_pct=indoor_pct,
-        )
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Engine error: {str(e)}")
-    
-    elapsed = round((time_module.time() - t_start) * 1000)
-    result["elapsed_ms"] = elapsed
-    # ── Attach coverage info from CoverageEngine ──
-    if coverage_result:
-        result["coverage"] = [{
-            "tower": 1,
-            "used_eirp_dbm": coverage_result.used_eirp_dbm if hasattr(coverage_result, 'used_eirp_dbm') else max_eirp,
-            "target_rss_dbm": coverage_result.target_rss_dbm,
-            "required_eirp_dbm": coverage_result.required_eirp_dbm,
-            "cell_edge_rss_dbm": coverage_result.cell_edge_rss_dbm,
-            "coverage_classification": coverage_result.coverage_classification,
-            "shadow_margin_db": coverage_result.shadow_margin_db,
-        }]
-    return result
+    return {"allocations": items, "count": len(items)}
 
-def _parse_wkt_center(wkt: str) -> dict | None:
-    """Parse WKT POLYGON and return approximate center from first point."""
-    try:
-        inner = wkt.replace("POLYGON", "").replace("(", "").replace(")", "").strip()
-        coords = [c.strip().split() for c in inner.split(",") if c.strip()]
-        if coords:
-            lons = [float(c[0]) for c in coords]
-            lats = [float(c[1]) for c in coords]
-            return {"lat": sum(lats) / len(lats), "lon": sum(lons) / len(lons)}
-    except Exception:
-        pass
-    return None
+
+@router.delete("/{allocation_id}")
+async def delete_allocation(allocation_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete an IMT allocation and its spectrum blocks."""
+    from sqlalchemy import delete
+    
+    # Delete spectrum blocks first
+    await db.execute(
+        delete(SpectrumBlock).where(SpectrumBlock.allocation_id == uuid.UUID(allocation_id))
+    )
+    
+    # Delete allocation
+    result = await db.execute(
+        delete(IMTAllocation).where(IMTAllocation.id == uuid.UUID(allocation_id))
+    )
+    await db.commit()
+    
+    return {"status": "deleted", "allocation_id": allocation_id}

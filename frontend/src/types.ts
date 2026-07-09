@@ -223,6 +223,25 @@ export interface BlockEirpLimit {
   reason?: string
 }
 
+// ─── Phase 36: Channel Availability (Simplified) ──────────────────────────────
+
+export interface ChannelBlock {
+  freq_low: number
+  freq_high: number
+  status: 'available' | 'blocked_by_pn' | 'blocked_by_fs'
+  blocked_by: string[]
+  reason: string
+}
+
+export interface AvailabilityResponse {
+  blocks: ChannelBlock[]
+  polygon_area_km2: number
+  pn_buffer_km: number
+  existing_imt_count: number
+  existing_fs_count: number
+  summary: string
+}
+
 // ─── Engineering Assumptions ──────────────────────────────────────────────────
 
 export interface AssumptionItem {
