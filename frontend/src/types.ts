@@ -67,6 +67,7 @@ export interface IMTAllocation {
   name: string
   operator: string
   polygon_geojson: object | null
+  area_wkt?: string | null
   frame_structure: string | null
   status: string
   blocks: IMTBlock[]

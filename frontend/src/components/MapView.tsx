@@ -205,6 +205,9 @@ const LAYER_IDS = {
   fsCoverageLinkFill: 'fs-coverage-link-fill',
   fsCoverageLinkOutline: 'fs-coverage-link-outline',
   fsCoverageLinkSource: 'fs-coverage-link-source',
+  fsDogboneFill: 'fs-dogbone-fill',
+  fsDogboneOutline: 'fs-dogbone-outline',
+  fsDogboneSource: 'fs-dogbone-source',
   imtCoverageFill: 'imt-coverage-fill',
   imtCoverageOutline: 'imt-coverage-outline',
   imtCoverageSource: 'imt-coverage-source',
@@ -995,17 +998,14 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
   // Remove GeoJSON layers
   const ids = [
     LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers,
-    LAYER_IDS.fsCoverageTxFill,
-    LAYER_IDS.fsCoverageRxFill,
-    LAYER_IDS.fsCoverageLinkFill,
+    LAYER_IDS.fsDogboneFill,
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
   const sources = [
     LAYER_IDS.fsLinksSource,
-    LAYER_IDS.fsCoverageTxSource, LAYER_IDS.fsCoverageRxSource,
-    LAYER_IDS.fsCoverageLinkSource,
+    LAYER_IDS.fsDogboneSource,
   ]
   sources.forEach((sid) => {
     if (map.getSource(sid)) map.removeSource(sid)
@@ -1040,6 +1040,7 @@ interface FSCoverageResponse {
     operator: string
     tx_coverage: GeoJSON.Polygon | null
     rx_coverage: GeoJSON.Polygon | null
+    dogbone: GeoJSON.Polygon | null
     link_corridor: GeoJSON.Polygon | null
     max_distance_km: number
     freq_mhz: number
@@ -1062,77 +1063,40 @@ async function fetchAndDrawFSCoverage(
     const coverage = data.coverage
     if (!coverage || Object.keys(coverage).length === 0) return
 
-    // Build directional coverage using overlapping small circles
-    // Samples polygon outline at every 4th vertex → places circles
-    const outerCircles: any[] = []
-    const midCircles: any[] = []
-    const innerCircles: any[] = []
+    // Build single FeatureCollection for dogbone (union) polygons only
+    const dogboneFeatures: GeoJSON.Feature[] = []
 
     for (const link of links) {
-      const linkId = link.id
+      const linkId = String(link.id)
       const cov = coverage[linkId]
-      if (!cov) continue
+      if (!cov || !cov.dogbone) continue
 
-      const txLon = link.tx?.lon ?? link.tx_lon
-      const txLat = link.tx?.lat ?? link.tx_lat
-      const rxLon = link.rx?.lon ?? link.rx_lon
-      const rxLat = link.rx?.lat ?? link.rx_lat
-
-      // TX coverage: sample polygon outline, place circles
-      if (txLon != null && txLat != null && cov.tx_coverage) {
-        const coords = cov.tx_coverage.coordinates[0]
-        for (let i = 0; i < coords.length - 1; i += 4) {
-          const [clon, clat] = coords[i]
-          outerCircles.push(circle([clon, clat], 4, { steps: 16, units: 'kilometers' }))
-          const mlon = txLon + (clon - txLon) * 0.6
-          const mlat = txLat + (clat - txLat) * 0.6
-          midCircles.push(circle([mlon, mlat], 3, { steps: 16, units: 'kilometers' }))
-          const ilon = txLon + (clon - txLon) * 0.3
-          const ilat = txLat + (clat - txLat) * 0.3
-          innerCircles.push(circle([ilon, ilat], 2, { steps: 16, units: 'kilometers' }))
-        }
-      }
-
-      // RX coverage
-      if (rxLon != null && rxLat != null && cov.rx_coverage) {
-        const coords = cov.rx_coverage.coordinates[0]
-        for (let i = 0; i < coords.length - 1; i += 4) {
-          const [clon, clat] = coords[i]
-          outerCircles.push(circle([clon, clat], 4, { steps: 16, units: 'kilometers' }))
-          const mlon = rxLon + (clon - rxLon) * 0.6
-          const mlat = rxLat + (clat - rxLat) * 0.6
-          midCircles.push(circle([mlon, mlat], 3, { steps: 16, units: 'kilometers' }))
-          const ilon = rxLon + (clon - rxLon) * 0.3
-          const ilat = rxLat + (clat - rxLat) * 0.3
-          innerCircles.push(circle([ilon, ilat], 2, { steps: 16, units: 'kilometers' }))
-        }
-      }
-
-      // Azimuth line TX→RX
-      if (txLon != null && txLat != null && rxLon != null && rxLat != null) {
-        outerCircles.push({
-          type: 'Feature', properties: { name: link.name || cov.name, side: 'TX→RX' },
-          geometry: { type: 'LineString', coordinates: [[txLon, txLat], [rxLon, rxLat]] },
-        })
-      }
+      dogboneFeatures.push({
+        type: 'Feature',
+        properties: { name: cov.name, freq_mhz: cov.freq_mhz, max_d_km: cov.max_distance_km },
+        geometry: cov.dogbone,
+      } as GeoJSON.Feature)
     }
 
-    // Render 3 layers of overlapping circles
-    const layerDefs = [
-      { features: outerCircles, sid: LAYER_IDS.fsCoverageTxSource, fillId: LAYER_IDS.fsCoverageTxFill, color: '#60A5FA', opacity: 0.18 },
-      { features: midCircles, sid: LAYER_IDS.fsCoverageRxSource, fillId: LAYER_IDS.fsCoverageRxFill, color: '#F59E0B', opacity: 0.22 },
-      { features: innerCircles, sid: LAYER_IDS.fsCoverageLinkSource, fillId: LAYER_IDS.fsCoverageLinkFill, color: '#EF4444', opacity: 0.25 },
-    ]
-    for (const layer of layerDefs) {
-      if (layer.features.length === 0) continue
-      map.addSource(layer.sid, { type: 'geojson', data: { type: 'FeatureCollection', features: layer.features } })
-      map.addLayer({ id: layer.fillId, type: 'fill', source: layer.sid, paint: { 'fill-color': layer.color, 'fill-opacity': layer.opacity } })
+    // Render dogbone only — single color fill, NO outlines
+    if (dogboneFeatures.length > 0) {
+      map.addSource(LAYER_IDS.fsDogboneSource, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: dogboneFeatures },
+      })
+      map.addLayer({
+        id: LAYER_IDS.fsDogboneFill,
+        type: 'fill',
+        source: LAYER_IDS.fsDogboneSource,
+        paint: { 'fill-color': '#14B8A6', 'fill-opacity': 0.15 },
+      })
+      // NO outline layer — cleaner map
     }
 
-    // Hover on outer layer
-    if (map.getLayer(LAYER_IDS.fsCoverageTxFill)) {
-      map.on('mouseenter', LAYER_IDS.fsCoverageTxFill, () => { map.getCanvas().style.cursor = 'pointer' })
-      map.on('mouseleave', LAYER_IDS.fsCoverageTxFill, () => { map.getCanvas().style.cursor = '' })
+    // Hover
+    if (map.getLayer(LAYER_IDS.fsDogboneFill)) {
+      map.on('mouseenter', LAYER_IDS.fsDogboneFill, () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', LAYER_IDS.fsDogboneFill, () => { map.getCanvas().style.cursor = '' })
     }
   } catch (err) {
     console.warn('FS coverage not available:', err)
@@ -1323,6 +1287,10 @@ function escapeHTML(s: string): string {
 /** Compute centroid from a GeoJSON Polygon's coordinates. Returns null if invalid. */
 function getPolygonCentroid(geojson: any): { lat: number; lon: number } | null {
   if (!geojson) return null
+  // API may return polygon_geojson as JSON string
+  if (typeof geojson === 'string') {
+    try { geojson = JSON.parse(geojson) } catch { return null }
+  }
   let coords: number[][] | undefined
   if (geojson.type === 'Polygon') {
     coords = geojson.coordinates?.[0]
@@ -1341,6 +1309,27 @@ function getPolygonCentroid(geojson: any): { lat: number; lon: number } | null {
   }
   if (sumLat === 0 && sumLon === 0) return null
   return { lat: sumLat / coords.length, lon: sumLon / coords.length }
+}
+
+/**
+ * Parse WKT polygon to get centroid (fallback when polygon_geojson is null).
+ * Handles POLYGON((lon lat, lon lat, ...))
+ */
+function getWKTCentroid(wkt: string): { lat: number; lon: number } | null {
+  if (!wkt) return null
+  const match = wkt.match(/POLYGON\s*\(\((.*?)\)\)/i)
+  if (!match) return null
+  const pairs = match[1].trim().split(/\s*,\s*/)
+  let sumLat = 0, sumLon = 0, count = 0
+  for (const pair of pairs) {
+    const [lon, lat] = pair.trim().split(/\s+/).map(Number)
+    if (!isNaN(lon) && !isNaN(lat)) {
+      sumLon += lon
+      sumLat += lat
+      count++
+    }
+  }
+  return count > 0 ? { lat: sumLat / count, lon: sumLon / count } : null
 }
 
 // ─── IMT Allocations ───────────────────────────────────────────────────────
@@ -1385,7 +1374,11 @@ async function loadIMTAllocations(
     const markers: maplibregl.Marker[] = []
 
     allocations.forEach((alloc) => {
-      const centroid = getPolygonCentroid(alloc.polygon_geojson)
+      // Try polygon_geojson first, fallback to area_wkt
+      let centroid = getPolygonCentroid(alloc.polygon_geojson)
+      if (!centroid && alloc.area_wkt) {
+        centroid = getWKTCentroid(alloc.area_wkt)
+      }
       if (!centroid) return
       const { lat, lon } = centroid
 

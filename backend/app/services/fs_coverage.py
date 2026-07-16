@@ -18,21 +18,28 @@ import math
 import json
 from typing import List, Tuple, Optional, Dict
 
+try:
+    from shapely.geometry import Polygon, MultiPolygon, shape as shapely_shape
+    from shapely.ops import unary_union
+    HAS_SHAPELY = True
+except ImportError:
+    HAS_SHAPELY = False
+
 # ── Constants ────────────────────────────────────────────────────────────
 
 # -120 dBm detection threshold (user-specified)
 RX_THRESHOLD_DBM = -120.0
 
-# Radio Horizon Cap — Earth curvature limits practical coverage
+# Radio Horizon Cap — realistic for 5 GHz microwave (typical range 10-30 km)
 # ITU-R P.525: d_max_km = 4.12 * (√h1 + √h2)
-# Typical: h_tx=30m, h_imt=15m → ~38.5 km
-FS_ANTENNA_HEIGHT_M = 30.0    # typical microwave tower height
-IMT_RX_HEIGHT_M = 15.0        # typical IMT base station height
-MAX_COVERAGE_RADIUS_KM = 4.12 * (math.sqrt(FS_ANTENNA_HEIGHT_M) + math.sqrt(IMT_RX_HEIGHT_M))
+# Conservative: h_tx=15m, h_imt=10m → ~19.7 km, rounded to 20 km
+FS_ANTENNA_HEIGHT_M = 15.0    # typical microwave tower height
+IMT_RX_HEIGHT_M = 10.0        # typical IMT base station height
+MAX_COVERAGE_RADIUS_KM = min(4.12 * (math.sqrt(FS_ANTENNA_HEIGHT_M) + math.sqrt(IMT_RX_HEIGHT_M)), 20.0)
 
 # ITU-R F.699 pattern parameters
-F699_PEAK_GAIN_DBI = 40.0     # typical max gain for microwave dish
-F699_BEAMWIDTH_DEG = 3.0      # typical half-power beamwidth
+F699_PEAK_GAIN_DBI = 25.0     # typical max gain for narrow-beam microwave dish
+F699_BEAMWIDTH_DEG = 1.5      # narrow beam — user requirement
 F699_FIRST_SIDELOBE_DB = -20  # first sidelobe level relative to peak
 
 # Number of radial samples for polygon generation
@@ -94,11 +101,14 @@ def itu_f699_pattern_discrimination(
     
     Returns the gain RELATIVE TO PEAK (negative = loss) at a given off-axis angle.
     
-    Simplified model:
+    Model (corrected for continuity):
       - Main beam (|φ| ≤ BW/2): 0 dB discrimination (full gain)
-      - Transition (BW/2 < |φ| ≤ BW*2): -12·(φ/BW - 0.5)² dB
-      - Near sidelobe (BW*2 < |φ| ≤ 20°): peak_gain - 25·log(φ) clamped
-      - Far sidelobe (|φ| > 20°): 0 dBi gain (discrimination = -(peak_gain))
+      - Transition (BW/2 < |φ| ≤ BW×4): parabolic roll-off → ~-26 dB at end
+      - Near sidelobe (BW×4 < |φ| ≤ 20°): log roll-off from transition end
+      - Far sidelobe (|φ| > 20°): floor at peak_gain_dbi - (-10 dBi)
+    
+    The key fix: near-sidelobe continues smoothly from transition boundary, 
+    rather than jumping discontinuously (which caused -22 dB at 5° but only -8 dB at 10°).
     
     Args:
         angle_deg: off-axis angle from main beam (0 = main beam center), in degrees
@@ -115,25 +125,28 @@ def itu_f699_pattern_discrimination(
         # Main beam — full gain
         return 0.0
     
-    elif phi <= half_bw * 4:
-        # Transition region — parabolic roll-off
-        # At phi=half_bw: 0 dB → at phi=half_bw*4: approximately -20 dB
-        normalized = (phi / half_bw) - 1.0  # 0 at half_bw, 3 at 4*half_bw
-        return -12.0 * (normalized ** 0.7)  # Smoother falloff
+    transition_end = half_bw * 4.0  # e.g., 6° for 3° beamwidth
     
-    elif phi <= 20.0:
-        # Near sidelobe — log roll-off
-        # G(φ) = 32 - 25·log(φ) for ITU-R F.699 reference
-        gain_dbi = 32.0 - 25.0 * math.log10(phi)
-        discrimination = gain_dbi - peak_gain_dbi
-        return min(0.0, discrimination)
+    if phi <= transition_end:
+        # Transition region — parabolic roll-off
+        # At phi=half_bw: 0 dB → at phi=transition_end: ~-26 dB
+        normalized = (phi / half_bw) - 1.0  # 0 at half_bw, 3 at transition_end
+        return -12.0 * (normalized ** 0.7)  # smooth roll-off
+    
+    # Reference discrimination at transition boundary
+    transition_disc = -12.0 * 3.0 ** 0.7  # ≈ -25.9 dB
+    
+    if phi <= 20.0:
+        # Near sidelobe — continuous log roll-off from transition boundary
+        # Uses same slope as ITU-R F.699: 25 dB per decade of angle
+        return transition_disc - 25.0 * math.log10(phi / transition_end)
     
     else:
-        # Far sidelobe — minimum gain
-        # ITU-R F.699 floor is -10 dBi
+        # Far sidelobe — floor
+        # ITU-R F.699 minimum gain is -10 dBi
         far_gain_dbi = -10.0
         discrimination = far_gain_dbi - peak_gain_dbi
-        return min(-20.0, discrimination)
+        return min(transition_disc - 25.0 * math.log10(20.0 / transition_end), discrimination)
 
 
 # ── Geo Computation ───────────────────────────────────────────────────────
@@ -218,8 +231,9 @@ def fs_station_coverage_polygon(
     """
     eirp_dbm = tx_power_dbm + tx_antenna_gain_dbi
     
-    # Compute RAW distances (without cap) at each angle to get directional shape
-    raw_distances = []
+    # Generate polygon vertices: compute distance at each angle where Pr = target_rx_dbm
+    # Per-angle radio horizon cap preserves true directional shape
+    coords = []
     for i in range(NUM_RADIAL_SAMPLES):
         angle_from_azimuth = i * (360.0 / NUM_RADIAL_SAMPLES)
         discrimination_db = itu_f699_pattern_discrimination(
@@ -228,27 +242,15 @@ def fs_station_coverage_polygon(
             beamwidth_deg=beamwidth_deg,
         )
         effective_eirp = eirp_dbm + discrimination_db
-        # Compute raw distance WITHOUT THE CAP (use a direct FSPL solve)
+        
+        # Compute raw distance from FSPL
         required_fspl = effective_eirp + rx_antenna_gain_dbi - target_rx_dbm
         exponent = (required_fspl - 20.0 * math.log10(freq_mhz) - 32.45) / 20.0
-        raw_d = max(0.001, 10.0 ** exponent)
-        raw_distances.append(raw_d)
-    
-    # Find raw max distance (on main beam)
-    raw_max_d = max(raw_distances)
-    
-    # Preserve directional shape: scale all distances proportionally
-    # so max distance fits within radio horizon cap
-    scale_factor = min(1.0, MAX_COVERAGE_RADIUS_KM / raw_max_d) if raw_max_d > 0 else 1.0
-    
-    # Generate polygon vertices at each angle (scaled)
-    coords = []
-    for i in range(NUM_RADIAL_SAMPLES):
-        angle_from_azimuth = i * (360.0 / NUM_RADIAL_SAMPLES)
+        raw_d_km = max(0.001, 10.0 ** exponent)
         
-        # Scaled distance — preserves directional shape within radio horizon
-        d_km = raw_distances[i] * scale_factor
-        d_km = max(d_km, 0.001)  # floor at 1m
+        # Per-angle radio horizon cap — preserves directional shape
+        # (previous global scaling distorted sidelobe distances)
+        d_km = min(raw_d_km, MAX_COVERAGE_RADIUS_KM)
         
         # Bearing from station
         point_bearing = (azimuth_deg + angle_from_azimuth) % 360.0
@@ -307,6 +309,122 @@ def fs_station_coverage_circle_fallback(
         "type": "Polygon",
         "coordinates": [coords]
     }
+
+
+# ── Dog-Bone Coverage (Union of TX + RX directional lobes) ──────────────────
+
+def _union_geojson_polygons(poly_a: dict, poly_b: dict) -> dict:
+    """
+    Compute the geometric union of two GeoJSON polygons using Shapely.
+    
+    This is the CORRECT way to create the dog-bone shape:
+    union(tx_directional_lobe, rx_directional_lobe) = natural dumbbell.
+    
+    Falls back to convex hull if Shapely is unavailable.
+    """
+    if not HAS_SHAPELY:
+        # Fallback: combine coordinates and compute convex hull
+        all_coords = []
+        for ring in [poly_a.get("coordinates", []), poly_b.get("coordinates", [])]:
+            if ring and len(ring) > 0:
+                all_coords.extend([(c[1], c[0]) for c in ring[0]])
+        hull = _convex_hull_latlon(all_coords)
+        if hull:
+            hull.append(hull[0])
+        geojson_coords = [[lon, lat] for lat, lon in hull]
+        return {"type": "Polygon", "coordinates": [geojson_coords]}
+    
+    try:
+        # Convert GeoJSON to Shapely geometries
+        shape_a = shapely_shape(poly_a)
+        shape_b = shapely_shape(poly_b)
+        
+        # Geometric union
+        union = unary_union([shape_a, shape_b])
+        
+        # Handle both Polygon and MultiPolygon results
+        if hasattr(union, 'geoms'):
+            # MultiPolygon — take the largest polygon (main coverage area)
+            largest = max(union.geoms, key=lambda g: g.area)
+            from shapely.geometry import mapping
+            return mapping(largest)
+        else:
+            # Single Polygon
+            from shapely.geometry import mapping
+            return mapping(union)
+    except Exception:
+        # Graceful fallback
+        all_coords = []
+        for ring in [poly_a.get("coordinates", []), poly_b.get("coordinates", [])]:
+            if ring and len(ring) > 0:
+                all_coords.extend([(c[1], c[0]) for c in ring[0]])
+        hull = _convex_hull_latlon(all_coords)
+        if hull:
+            hull.append(hull[0])
+        geojson_coords = [[lon, lat] for lat, lon in hull]
+        return {"type": "Polygon", "coordinates": [geojson_coords]}
+
+
+def fs_dogbone_coverage(
+    tx_lat: float, tx_lon: float,
+    rx_lat: float, rx_lon: float,
+    tx_power_dbm: float,
+    tx_antenna_gain_dbi: float,
+    rx_antenna_gain_dbi: float,
+    freq_mhz: float,
+    beamwidth_deg: float = 3.0,
+    azimuth_deg: Optional[float] = None,
+    target_rx_dbm: float = RX_THRESHOLD_DBM,
+) -> dict:
+    """
+    Generate dog-bone shaped coverage for an FS link pair.
+    
+    Computes the geometric UNION of:
+      - TX station directional coverage (pointing toward RX)
+      - RX station directional coverage (pointing toward TX)
+    
+    This produces the natural "dog bone" / dumbbell shape:
+    two lobes (TX end + RX end) connected by a narrow waist
+    where the main-beam coverage zones overlap or meet.
+    
+    Physics basis:
+      - Each station: ITU-R F.699 directional antenna + FSPL
+      - Combined: geometric union, NOT convex hull
+      - Convex hull would fill the waist → blob, not dog bone
+    
+    Returns:
+        GeoJSON Polygon (or MultiPolygon if lobes don't overlap)
+    """
+    if azimuth_deg is None:
+        azimuth_deg = _bearing(tx_lat, tx_lon, rx_lat, rx_lon)
+    
+    # TX station coverage (lobe pointing toward RX)
+    tx_coverage = fs_station_coverage_polygon(
+        lat=tx_lat, lon=tx_lon,
+        tx_power_dbm=tx_power_dbm,
+        tx_antenna_gain_dbi=tx_antenna_gain_dbi,
+        freq_mhz=freq_mhz,
+        azimuth_deg=azimuth_deg,
+        beamwidth_deg=beamwidth_deg,
+        rx_antenna_gain_dbi=rx_antenna_gain_dbi,
+        target_rx_dbm=target_rx_dbm,
+    )
+    
+    # RX station coverage (lobe pointing toward TX)
+    rx_azimuth = (azimuth_deg + 180.0) % 360.0
+    rx_coverage = fs_station_coverage_polygon(
+        lat=rx_lat, lon=rx_lon,
+        tx_power_dbm=tx_power_dbm,
+        tx_antenna_gain_dbi=tx_antenna_gain_dbi,
+        freq_mhz=freq_mhz,
+        azimuth_deg=rx_azimuth,
+        beamwidth_deg=beamwidth_deg,
+        rx_antenna_gain_dbi=rx_antenna_gain_dbi,
+        target_rx_dbm=target_rx_dbm,
+    )
+    
+    # Union → dog bone
+    return _union_geojson_polygons(tx_coverage, rx_coverage)
 
 
 # ── FS Link Corridor ──────────────────────────────────────────────────────
@@ -565,13 +683,11 @@ def compute_all_fs_coverages(
     
     for fs in fs_links:
         freq_mhz = (fs.freq_low + fs.freq_high) / 2.0
-        azimuth = fs.azimuth if fs.azimuth else _bearing(
-            fs.tx_lat, fs.tx_lon, fs.rx_lat, fs.rx_lon
-        )
+        azimuth = _bearing(fs.tx_lat, fs.tx_lon, fs.rx_lat, fs.rx_lon)  # always compute from coordinates
         bw = getattr(fs, 'beamwidth_deg', 3.0) or 3.0
         rx_gain = getattr(fs, 'rx_antenna_gain', 0.0) or 0.0
         
-        # TX station coverage (directional)
+        # TX station coverage (directional lobe toward RX)
         tx_coverage = fs_station_coverage_polygon(
             lat=fs.tx_lat,
             lon=fs.tx_lon,
@@ -584,7 +700,7 @@ def compute_all_fs_coverages(
             target_rx_dbm=target_rx_dbm,
         )
         
-        # RX station coverage (pointing back toward TX)
+        # RX station coverage (directional lobe toward TX)
         rx_azimuth = (azimuth + 180.0) % 360.0
         rx_coverage = fs_station_coverage_polygon(
             lat=fs.rx_lat,
@@ -598,7 +714,20 @@ def compute_all_fs_coverages(
             target_rx_dbm=target_rx_dbm,
         )
         
-        # Link corridor
+        # Dog-bone: geometric UNION of TX + RX directional lobes
+        dogbone = fs_dogbone_coverage(
+            tx_lat=fs.tx_lat, tx_lon=fs.tx_lon,
+            rx_lat=fs.rx_lat, rx_lon=fs.rx_lon,
+            tx_power_dbm=fs.tx_power,
+            tx_antenna_gain_dbi=fs.tx_antenna_gain,
+            rx_antenna_gain_dbi=rx_gain,
+            freq_mhz=freq_mhz,
+            beamwidth_deg=bw,
+            azimuth_deg=azimuth,
+            target_rx_dbm=target_rx_dbm,
+        )
+        
+        # Link corridor (convex hull — kept for backward compatibility / allocation checks)
         corridor = fs_link_corridor_polygon(
             tx_lat=fs.tx_lat, tx_lon=fs.tx_lon,
             rx_lat=fs.rx_lat, rx_lon=fs.rx_lon,
@@ -619,6 +748,7 @@ def compute_all_fs_coverages(
             "operator": fs.operator,
             "tx_coverage": tx_coverage,
             "rx_coverage": rx_coverage,
+            "dogbone": dogbone,
             "link_corridor": corridor,
             "max_distance_km": round(max_d, 2),
             "freq_mhz": round(freq_mhz, 1),

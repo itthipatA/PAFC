@@ -26,6 +26,7 @@ async def get_fs_coverage(db: AsyncSession = Depends(get_db)):
             "operator": cov["operator"],
             "tx_coverage": cov["tx_coverage"],
             "rx_coverage": cov["rx_coverage"],
+            "dogbone": cov["dogbone"],
             "link_corridor": cov["link_corridor"],
             "max_distance_km": cov["max_distance_km"],
             "freq_mhz": cov["freq_mhz"],

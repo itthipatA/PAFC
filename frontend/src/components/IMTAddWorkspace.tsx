@@ -1,8 +1,8 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
-import { Upload, AlertTriangle, MapPin, Save, Search, ChevronDown, ChevronUp, Shield } from 'lucide-react'
+import { Upload, AlertTriangle, MapPin, Save, Search, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import type { AllocationAnalyzeResponse, FrameStructureOption, SaveBlock } from '../types'
-import { MiniMap } from './MiniMap'
+import PolygonShape from './PolygonShape'
 import { Button } from './Button'
 
 interface IMTAddWorkspaceProps {
@@ -64,7 +64,6 @@ export default function IMTAddWorkspace({
   const [selectedBlocks, setSelectedBlocks] = useState<Map<string, 'allocated' | 'guard'>>(new Map())
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [expandedBlock, setExpandedBlock] = useState<string | null>(null)
   const [showNarrative, setShowNarrative] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -146,10 +145,6 @@ export default function IMTAddWorkspace({
     })
   }, [])
 
-  const toggleExpand = useCallback((key: string) => {
-    setExpandedBlock(prev => prev === key ? null : key)
-  }, [])
-
   // Save
   const handleSave = useCallback(async () => {
     if (!geojsonData || selectedBlocks.size === 0) return
@@ -198,7 +193,7 @@ export default function IMTAddWorkspace({
   }, [analysisResult, selectedBlocks])
 
   const containerClass = mode === 'panel'
-    ? 'h-full animate-slide-in-right'
+    ? 'h-full overflow-y-auto animate-slide-in-right'
     : 'w-[480px] h-full bg-[#F5F5F0] border-r border-gray-200 animate-slide-in-right overflow-y-auto'
 
   return (
@@ -233,8 +228,8 @@ export default function IMTAddWorkspace({
           )}
           {polygonVertices.length > 0 && (
             <>
-              <div className="h-[200px] rounded-lg overflow-hidden border border-gray-200 mb-3">
-                <MiniMap lat={13.7563} lon={100.5018} radius={100} antennaType="omni" polygonVertices={polygonVertices} className="w-full h-full" />
+              <div className="h-[180px] rounded-lg overflow-hidden border border-gray-200 bg-[#F5F5F0] mb-3 flex items-center justify-center">
+                <PolygonShape vertices={polygonVertices} />
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <MapPin className="w-4 h-4 text-[#C00000]" /><span>{polygonVertices.length} จุด</span>
@@ -307,74 +302,34 @@ export default function IMTAddWorkspace({
               </div>
 
               {/* Block grid */}
-              <div className="grid grid-cols-5 gap-1.5 mb-4">
+              <div className="flex flex-nowrap gap-1 overflow-x-auto pb-2 mb-4" style={{ minWidth: 0 }}>
                 {analysisResult.blocks.map(block => {
                   const meta = STATUS_META[block.status] || STATUS_META.available
                   const key = blockKey(block.freq_low, block.freq_high)
                   const selectedStatus = selectedBlocks.get(key)
-                  const isExpanded = expandedBlock === key
 
                   return (
-                    <div key={key}>
-                      <button onClick={() => toggleExpand(key)} className="w-full text-left"
+                    <div key={key} className="flex-shrink-0" style={{ width: '56px' }}>
+                      <button onClick={() => toggleBlock(key)}
                         style={{
                           backgroundColor: meta.bg,
                           color: '#FFFFFF',
                           border: '1px solid #000',
                           borderRadius: '4px',
-                          padding: '4px 6px',
-                          fontSize: '10px',
-                          lineHeight: '1.3',
+                          padding: '3px 4px',
+                          fontSize: '9px',
+                          lineHeight: '1.2',
+                          width: '100%',
                           opacity: selectedStatus || block.status !== 'available' ? 1 : 0.45,
                           cursor: 'pointer',
                           transition: 'opacity 0.15s',
                         }}
                         title={block.reason_th}>
-                        <div className="font-mono font-bold">{block.freq_low}-{block.freq_high}</div>
-                        <div className="flex items-center gap-1">
-                          <span>{selectedStatus === 'guard' ? 'Guard' : meta.label}</span>
-                          {isExpanded ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                        <div className="font-mono font-bold text-center">{block.freq_low}</div>
+                        <div className="text-center mt-0.5" style={{ fontSize: '7px' }}>
+                          {selectedStatus === 'guard' ? 'Guard' : meta.label}
                         </div>
                       </button>
-                      {isExpanded && (
-                        <div className="mt-1 p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-700">
-                          <p className="mb-1">{block.reason_th}</p>
-                          {block.blocked_by.length > 0 && (
-                            <div>
-                              <span className="font-semibold">ถูกบล็อกโดย:</span>
-                              <ul className="list-disc list-inside mt-0.5">
-                                {block.blocked_by.map((item, i) => <li key={i}>{item}</li>)}
-                              </ul>
-                            </div>
-                          )}
-                          {block.status === 'available' && (
-                            <div className="flex gap-1 mt-1">
-                              <button onClick={e => { e.stopPropagation(); toggleBlock(key) }}
-                                className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
-                                  selectedStatus === 'allocated'
-                                    ? 'bg-green-50 text-green-600 border-green-200'
-                                    : 'bg-gray-50 text-gray-500 border-gray-200'
-                                }`}>
-                                {selectedStatus === 'allocated' ? '✓ จัดสรร' : 'จัดสรร'}
-                              </button>
-                              <button onClick={e => { e.stopPropagation(); toggleBlock(key) }}
-                                className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
-                                  selectedStatus === 'guard'
-                                    ? 'bg-amber-50 text-amber-600 border-amber-200'
-                                    : 'bg-gray-50 text-gray-500 border-gray-200'
-                                }`}>
-                                {selectedStatus === 'guard' ? '✓ Guard' : 'Guard'}
-                              </button>
-                            </div>
-                          )}
-                          {block.can_be_guard && (
-                            <div className="mt-1 flex items-center gap-1 text-amber-600">
-                              <Shield className="w-3 h-3" />
-                              <span className="text-[10px]">{block.guard_reason_th}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   )
                 })}
@@ -386,6 +341,14 @@ export default function IMTAddWorkspace({
               </div>
             </section>
 
+            {/* Save */}
+            <Button onClick={handleSave}
+              disabled={selectedBlocks.size === 0 || !name.trim() || !operator.trim() || saving}
+              loading={saving} variant="primary" className="w-full">
+              <Save className="w-4 h-4 mr-2" />
+              บันทึกการจัดสรร ({selectedBlocks.size} ชอง)
+            </Button>
+
             {/* Narrative Log */}
             <section className="bg-white rounded-lg border border-gray-200 p-4">
               <button onClick={() => setShowNarrative(!showNarrative)}
@@ -394,21 +357,13 @@ export default function IMTAddWorkspace({
                 {showNarrative ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
               {showNarrative && (
-                <div className="mt-3 max-h-48 overflow-y-auto bg-gray-900 text-green-400 rounded-lg p-3 font-mono text-[11px] leading-relaxed">
+                <div className="mt-3 max-h-48 overflow-y-auto bg-white text-gray-900 rounded-lg p-3 font-mono text-[11px] leading-relaxed border border-gray-200">
                   {analysisResult.narrative_log.map((line, i) => (
                     <div key={i}>{line}</div>
                   ))}
                 </div>
               )}
             </section>
-
-            {/* Save */}
-            <Button onClick={handleSave}
-              disabled={selectedBlocks.size === 0 || !name.trim() || !operator.trim() || saving}
-              loading={saving} variant="primary" className="w-full">
-              <Save className="w-4 h-4 mr-2" />
-              บันทึกการจัดสรร ({selectedBlocks.size} ชอง)
-            </Button>
           </>
         )}
       </div>
