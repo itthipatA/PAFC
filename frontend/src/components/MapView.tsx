@@ -995,64 +995,24 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
   // Remove GeoJSON layers
   const ids = [
     LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers,
-    LAYER_IDS.fsCoordFill,
-    LAYER_IDS.fsCoordMidFill, LAYER_IDS.fsCoordInnerFill,
+    LAYER_IDS.fsCoverageTxFill, LAYER_IDS.fsCoverageTxOutline,
+    LAYER_IDS.fsCoverageRxFill, LAYER_IDS.fsCoverageRxOutline,
+    LAYER_IDS.fsCoverageLinkFill, LAYER_IDS.fsCoverageLinkOutline,
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
   const sources = [
-    LAYER_IDS.fsLinksSource, LAYER_IDS.fsCoordSource,
-    LAYER_IDS.fsCoordMidSource, LAYER_IDS.fsCoordInnerSource,
+    LAYER_IDS.fsLinksSource,
+    LAYER_IDS.fsCoverageTxSource, LAYER_IDS.fsCoverageRxSource,
+    LAYER_IDS.fsCoverageLinkSource,
   ]
   sources.forEach((sid) => {
     if (map.getSource(sid)) map.removeSource(sid)
   })
 }
 
-// ─── Tapered Coordination Zone (Engineering Precision) ──────────────────────
-
-/**
- * Compute the coordination radius at a specific point along a microwave link,
- * using Free Space Path Loss physics. The radius varies from wide at the
- * endpoints (where the IMT transmitter has line-of-sight proximity) to
- * narrow in the middle (where the slant range to either endpoint is larger).
- *
- * Derivation:
- *   I_target = EIRP - FSPL(sqrt(r² + d²), f)
- *   FSPL = 32.4 + 20*log10(sqrt(r²+d²)_km) + 20*log10(f_MHz)
- *   Solving: r = sqrt(max(0, L * 1e6 - d²))
- *   where L = 10^((EIRP - threshold - 32.4 - 20*log10(f)) / 10)
- *
- * For each sample point we consider interference to BOTH the TX and RX ends
- * and take the tighter (more restrictive) radius.
- */
-function taperedCoordinationRadius(
-  eirp_dbm: number,
-  freq_mhz: number,
-  distance_along_link_m: number,
-  total_distance_m: number,
-  threshold_dbm: number = -114,
-): number {
-  // Compute the L constant: the squared slant range (in km²) at threshold
-  const L = Math.pow(10, (eirp_dbm - threshold_dbm - 32.4 - 20 * Math.log10(freq_mhz)) / 10)
-  const L_m2 = L * 1e6  // convert from km² to m²
-
-  // Interference path to TX
-  const d_tx = distance_along_link_m
-  const r_tx_sq = L_m2 - d_tx * d_tx
-
-  // Interference path to RX
-  const d_rx = total_distance_m - distance_along_link_m
-  const r_rx_sq = L_m2 - d_rx * d_rx
-
-  // Take the tighter (smaller) of the two constraints
-  const r_sq = Math.max(0, Math.min(r_tx_sq, r_rx_sq))
-  const radius = Math.sqrt(r_sq)
-
-  // Clamp: minimum 50m for visibility, maximum 2000m
-  return Math.max(50, Math.min(2000, radius))
-}
+// ─── Legacy single-endpoint coordination radius for popup display ──────────
 
 /**
  * Legacy single-endpoint coordination radius for popup display.
@@ -1072,119 +1032,150 @@ function calcCoordinationRadius(
   return Math.max(50, Math.min(2000, radius_m))
 }
 
-/**
- * Draw the tapered FS coordination zone using N=80 turf.js circles
- * sampled along the great-circle path. Each circle has 64 steps for a
- * smooth arc; with 80 overlapping circles the visual result is a continuous
- * smooth dog-bone shape. Three gradient layers (100%/60%/30% radii).
- */
-function drawTaperedCoordinationZone(map: maplibregl.Map, links: any[]) {
-  const N = 80  // high sample count for smooth continuous shape
-  const outerFeatures: any[] = []
-  const midFeatures: any[] = []
-  const innerFeatures: any[] = []
+// ─── FS Coverage from Engine (GeoJSON polygons) ────────────────────────────
 
-  for (const link of links) {
-    const txLat = link.tx?.lat ?? link.tx_lat
-    const txLon = link.tx?.lon ?? link.tx_lon
-    const rxLat = link.rx?.lat ?? link.rx_lat
-    const rxLon = link.rx?.lon ?? link.rx_lon
-    const freqLow = link.frequency?.low ?? link.freq_low
-    const freqHigh = link.frequency?.high ?? link.freq_high
-    const txPower = link.rf?.tx_power ?? link.tx_power ?? 20
-    const txAntennaGain = link.rf?.tx_antenna_gain ?? link.tx_antenna_gain ?? 30
+interface FSCoverageResponse {
+  coverage: Record<string, {
+    name: string
+    operator: string
+    tx_coverage: GeoJSON.Polygon | null
+    rx_coverage: GeoJSON.Polygon | null
+    link_corridor: GeoJSON.Polygon | null
+    max_distance_km: number
+    freq_mhz: number
+  }>
+  count: number
+}
 
-    const eirp = txPower + txAntennaGain
-    const freqMid = (freqLow + freqHigh) / 2
-    const totalDist = haversineM(txLat, txLon, rxLat, rxLon)
-    const brg = bearingDeg(txLat, txLon, rxLat, rxLon)
+async function fetchAndDrawFSCoverage(
+  map: maplibregl.Map,
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+  links: any[],
+) {
+  try {
+    const res = await fetchWithAuth('/api/fs-links/coverage')
+    if (!res.ok) {
+      console.warn('FS coverage not available (auth required)')
+      return
+    }
+    const data: FSCoverageResponse = await res.json()
+    const coverage = data.coverage
+    if (!coverage || Object.keys(coverage).length === 0) return
 
-    for (let i = 0; i <= N; i++) {
-      const dAlong = (i / N) * totalDist
-      // Interpolate along great circle (not straight line in lat/lon)
-      const [lon, lat] = destPoint(txLat, txLon, brg, dAlong)
+    // Build GeoJSON FeatureCollections for TX coverage, RX coverage, and link corridors
+    const txFeatures: GeoJSON.Feature[] = []
+    const rxFeatures: GeoJSON.Feature[] = []
+    const linkFeatures: GeoJSON.Feature[] = []
 
-      const r = taperedCoordinationRadius(eirp, freqMid, dAlong, totalDist)
-      if (r < 10) continue
+    for (const link of links) {
+      const linkId = link.id
+      const cov = coverage[linkId]
+      if (!cov) continue
 
-      // Outer layer (100% radius)
-      try {
-        const c1 = circle([lon, lat], r / 1000, { steps: 64, units: 'kilometers' })
-        outerFeatures.push(c1)
-      } catch (_e) { /* skip invalid circle */ }
+      const linkProps = { name: cov.name, operator: cov.operator }
 
-      // Mid layer (60% radius)
-      const r2 = r * 0.6
-      if (r2 >= 10) {
-        try {
-          const c2 = circle([lon, lat], r2 / 1000, { steps: 64, units: 'kilometers' })
-          midFeatures.push(c2)
-        } catch (_e) { /* skip invalid circle */ }
+      if (cov.tx_coverage) {
+        txFeatures.push({
+          type: 'Feature' as const,
+          properties: { ...linkProps, side: 'TX' },
+          geometry: cov.tx_coverage,
+        })
       }
-
-      // Inner layer (30% radius)
-      const r3 = r * 0.3
-      if (r3 >= 10) {
-        try {
-          const c3 = circle([lon, lat], r3 / 1000, { steps: 64, units: 'kilometers' })
-          innerFeatures.push(c3)
-        } catch (_e) { /* skip invalid circle */ }
+      if (cov.rx_coverage) {
+        rxFeatures.push({
+          type: 'Feature' as const,
+          properties: { ...linkProps, side: 'RX' },
+          geometry: cov.rx_coverage,
+        })
+      }
+      if (cov.link_corridor) {
+        linkFeatures.push({
+          type: 'Feature' as const,
+          properties: { ...linkProps },
+          geometry: cov.link_corridor,
+        })
       }
     }
-  }
 
-  // Render outer layer (100% radius, blue #60A5FA, 6%, with outline)
-  if (outerFeatures.length > 0) {
-    map.addSource(LAYER_IDS.fsCoordSource, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: outerFeatures },
-    })
+    // Add TX coverage source + layers (red-orange)
+    if (txFeatures.length > 0) {
+      map.addSource(LAYER_IDS.fsCoverageTxSource, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: txFeatures },
+      })
+      map.addLayer({
+        id: LAYER_IDS.fsCoverageTxFill,
+        type: 'fill',
+        source: LAYER_IDS.fsCoverageTxSource,
+        paint: { 'fill-color': '#EF4444', 'fill-opacity': 0.1 },
+      })
+      map.addLayer({
+        id: LAYER_IDS.fsCoverageTxOutline,
+        type: 'line',
+        source: LAYER_IDS.fsCoverageTxSource,
+        paint: { 'line-color': '#EF4444', 'line-width': 1, 'line-opacity': 0.5 },
+      })
+    }
 
-    map.addLayer({
-      id: LAYER_IDS.fsCoordFill,
-      type: 'fill',
-      source: LAYER_IDS.fsCoordSource,
-      paint: {
-        'fill-color': '#60A5FA',
-        'fill-opacity': 0.03,
-      },
-    })
-  }
+    // Add RX coverage source + layers (blue)
+    if (rxFeatures.length > 0) {
+      map.addSource(LAYER_IDS.fsCoverageRxSource, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: rxFeatures },
+      })
+      map.addLayer({
+        id: LAYER_IDS.fsCoverageRxFill,
+        type: 'fill',
+        source: LAYER_IDS.fsCoverageRxSource,
+        paint: { 'fill-color': '#3B82F6', 'fill-opacity': 0.1 },
+      })
+      map.addLayer({
+        id: LAYER_IDS.fsCoverageRxOutline,
+        type: 'line',
+        source: LAYER_IDS.fsCoverageRxSource,
+        paint: { 'line-color': '#3B82F6', 'line-width': 1, 'line-opacity': 0.5 },
+      })
+    }
 
-  // Render middle layer (60% radius, amber #F59E0B, 10%, no outline)
-  if (midFeatures.length > 0) {
-    map.addSource(LAYER_IDS.fsCoordMidSource, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: midFeatures },
-    })
+    // Add link corridor source + layers (teal)
+    if (linkFeatures.length > 0) {
+      map.addSource(LAYER_IDS.fsCoverageLinkSource, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: linkFeatures },
+      })
+      map.addLayer({
+        id: LAYER_IDS.fsCoverageLinkFill,
+        type: 'fill',
+        source: LAYER_IDS.fsCoverageLinkSource,
+        paint: { 'fill-color': '#0D9488', 'fill-opacity': 0.15 },
+      })
+      map.addLayer({
+        id: LAYER_IDS.fsCoverageLinkOutline,
+        type: 'line',
+        source: LAYER_IDS.fsCoverageLinkSource,
+        paint: { 'line-color': '#0D9488', 'line-width': 1, 'line-opacity': 0.6 },
+      })
+    }
 
-    map.addLayer({
-      id: LAYER_IDS.fsCoordMidFill,
-      type: 'fill',
-      source: LAYER_IDS.fsCoordMidSource,
-      paint: {
-        'fill-color': '#F59E0B',
-        'fill-opacity': 0.05,
-      },
+    // Show FS name on hover
+    const hoverLayers = [
+      LAYER_IDS.fsCoverageTxFill, LAYER_IDS.fsCoverageRxFill, LAYER_IDS.fsCoverageLinkFill,
+    ]
+    hoverLayers.forEach((layerId) => {
+      if (!map.getLayer(layerId)) return
+      map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = '' })
+      map.on('click', layerId, (e) => {
+        if (!e.features?.[0]) return
+        const p = e.features[0].properties
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`<strong>${escapeHTML(p.name)}</strong><br/>${escapeHTML(p.operator)}${p.side ? ` (${p.side})` : ''}`)
+          .addTo(map)
+      })
     })
-  }
-
-  // Render inner layer (30% radius, red #EF4444, 8%, no outline)
-  if (innerFeatures.length > 0) {
-    map.addSource(LAYER_IDS.fsCoordInnerSource, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: innerFeatures },
-    })
-
-    map.addLayer({
-      id: LAYER_IDS.fsCoordInnerFill,
-      type: 'fill',
-      source: LAYER_IDS.fsCoordInnerSource,
-      paint: {
-        'fill-color': '#EF4444',
-        'fill-opacity': 0.15,
-      },
-    })
+  } catch (err) {
+    console.warn('FS coverage not available:', err)
   }
 }
 

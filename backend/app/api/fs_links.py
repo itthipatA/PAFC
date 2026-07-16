@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get("/coverage")
 async def get_fs_coverage(db: AsyncSession = Depends(get_db)):
-    """Get -120dBm coverage polygons for all active FS links."""
+    """Get coverage polygons for all active FS links (to -120 dBm)."""
     result = await db.execute(select(FSLink).where(FSLink.status == "active"))
     links = result.scalars().all()
     
