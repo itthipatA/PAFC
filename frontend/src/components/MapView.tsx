@@ -998,7 +998,6 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
     LAYER_IDS.fsCoverageTxFill,
     LAYER_IDS.fsCoverageRxFill,
     LAYER_IDS.fsCoverageLinkFill,
-    'fs-azimuth-line',
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
@@ -1007,7 +1006,6 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
     LAYER_IDS.fsLinksSource,
     LAYER_IDS.fsCoverageTxSource, LAYER_IDS.fsCoverageRxSource,
     LAYER_IDS.fsCoverageLinkSource,
-    'fs-azimuth-source',
   ]
   sources.forEach((sid) => {
     if (map.getSource(sid)) map.removeSource(sid)
@@ -1064,143 +1062,78 @@ async function fetchAndDrawFSCoverage(
     const coverage = data.coverage
     if (!coverage || Object.keys(coverage).length === 0) return
 
-    // Build 3-layer concentric circles from -120dBm distances
-    // Outer (100%): -120dBm max distance, Mid (60%), Inner (30%)
-    const outerFeatures: any[] = []
-    const midFeatures: any[] = []
-    const innerFeatures: any[] = []
+    // Build directional coverage using overlapping small circles
+    // Samples polygon outline at every 4th vertex → places circles
+    const outerCircles: any[] = []
+    const midCircles: any[] = []
+    const innerCircles: any[] = []
 
     for (const link of links) {
       const linkId = link.id
       const cov = coverage[linkId]
       if (!cov) continue
 
-      const r = cov.max_distance_km  // -120dBm max distance (radio horizon capped)
-      if (!r || r <= 0) continue
-
-      // TX circles
-      const txLon = link.tx?.lon ?? link.tx_lon
-      const txLat = link.tx?.lat ?? link.tx_lat
-      if (txLon != null && txLat != null) {
-        const c1 = circle([txLon, txLat], r, { steps: 64, units: 'kilometers' })
-        c1.properties = { name: cov.name, operator: cov.operator, side: 'TX', layer: 'outer' }
-        outerFeatures.push(c1)
-        const c2 = circle([txLon, txLat], r * 0.6, { steps: 64, units: 'kilometers' })
-        c2.properties = { side: 'TX', layer: 'mid' }
-        midFeatures.push(c2)
-        const c3 = circle([txLon, txLat], r * 0.3, { steps: 64, units: 'kilometers' })
-        c3.properties = { side: 'TX', layer: 'inner' }
-        innerFeatures.push(c3)
-      }
-
-      // RX circles
-      const rxLon = link.rx?.lon ?? link.rx_lon
-      const rxLat = link.rx?.lat ?? link.rx_lat
-      if (rxLon != null && rxLat != null) {
-        const c1 = circle([rxLon, rxLat], r, { steps: 64, units: 'kilometers' })
-        c1.properties = { name: cov.name, operator: cov.operator, side: 'RX', layer: 'outer' }
-        outerFeatures.push(c1)
-        const c2 = circle([rxLon, rxLat], r * 0.6, { steps: 64, units: 'kilometers' })
-        c2.properties = { side: 'RX', layer: 'mid' }
-        midFeatures.push(c2)
-        const c3 = circle([rxLon, rxLat], r * 0.3, { steps: 64, units: 'kilometers' })
-        c3.properties = { side: 'RX', layer: 'inner' }
-        innerFeatures.push(c3)
-      }
-    }
-
-    // Outer layer (100% = -120dBm boundary)
-    if (outerFeatures.length > 0) {
-      map.addSource(LAYER_IDS.fsCoverageTxSource, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: outerFeatures },
-      })
-      map.addLayer({
-        id: LAYER_IDS.fsCoverageTxFill,
-        type: 'fill',
-        source: LAYER_IDS.fsCoverageTxSource,
-        paint: { 'fill-color': '#60A5FA', 'fill-opacity': 0.12 },
-      })
-    }
-
-    // Mid layer (60%)
-    if (midFeatures.length > 0) {
-      map.addSource(LAYER_IDS.fsCoverageRxSource, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: midFeatures },
-      })
-      map.addLayer({
-        id: LAYER_IDS.fsCoverageRxFill,
-        type: 'fill',
-        source: LAYER_IDS.fsCoverageRxSource,
-        paint: { 'fill-color': '#F59E0B', 'fill-opacity': 0.15 },
-      })
-    }
-
-    // Inner layer (30%)
-    if (innerFeatures.length > 0) {
-      map.addSource(LAYER_IDS.fsCoverageLinkSource, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: innerFeatures },
-      })
-      map.addLayer({
-        id: LAYER_IDS.fsCoverageLinkFill,
-        type: 'fill',
-        source: LAYER_IDS.fsCoverageLinkSource,
-        paint: { 'fill-color': '#EF4444', 'fill-opacity': 0.15 },
-      })
-    }
-
-    // Azimuth direction lines — show antenna pointing direction
-    const azimuthFeatures: any[] = []
-    for (const link of links) {
       const txLon = link.tx?.lon ?? link.tx_lon
       const txLat = link.tx?.lat ?? link.tx_lat
       const rxLon = link.rx?.lon ?? link.rx_lon
       const rxLat = link.rx?.lat ?? link.rx_lat
+
+      // TX coverage: sample polygon outline, place circles
+      if (txLon != null && txLat != null && cov.tx_coverage) {
+        const coords = cov.tx_coverage.coordinates[0]
+        for (let i = 0; i < coords.length - 1; i += 4) {
+          const [clon, clat] = coords[i]
+          outerCircles.push(circle([clon, clat], 4, { steps: 16, units: 'kilometers' }))
+          const mlon = txLon + (clon - txLon) * 0.6
+          const mlat = txLat + (clat - txLat) * 0.6
+          midCircles.push(circle([mlon, mlat], 3, { steps: 16, units: 'kilometers' }))
+          const ilon = txLon + (clon - txLon) * 0.3
+          const ilat = txLat + (clat - txLat) * 0.3
+          innerCircles.push(circle([ilon, ilat], 2, { steps: 16, units: 'kilometers' }))
+        }
+      }
+
+      // RX coverage
+      if (rxLon != null && rxLat != null && cov.rx_coverage) {
+        const coords = cov.rx_coverage.coordinates[0]
+        for (let i = 0; i < coords.length - 1; i += 4) {
+          const [clon, clat] = coords[i]
+          outerCircles.push(circle([clon, clat], 4, { steps: 16, units: 'kilometers' }))
+          const mlon = rxLon + (clon - rxLon) * 0.6
+          const mlat = rxLat + (clat - rxLat) * 0.6
+          midCircles.push(circle([mlon, mlat], 3, { steps: 16, units: 'kilometers' }))
+          const ilon = rxLon + (clon - rxLon) * 0.3
+          const ilat = rxLat + (clat - rxLat) * 0.3
+          innerCircles.push(circle([ilon, ilat], 2, { steps: 16, units: 'kilometers' }))
+        }
+      }
+
+      // Azimuth line TX→RX
       if (txLon != null && txLat != null && rxLon != null && rxLat != null) {
-        azimuthFeatures.push({
-          type: 'Feature',
-          properties: { name: link.name, side: 'TX→RX' },
+        outerCircles.push({
+          type: 'Feature', properties: { name: link.name || cov.name, side: 'TX→RX' },
           geometry: { type: 'LineString', coordinates: [[txLon, txLat], [rxLon, rxLat]] },
         })
       }
     }
-    if (azimuthFeatures.length > 0) {
-      map.addSource('fs-azimuth-source', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: azimuthFeatures },
-      })
-      map.addLayer({
-        id: 'fs-azimuth-line',
-        type: 'line',
-        source: 'fs-azimuth-source',
-        paint: {
-          'line-color': '#F59E0B',
-          'line-width': 2,
-          'line-opacity': 0.7,
-          'line-dasharray': [3, 2],
-        },
-      })
+
+    // Render 3 layers of overlapping circles
+    const layerDefs = [
+      { features: outerCircles, sid: LAYER_IDS.fsCoverageTxSource, fillId: LAYER_IDS.fsCoverageTxFill, color: '#60A5FA', opacity: 0.18 },
+      { features: midCircles, sid: LAYER_IDS.fsCoverageRxSource, fillId: LAYER_IDS.fsCoverageRxFill, color: '#F59E0B', opacity: 0.22 },
+      { features: innerCircles, sid: LAYER_IDS.fsCoverageLinkSource, fillId: LAYER_IDS.fsCoverageLinkFill, color: '#EF4444', opacity: 0.25 },
+    ]
+    for (const layer of layerDefs) {
+      if (layer.features.length === 0) continue
+      map.addSource(layer.sid, { type: 'geojson', data: { type: 'FeatureCollection', features: layer.features } })
+      map.addLayer({ id: layer.fillId, type: 'fill', source: layer.sid, paint: { 'fill-color': layer.color, 'fill-opacity': layer.opacity } })
     }
 
-    // Hover/click
-    const hoverLayers = [
-      LAYER_IDS.fsCoverageTxFill, LAYER_IDS.fsCoverageRxFill, LAYER_IDS.fsCoverageLinkFill,
-    ]
-    hoverLayers.forEach((layerId) => {
-      if (!map.getLayer(layerId)) return
-      map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer' })
-      map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = '' })
-      map.on('click', layerId, (e) => {
-        if (!e.features?.[0]) return
-        const p = e.features[0].properties
-        new maplibregl.Popup()
-          .setLngLat(e.lngLat)
-          .setHTML(`<strong>${escapeHTML(p.name)}</strong><br/>${escapeHTML(p.operator)}${p.side ? ` (${p.side})` : ''}`)
-          .addTo(map)
-      })
-    })
+    // Hover on outer layer
+    if (map.getLayer(LAYER_IDS.fsCoverageTxFill)) {
+      map.on('mouseenter', LAYER_IDS.fsCoverageTxFill, () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', LAYER_IDS.fsCoverageTxFill, () => { map.getCanvas().style.cursor = '' })
+    }
   } catch (err) {
     console.warn('FS coverage not available:', err)
   }
