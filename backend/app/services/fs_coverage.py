@@ -23,6 +23,13 @@ from typing import List, Tuple, Optional, Dict
 # -120 dBm detection threshold (user-specified)
 RX_THRESHOLD_DBM = -120.0
 
+# Radio Horizon Cap — Earth curvature limits practical coverage
+# ITU-R P.525: d_max_km = 4.12 * (√h1 + √h2)
+# Typical: h_tx=30m, h_imt=15m → ~38.5 km
+FS_ANTENNA_HEIGHT_M = 30.0    # typical microwave tower height
+IMT_RX_HEIGHT_M = 15.0        # typical IMT base station height
+MAX_COVERAGE_RADIUS_KM = 4.12 * (math.sqrt(FS_ANTENNA_HEIGHT_M) + math.sqrt(IMT_RX_HEIGHT_M))
+
 # ITU-R F.699 pattern parameters
 F699_PEAK_GAIN_DBI = 40.0     # typical max gain for microwave dish
 F699_BEAMWIDTH_DEG = 3.0      # typical half-power beamwidth
@@ -72,7 +79,7 @@ def distance_for_rx_level(
     required_fspl = eirp_dbm + rx_gain_dbi - target_rx_dbm
     exponent = (required_fspl - 20.0 * math.log10(freq_mhz) - 32.45) / 20.0
     d_km = 10.0 ** exponent
-    return max(0.001, d_km)
+    return min(max(0.001, d_km), MAX_COVERAGE_RADIUS_KM)
 
 
 # ── Antenna Pattern — ITU-R F.699 (Simplified) ───────────────────────────
