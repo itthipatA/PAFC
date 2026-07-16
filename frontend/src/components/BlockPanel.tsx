@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { CheckCircle, Shield, XCircle, Info } from 'lucide-react'
 import { useReducedMotion } from '../hooks/useReducedMotion'
-import { BlockResult } from '../types'
+import { AllocationBlock } from '../types'
 
 interface BlockPanelProps {
-  blocks: BlockResult[]
+  blocks: AllocationBlock[]
 }
 
 export default function BlockPanel({ blocks }: BlockPanelProps) {
@@ -12,24 +12,24 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
   const reduced = useReducedMotion()
 
   const statusCounts = {
-    available: blocks.filter((b) => b.status === 'green').length,
-    guard: blocks.filter((b) => b.status === 'gray').length,
-    blocked: blocks.filter((b) => b.status === 'red').length,
+    available: blocks.filter((b) => b.status === 'available' && !b.can_be_guard).length,
+    guard: blocks.filter((b) => b.can_be_guard).length,
+    blocked: blocks.filter((b) => b.status !== 'available' && !b.can_be_guard).length,
   }
   const totalMhz = statusCounts.available * 10
 
   // Sort blocks by freq_low for display
   const sorted = [...blocks].sort((a, b) => a.freq_low - b.freq_low)
 
-  const statusColor = (status: string): string => {
-    if (status === 'green') return '#16A34A'
-    if (status === 'gray') return '#9CA3AF'
+  const statusColor = (block: AllocationBlock): string => {
+    if (block.can_be_guard) return '#9CA3AF'
+    if (block.status === 'available') return '#16A34A'
     return '#DC2626'
   }
 
-  const statusBg = (status: string): string => {
-    if (status === 'green') return 'bg-green-500'
-    if (status === 'gray') return 'bg-gray-400'
+  const statusBg = (block: AllocationBlock): string => {
+    if (block.can_be_guard) return 'bg-gray-400'
+    if (block.status === 'available') return 'bg-green-500'
     return 'bg-red-500'
   }
 
@@ -70,10 +70,10 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
         {sorted.map((b, i) => (
           <div
             key={i}
-            title={`${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${b.reason}`}
-            className={`flex-1 ${statusBg(b.status)} cursor-pointer hover:brightness-110 relative ${!reduced ? `animate-fade-in-up stagger-${Math.min(i + 1, 10)}` : ''}`}
+            title={`${b.freq_low.toFixed(0)}-${b.freq_high.toFixed(0)} MHz: ${b.reason_th}`}
+            className={`flex-1 ${statusBg(b)} cursor-pointer hover:brightness-110 relative ${!reduced ? `animate-fade-in-up stagger-${Math.min(i + 1, 10)}` : ''}`}
             style={{
-              backgroundColor: statusColor(b.status),
+              backgroundColor: statusColor(b),
               minWidth: `${Math.max(100 / sorted.length, 1)}%`,
               border: '1px solid #000',
             }}
@@ -121,18 +121,22 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
               {sorted[selectedIndex].freq_low.toFixed(0)}-{sorted[selectedIndex].freq_high.toFixed(0)} MHz
             </span>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-              sorted[selectedIndex].status === 'green' ? 'bg-green-100 text-green-700' :
-              sorted[selectedIndex].status === 'gray' ? 'bg-gray-100 text-gray-600' :
+              sorted[selectedIndex].can_be_guard ? 'bg-gray-100 text-gray-600' :
+              sorted[selectedIndex].status === 'available' ? 'bg-green-100 text-green-700' :
               'bg-red-100 text-red-700'
             }`}>
-              {sorted[selectedIndex].status === 'green' ? 'ว่าง' : sorted[selectedIndex].status === 'gray' ? 'Guard Band' : 'ถูกจอง'}
+              {sorted[selectedIndex].can_be_guard ? 'Guard Band' :
+               sorted[selectedIndex].status === 'available' ? 'ว่าง' : 'ถูกจอง'}
             </span>
           </div>
           <p className="text-xs text-gray-600">
             <Info className="w-3 h-3 inline mr-1" />
-            {sorted[selectedIndex].status === 'green' ? 'สามารถจัดสรรได้' :
-             sorted[selectedIndex].status === 'red' ? `ไม่สามารถจัดสรรได้ — ${sorted[selectedIndex].reason}` :
-             `Guard Band — ${sorted[selectedIndex].reason}`}
+            {sorted[selectedIndex].can_be_guard
+              ? `Guard Band — ${sorted[selectedIndex].guard_reason_th}`
+              : sorted[selectedIndex].status === 'available'
+                ? 'สามารถจัดสรรได้'
+                : `ไม่สามารถจัดสรรได้ — ${sorted[selectedIndex].reason_th} (${sorted[selectedIndex].blocked_by.join(', ')})`
+            }
           </p>
         </div>
       )}
@@ -140,13 +144,13 @@ export default function BlockPanel({ blocks }: BlockPanelProps) {
       {/* Conflicts detail */}
       <div className="space-y-1.5 max-h-60 overflow-y-auto">
         {blocks
-          .filter((b) => b.status !== 'green')
+          .filter((b) => b.status !== 'available')
           .map((b, i) => (
             <div key={i} className="text-xs p-2 bg-gray-50 rounded border border-gray-100">
               <span className="font-mono font-medium">
                 {b.freq_low.toFixed(0)}-{b.freq_high.toFixed(0)} MHz
               </span>
-              <span className="text-gray-400"> - {b.reason}</span>
+              <span className="text-gray-400"> - {b.reason_th}</span>
             </div>
           ))}
       </div>

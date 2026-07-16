@@ -30,6 +30,7 @@ const EMPTY_FORM: FSLinkCreate = {
   tx_antenna_gain: 30,
   rx_antenna_gain: 30,
   azimuth: 0,
+  beamwidth_deg: 3.0,
   polarization: 'V',
   status: 'active',
 }
@@ -92,6 +93,7 @@ export default function FSLinkManager() {
       tx_antenna_gain: link.rf.tx_antenna_gain,
       rx_antenna_gain: link.rf.rx_antenna_gain,
       azimuth: link.rf.azimuth,
+      beamwidth_deg: link.rf.beamwidth_deg,
       polarization: link.rf.polarization,
       status: link.status,
     })
@@ -132,6 +134,7 @@ export default function FSLinkManager() {
           tx_antenna_gain: form.tx_antenna_gain,
           rx_antenna_gain: form.rx_antenna_gain,
           azimuth: form.azimuth,
+          beamwidth_deg: form.beamwidth_deg,
           polarization: form.polarization,
         },
         status: form.status,
@@ -605,7 +608,7 @@ export default function FSLinkManager() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="grid grid-cols-3 gap-4 mt-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">
                       Azimuth (องศา)
@@ -614,6 +617,18 @@ export default function FSLinkManager() {
                       type="number"
                       value={form.azimuth}
                       onChange={(e) => handleFieldChange('azimuth', Number(e.target.value))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Beamwidth (deg)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={form.beamwidth_deg}
+                      onChange={(e) => handleFieldChange('beamwidth_deg', Number(e.target.value))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000] outline-none"
                     />
                   </div>

@@ -6,7 +6,7 @@ pre-commit-gate — Mechanical Gate Enforcement
 
 หลักการ: "ถ้ามันสำคัญพอที่จะต้องทำ → มันสำคัญพอที่จะบังคับด้วยโค้ด"
 
-GATES (ต้องผ่าน ≥5/7 ถึงได้ PASS):
+GATES (ต้องผ่าน ≥6/8 ถึงได้ PASS):
   1. Loop Readiness      — loop-gate.py score ≥ 60
   2. Understand-Anything — knowledge-graph.json exists + queried
   3. Graphify            — graphify project queried (ถ้ามี mixed content)
@@ -14,6 +14,8 @@ GATES (ต้องผ่าน ≥5/7 ถึงได้ PASS):
   5. Obsidian Fence      — obsidian-knowledge-graph loaded (ถ้าแก้ไฟล์ใน vault)
   6. L1-Gate             — l1-gate skill loaded ก่อน memory write
   7. Impact Analysis     — Phase 2.5 cascading trace ทำแล้ว
+  8. DESIGN.md           — lint + conformance check (ถ้า project มี frontend)
+
 
 USAGE:
   python3 .loop/pre-commit-gate.py              # interactive (human-readable)
@@ -43,7 +45,7 @@ from datetime import datetime, timezone
 
 # ── Config ──────────────────────────────────────────────
 SESSION_TIMEOUT = 30 * 60  # 30 minutes
-MINIMUM_GATES_FOR_PASS = 5  # need ≥5/7 to pass
+MINIMUM_GATES_FOR_PASS = 6  # need ≥6/8 to pass
 LOOP_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(LOOP_DIR)
 STATE_FILE = os.path.join(LOOP_DIR, ".gate-state.json")
@@ -98,6 +100,13 @@ GATES = {
         "weight": 15,
         "objective": True,   # auto-check: impact-plan.md exists + impact-map.md updated
         "critical": True,
+    },
+    "design": {
+        "name": "DESIGN.md",
+        "description": "DESIGN.md lint + conformance for frontend projects",
+        "weight": 15,
+        "objective": True,   # auto-check: DESIGN.md exists + lint passes
+        "critical": True,    # BLOCK commit if frontend project without valid DESIGN.md
     },
 }
 
@@ -195,6 +204,138 @@ def check_impact_analysis():
         return False, "No impact analysis — run impact-predict first"
 
 
+def has_frontend(project_root):
+    """เช็คว่าโปรเจคมี frontend/UI component"""
+    pkg_json = os.path.join(project_root, "package.json")
+    if not os.path.exists(pkg_json):
+        return False
+    try:
+        with open(pkg_json) as f:
+            pkg = json.load(f)
+        deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+        # Detect frontend frameworks
+        frontend_deps = {"react", "vue", "svelte", "next", "nuxt", "@angular/core", "solid-js", "preact"}
+        return bool(frontend_deps & set(deps.keys()))
+    except Exception:
+        return False
+
+
+def read_migration_status(design_md_path):
+    """อ่าน migration_status จาก DESIGN.md frontmatter"""
+    try:
+        with open(design_md_path) as f:
+            content = f.read()
+        # Parse YAML frontmatter (simple — between first two ---)
+        if content.startswith("---"):
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                for line in parts[1].split("\n"):
+                    line = line.strip()
+                    if line.startswith("migration_status:"):
+                        return line.split(":", 1)[1].strip().strip('"')
+    except Exception:
+        pass
+    return "bootstrapping"  # default
+
+
+def check_design_md(project_root):
+    """Gate 8: DESIGN.md lint + conformance"""
+    design_md_path = os.path.join(project_root, "DESIGN.md")
+
+    # 8a: Check if needed
+    if not has_frontend(project_root):
+        return True, "No frontend — DESIGN.md not required"
+
+    if not os.path.exists(design_md_path):
+        return False, "🔴 DESIGN.md missing for frontend project — create at project root"
+
+    # 8b: Lint
+    try:
+        result = subprocess.run(
+            ["designmd", "lint", design_md_path],
+            capture_output=True, text=True, timeout=30
+        )
+        lint_data = json.loads(result.stdout)
+        summary = lint_data.get("summary", {})
+        errors = summary.get("errors", 0)
+        warnings = summary.get("warnings", 0)
+
+        if errors > 0:
+            return False, f"🔴 DESIGN.md lint: {errors} errors, {warnings} warnings — fix before commit"
+
+        # 8c: Conformance (only if migration_status = "complete")
+        migration_status = read_migration_status(design_md_path)
+        if migration_status == "complete":
+            # Extract color tokens and scan for hardcoded colors
+            token_colors = extract_color_tokens(design_md_path)
+            hardcoded = find_hardcoded_colors(project_root, token_colors)
+            if hardcoded > 5:
+                return False, f"🔴 {hardcoded} hardcoded colors found — DESIGN.md conformance: use tokens"
+
+        detail = f"✅ Lint passed ({errors} errors, {warnings} warnings)"
+        if migration_status:
+            detail += f" | migration: {migration_status}"
+        return True, detail
+
+    except FileNotFoundError:
+        return False, "🔴 designmd CLI not installed — run: npm install -g @google/design.md"
+    except json.JSONDecodeError:
+        return False, "🔴 Failed to parse designmd lint output"
+    except Exception as e:
+        return False, f"🔴 DESIGN.md check error: {str(e)[:100]}"
+
+
+def extract_color_tokens(design_md_path):
+    """Extract all hex color values from DESIGN.md YAML frontmatter"""
+    import re
+    tokens = set()
+    try:
+        with open(design_md_path) as f:
+            content = f.read()
+        if content.startswith("---"):
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                # Find all hex colors in YAML
+                matches = re.findall(r'"#([0-9A-Fa-f]{3,8})"', parts[1])
+                tokens = {"#" + m.upper() for m in matches}
+    except Exception:
+        pass
+    return tokens
+
+
+def find_hardcoded_colors(project_root, token_colors):
+    """ค้นหา hardcoded colors ในโค้ดที่ไม่ตรงกับ DESIGN.md tokens"""
+    import re
+    if not token_colors:
+        return 0
+
+    hardcoded_count = 0
+    source_dirs = ["src", "app", "components", "pages", "styles"]
+    for dir_name in source_dirs:
+        dir_path = os.path.join(project_root, dir_name)
+        if not os.path.exists(dir_path):
+            continue
+        for root, dirs, files in os.walk(dir_path):
+            # Skip node_modules
+            dirs[:] = [d for d in dirs if d != "node_modules"]
+            for file in files:
+                if not file.endswith((".tsx", ".jsx", ".ts", ".js", ".css")):
+                    continue
+                try:
+                    with open(os.path.join(root, file)) as f:
+                        content = f.read()
+                    # Find hex colors
+                    found = set(re.findall(r'#[0-9A-Fa-f]{3,8}', content))
+                    # Count colors not in tokens (skip white/black/transparent)
+                    for c in found:
+                        c_upper = c.upper()
+                        if c_upper not in token_colors and c_upper not in {"#FFF", "#FFFFFF", "#000", "#000000", "#00000000"}:
+                            hardcoded_count += 1
+                except Exception:
+                    pass
+    return hardcoded_count
+
+
 # ── Self-report (--mark) ────────────────────────────────
 def mark_gate(state, gate_id, detail=""):
     """บันทึกว่า gate นี้ผ่านแล้ว"""
@@ -233,6 +374,8 @@ def evaluate(state):
                 passed, detail = check_understand_graph()
             elif gate_id == "impact":
                 passed, detail = check_impact_analysis()
+            elif gate_id == "design":
+                passed, detail = check_design_md(PROJECT_ROOT)
             else:
                 passed, detail = False, "Unknown objective gate"
 
@@ -334,6 +477,9 @@ def display_human(eval_result):
             print(f"    python3 .loop/pre-commit-gate.py --mark l1gate")
         if "Impact Analysis" in eval_result["critical_fails"]:
             print(f"    python3 .loop/pre-commit-gate.py --mark impact")
+        if "DESIGN.md" in eval_result["critical_fails"]:
+            print(f"    Create DESIGN.md: cp ~/.hermes/design/templates/<template>.md DESIGN.md")
+            print(f"    Then: designmd lint DESIGN.md")
 
     print()
     return eval_result["score"]

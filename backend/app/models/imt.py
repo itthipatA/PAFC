@@ -16,32 +16,16 @@ class IMTAllocation(Base):
 
     # Area — stored as GeoJSON WKT in text (PostGIS geometry optional)
     area_wkt = Column(String, nullable=False)  # "POLYGON((...))"
-    cell_radius = Column(Float, nullable=False)  # meters
 
     # RF Parameters
     antenna_height = Column(Float, nullable=False)   # m AGL
     max_eirp = Column(Float, nullable=False)           # dBm (already includes antenna gain)
-    antenna_gain = Column(Float, nullable=True)        # dBi
 
-    # Antenna Pattern (Phase 17)
-    antenna_type = Column(String(20), nullable=True, default="omni")  # omni | sector | shape
-    sector_beamwidth_deg = Column(Float, nullable=True, default=120)  # deg — only for sector
-    sector_azimuth_deg = Column(Float, nullable=True, default=0)      # deg from True North
-
-    # Coverage / Link Budget Parameters (Phase 15)
-    target_rss = Column(Float, nullable=True)          # dBm — target RSS at cell edge
-    shadow_margin = Column(Float, nullable=True)       # dB — shadow fade margin
-    building_loss = Column(Float, nullable=True, default=0)  # dB — building penetration
-    propagation_model = Column(String(50), nullable=True)    # which model was used
-    coverage_classification = Column(String(30), nullable=True)  # OUTDOOR_GOOD etc.
-
-    # Deployment type (Phase 29)
-    indoor_pct = Column(Float, nullable=True, default=0)  # 0-100, % of indoor deployment
+    # Frame structure — TDD configuration (Phase 37)
+    frame_structure = Column(String(20), nullable=True)  # e.g. "DDDSU", "DDDDDDDSU"
 
     # Polygon/Shape mode (Phase 35)
     polygon_geojson = Column(String, nullable=True)  # GeoJSON polygon geometry
-    tower_positions = Column(String, nullable=True)  # JSON array of {lat, lon, eirp}
-    network_total_eirp_dbm = Column(Float, nullable=True)
 
     # Status
     status = Column(String(20), default="pending")  # pending/active/rejected/expired

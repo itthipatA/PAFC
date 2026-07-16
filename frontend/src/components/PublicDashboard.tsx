@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { LogIn, Shield } from 'lucide-react'
 import MapView, { MAP_STYLES } from './MapView'
-import type { BlockResult } from '../types'
+import type { AllocationBlock } from '../types'
 
 interface PublicDashboardProps {
   onNavigateLogin: () => void
@@ -10,7 +10,7 @@ interface PublicDashboardProps {
 export default function PublicDashboard({ onNavigateLogin }: PublicDashboardProps) {
   const [selectedLat, setSelectedLat] = useState<number | null>(null)
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
-  const [blocks] = useState<BlockResult[]>([])
+  const [blocks] = useState<AllocationBlock[]>([])
   const [mapStyle] = useState('voyager')
 
   const handleMapClick = useCallback((lat: number, lon: number) => {

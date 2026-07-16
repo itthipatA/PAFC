@@ -270,10 +270,6 @@ function AuthenticatedApp({
                   onPlotPolygon={(vertices) => {
                     setPlottedPolygon(vertices.length > 0 ? vertices : null)
                   }}
-                  onCentroidUpdate={(c) => setParcelCentroid(c)}
-                  onShowStations={(stations) => {
-                    setHighlightStationNames(stations.length > 0 ? [...stations] : undefined)
-                  }}
                 />
               </div>
             )}

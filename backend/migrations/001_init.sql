@@ -1,4 +1,4 @@
--- PAFC Initial Migration
+-- PAFC Initial Migration — Phase 37 Schema
 -- Run: psql -U pafc -d pafc -f 001_init.sql
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -28,8 +28,13 @@ CREATE TABLE IF NOT EXISTS fs_links (
     tx_power DOUBLE PRECISION NOT NULL,           -- dBm
     tx_antenna_gain DOUBLE PRECISION NOT NULL,    -- dBi
     rx_antenna_gain DOUBLE PRECISION,             -- dBi
+    beamwidth_deg DOUBLE PRECISION DEFAULT 3.0,   -- half-power beamwidth
     azimuth DOUBLE PRECISION,                     -- deg from True North
     polarization VARCHAR(10),                     -- H, V, dual
+
+    -- Phase 37: Antenna pattern + link corridor
+    antenna_pattern JSONB,          -- directional pattern data
+    link_polygon JSONB,             -- computed link corridor GeoJSON
 
     -- Additional
     channel_plan VARCHAR(50),
@@ -51,12 +56,16 @@ CREATE TABLE IF NOT EXISTS imt_allocations (
 
     -- Area (WKT polygon)
     area_wkt TEXT NOT NULL,
-    cell_radius DOUBLE PRECISION NOT NULL,  -- m
 
-    -- RF Parameters
-    antenna_height DOUBLE PRECISION NOT NULL,  -- m AGL
-    max_eirp DOUBLE PRECISION NOT NULL,        -- dBm
-    antenna_gain DOUBLE PRECISION,             -- dBi
+    -- Basic RF metadata (not used in Phase 37 engine)
+    antenna_height DOUBLE PRECISION DEFAULT 15,  -- m AGL
+    max_eirp DOUBLE PRECISION DEFAULT 23,        -- dBm
+
+    -- Phase 37: Frame structure
+    frame_structure VARCHAR(20),  -- e.g. "DDDSU"
+
+    -- Area polygon (GeoJSON)
+    polygon_geojson JSONB,
 
     -- Status
     status VARCHAR(20) DEFAULT 'pending',  -- pending/active/rejected/expired

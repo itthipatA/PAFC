@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import { circle } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
-import type { BlockResult, IMTAllocation } from '../types'
+import type { AllocationBlock, IMTAllocation } from '../types'
 
 export interface HighlightStation {
   name: string
@@ -13,7 +13,7 @@ interface MapViewProps {
   onMapClick: (lat: number, lon: number) => void
   selectedLat: number | null
   selectedLon: number | null
-  blocks: BlockResult[]
+  blocks: AllocationBlock[]
   mapStyle: string
   cellRadius?: number
   centerLat?: number | null
@@ -443,12 +443,12 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
           const allocNameLower = alloc.name.toLowerCase()
           // Use includes for fuzzy match
           if (allocNameLower !== nameLower && !allocNameLower.includes(nameLower) && !nameLower.includes(allocNameLower)) continue
-          if (alloc.center_lon != null && alloc.center_lat != null) {
-            bounds.extend([alloc.center_lon, alloc.center_lat])
-            targetCoords.push({ lon: alloc.center_lon, lat: alloc.center_lat })
-            found = true
-            break
-          }
+          // Phase 37: use polygon centroid instead of center_lat/lon
+          if (!alloc.polygon_geojson) continue
+          let clat = 0, clon = 0
+          try { const gj = JSON.parse(alloc.polygon_geojson); const c = gj.coordinates[0]; c.forEach((p: number[]) => { clat += p[1]; clon += p[0] }); clat /= c.length; clon /= c.length } catch(e) { continue }
+          bounds.extend([clon, clat])
+          targetCoords.push({ lon: clon, lat: clat })
         }
       }
     }
@@ -1407,6 +1407,29 @@ function escapeHTML(s: string): string {
   return div.innerHTML
 }
 
+/** Compute centroid from a GeoJSON Polygon's coordinates. Returns null if invalid. */
+function getPolygonCentroid(geojson: any): { lat: number; lon: number } | null {
+  if (!geojson) return null
+  let coords: number[][] | undefined
+  if (geojson.type === 'Polygon') {
+    coords = geojson.coordinates?.[0]
+  } else if (geojson.type === 'Geometry' && geojson.coordinates) {
+    coords = geojson.coordinates[0]
+  } else if (Array.isArray(geojson.coordinates)) {
+    coords = geojson.coordinates[0]
+  }
+  if (!coords || coords.length === 0) return null
+  let sumLat = 0, sumLon = 0
+  for (const c of coords) {
+    if (Array.isArray(c) && c.length >= 2) {
+      sumLon += Number(c[0])
+      sumLat += Number(c[1])
+    }
+  }
+  if (sumLat === 0 && sumLon === 0) return null
+  return { lat: sumLat / coords.length, lon: sumLon / coords.length }
+}
+
 // ─── IMT Allocations ───────────────────────────────────────────────────────
 
 function cleanupIMTLayers(map: maplibregl.Map, imtMarkersRef: React.MutableRefObject<maplibregl.Marker[]>) {
@@ -1414,13 +1437,13 @@ function cleanupIMTLayers(map: maplibregl.Map, imtMarkersRef: React.MutableRefOb
   imtMarkersRef.current = []
 
   const ids = [
-    LAYER_IDS.imtCoverageFill, LAYER_IDS.imtCoverageFill + '-mid', LAYER_IDS.imtCoverageFill + '-inner',
+    LAYER_IDS.imtCoverageFill, LAYER_IDS.imtCoverageOutline,
     LAYER_IDS.imtCenters
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
-  const srcIds = [LAYER_IDS.imtCoverageSource, LAYER_IDS.imtCoverageSource + '-mid', LAYER_IDS.imtCoverageSource + '-inner']
+  const srcIds = [LAYER_IDS.imtCoverageSource]
   srcIds.forEach((id) => {
     if (map.getSource(id)) map.removeSource(id)
   })
@@ -1444,42 +1467,27 @@ async function loadIMTAllocations(
 
     cleanupIMTLayers(map, imtMarkersRef)
 
-    // Build coverage polygons — 3-layer gradient (100/60/30% radii) like FS zone
-    const outerFeatures: any[] = []   // 100% — cell edge
-    const midFeatures: any[] = []     // 60% — medium signal
-    const innerFeatures: any[] = []   // 30% — strong signal near center
+    // Build coverage from polygon_geojson
+    const coverageFeatures: any[] = []
     const markers: maplibregl.Marker[] = []
 
     allocations.forEach((alloc) => {
-      const lat = alloc.center_lat
-      const lon = alloc.center_lon
+      const centroid = getPolygonCentroid(alloc.polygon_geojson)
+      if (!centroid) return
+      const { lat, lon } = centroid
 
-      // Turf circle — 3 gradient layers (radius from cell_radius parameter)
-      try {
-        const r = alloc.cell_radius  // actual cell_radius from IMTAllocation
-        // Outer layer: 100% = cell edge
-        const c1 = circle([lon, lat], r / 1000, { steps: 64, units: 'kilometers' })
-        c1.properties = { id: alloc.id, name: alloc.name, operator: alloc.operator,
-                          cell_radius: r, blocks: alloc.blocks, created_at: alloc.created_at, layer: 'outer' }
-        outerFeatures.push(c1)
-
-        // Mid layer: 60% of cell radius
-        const r2 = r * 0.6
-        if (r2 > 10) {
-          const c2 = circle([lon, lat], r2 / 1000, { steps: 64, units: 'kilometers' })
-          c2.properties = { layer: 'mid' }
-          midFeatures.push(c2)
+      // Add polygon as coverage feature
+      if (alloc.polygon_geojson) {
+        const feature = {
+          type: 'Feature',
+          properties: {
+            id: alloc.id, name: alloc.name, operator: alloc.operator,
+            blocks: alloc.blocks, created_at: alloc.created_at,
+            frame_structure: alloc.frame_structure,
+          },
+          geometry: alloc.polygon_geojson,
         }
-
-        // Inner layer: 30% of cell radius — strongest signal
-        const r3 = r * 0.3
-        if (r3 > 10) {
-          const c3 = circle([lon, lat], r3 / 1000, { steps: 64, units: 'kilometers' })
-          c3.properties = { layer: 'inner' }
-          innerFeatures.push(c3)
-        }
-      } catch (e) {
-        console.warn('Failed to create circle for IMT:', alloc.name, e)
+        coverageFeatures.push(feature)
       }
 
       // Center marker
@@ -1518,7 +1526,7 @@ async function loadIMTAllocations(
             <div style="font-family:Sarabun,sans-serif;font-size:12px;line-height:1.5;min-width:280px;max-width:340px">
               <strong style="color:#1A1A2E;font-size:14px">${escapeHTML(alloc.name)}</strong>
               <span style="color:#16A34A;margin-left:4px;font-size:10px;font-weight:600">IMT</span><br/>
-              <span style="color:#6C757D">${escapeHTML(alloc.operator)} | ${alloc.cell_radius}m | ${alloc.max_eirp} dBm</span>
+              <span style="color:#6C757D">${escapeHTML(alloc.operator)} | ${alloc.frame_structure || "DDDSU"}</span>
 
               <div style="margin-top:6px;padding:6px;background:#F9FAFB;border-radius:4px;border:1px solid #E5E7EB">
                 <div style="display:flex;gap:0;margin:4px 0">
@@ -1546,44 +1554,24 @@ async function loadIMTAllocations(
 
     imtMarkersRef.current = markers
 
-    if (outerFeatures.length === 0) return
+    if (coverageFeatures.length === 0) return
 
-    // 3-layer gradient fill — 3 distinct color families (like FS zone blue/amber/red)
-    // Teal (strong) → Violet (medium) → Pink (weak) — distinct from all other system colors
-    // Outer layer: cell edge — weak signal (pink)
+    // Single polygon fill + outline layer from polygon_geojson
     map.addSource(LAYER_IDS.imtCoverageSource, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: outerFeatures },
+      data: { type: 'FeatureCollection', features: coverageFeatures },
     })
     map.addLayer({
       id: LAYER_IDS.imtCoverageFill,
       type: 'fill',
       source: LAYER_IDS.imtCoverageSource,
-      paint: { 'fill-color': '#F472B6', 'fill-opacity': 0.18 },
-    })
-    // Mid layer: 60% radius — medium signal (violet)
-    const midSourceId = LAYER_IDS.imtCoverageSource + '-mid'
-    map.addSource(midSourceId, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: midFeatures },
+      paint: { 'fill-color': '#0D9488', 'fill-opacity': 0.2 },
     })
     map.addLayer({
-      id: LAYER_IDS.imtCoverageFill + '-mid',
-      type: 'fill',
-      source: midSourceId,
-      paint: { 'fill-color': '#8B5CF6', 'fill-opacity': 0.22 },
-    })
-    // Inner layer: 30% radius — strong signal near center (teal)
-    const innerSourceId = LAYER_IDS.imtCoverageSource + '-inner'
-    map.addSource(innerSourceId, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: innerFeatures },
-    })
-    map.addLayer({
-      id: LAYER_IDS.imtCoverageFill + '-inner',
-      type: 'fill',
-      source: innerSourceId,
-      paint: { 'fill-color': '#0D9488', 'fill-opacity': 0.28 },
+      id: LAYER_IDS.imtCoverageOutline,
+      type: 'line',
+      source: LAYER_IDS.imtCoverageSource,
+      paint: { 'line-color': '#0D9488', 'line-width': 2, 'line-opacity': 0.6 },
     })
 
     // Click on coverage
@@ -1621,7 +1609,7 @@ async function loadIMTAllocations(
           <div style="font-family:Sarabun,sans-serif;font-size:12px;line-height:1.5;min-width:280px;max-width:340px">
             <strong style="color:#1A1A2E;font-size:14px">${escapeHTML(p.name)}</strong>
             <span style="color:#16A34A;margin-left:4px;font-size:10px;font-weight:600">IMT</span><br/>
-            <span style="color:#6C757D">${escapeHTML(p.operator)} | ${p.cell_radius}m | ${p.max_eirp} dBm</span>
+            <span style="color:#6C757D">${escapeHTML(p.operator)} | ${p.frame_structure || "DDDSU"}</span>
             <div style="margin-top:6px;padding:6px;background:#F9FAFB;border-radius:4px;border:1px solid #E5E7EB">
               <div style="display:flex;gap:0;margin:4px 0">${spectrumBlocks.join('')}</div>
               <div style="display:flex;justify-content:space-between;font-size:7px;color:#9CA3AF;font-family:monospace;margin-top:1px">${labelsStr}</div>

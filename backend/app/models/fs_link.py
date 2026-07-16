@@ -37,6 +37,12 @@ class FSLink(Base):
     azimuth = Column(Float, nullable=True)          # deg from True North
     polarization = Column(String(10), nullable=True)  # H, V, or dual
 
+    # Antenna pattern for directional calculation (Phase 37)
+    antenna_pattern = Column(String, nullable=True)  # JSON string — azimuth→gain mapping
+
+    # Computed link corridor polygon (Phase 37)
+    link_polygon = Column(String, nullable=True)  # GeoJSON polygon string
+
     # Additional
     channel_plan = Column(String(50), nullable=True)
     modulation = Column(String(50), nullable=True)
