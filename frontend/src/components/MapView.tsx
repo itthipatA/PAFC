@@ -1062,102 +1062,112 @@ async function fetchAndDrawFSCoverage(
     const coverage = data.coverage
     if (!coverage || Object.keys(coverage).length === 0) return
 
-    // Build GeoJSON FeatureCollections for TX coverage, RX coverage, and link corridors
-    const txFeatures: GeoJSON.Feature[] = []
-    const rxFeatures: GeoJSON.Feature[] = []
-    const linkFeatures: GeoJSON.Feature[] = []
+    // Build 3-layer concentric circles from -120dBm distances
+    // Outer (100%): -120dBm max distance, Mid (60%), Inner (30%)
+    const outerFeatures: any[] = []
+    const midFeatures: any[] = []
+    const innerFeatures: any[] = []
 
     for (const link of links) {
       const linkId = link.id
       const cov = coverage[linkId]
       if (!cov) continue
 
-      const linkProps = { name: cov.name, operator: cov.operator }
+      const r = cov.max_distance_km  // -120dBm max distance (radio horizon capped)
+      if (!r || r <= 0) continue
 
-      if (cov.tx_coverage) {
-        txFeatures.push({
-          type: 'Feature' as const,
-          properties: { ...linkProps, side: 'TX' },
-          geometry: cov.tx_coverage,
-        })
+      // TX circles
+      const txLon = link.tx?.lon ?? link.tx_lon
+      const txLat = link.tx?.lat ?? link.tx_lat
+      if (txLon != null && txLat != null) {
+        const c1 = circle([txLon, txLat], r, { steps: 64, units: 'kilometers' })
+        c1.properties = { name: cov.name, operator: cov.operator, side: 'TX', layer: 'outer' }
+        outerFeatures.push(c1)
+        const c2 = circle([txLon, txLat], r * 0.6, { steps: 64, units: 'kilometers' })
+        c2.properties = { side: 'TX', layer: 'mid' }
+        midFeatures.push(c2)
+        const c3 = circle([txLon, txLat], r * 0.3, { steps: 64, units: 'kilometers' })
+        c3.properties = { side: 'TX', layer: 'inner' }
+        innerFeatures.push(c3)
       }
-      if (cov.rx_coverage) {
-        rxFeatures.push({
-          type: 'Feature' as const,
-          properties: { ...linkProps, side: 'RX' },
-          geometry: cov.rx_coverage,
-        })
-      }
-      if (cov.link_corridor) {
-        linkFeatures.push({
-          type: 'Feature' as const,
-          properties: { ...linkProps },
-          geometry: cov.link_corridor,
-        })
+
+      // RX circles
+      const rxLon = link.rx?.lon ?? link.rx_lon
+      const rxLat = link.rx?.lat ?? link.rx_lat
+      if (rxLon != null && rxLat != null) {
+        const c1 = circle([rxLon, rxLat], r, { steps: 64, units: 'kilometers' })
+        c1.properties = { name: cov.name, operator: cov.operator, side: 'RX', layer: 'outer' }
+        outerFeatures.push(c1)
+        const c2 = circle([rxLon, rxLat], r * 0.6, { steps: 64, units: 'kilometers' })
+        c2.properties = { side: 'RX', layer: 'mid' }
+        midFeatures.push(c2)
+        const c3 = circle([rxLon, rxLat], r * 0.3, { steps: 64, units: 'kilometers' })
+        c3.properties = { side: 'RX', layer: 'inner' }
+        innerFeatures.push(c3)
       }
     }
 
-    // Add TX coverage source + layers (red-orange)
-    if (txFeatures.length > 0) {
+    // Outer layer (100% = -120dBm boundary)
+    if (outerFeatures.length > 0) {
       map.addSource(LAYER_IDS.fsCoverageTxSource, {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: txFeatures },
+        data: { type: 'FeatureCollection', features: outerFeatures },
       })
       map.addLayer({
         id: LAYER_IDS.fsCoverageTxFill,
         type: 'fill',
         source: LAYER_IDS.fsCoverageTxSource,
-        paint: { 'fill-color': '#EF4444', 'fill-opacity': 0.2 },
+        paint: { 'fill-color': '#60A5FA', 'fill-opacity': 0.12 },
       })
       map.addLayer({
         id: LAYER_IDS.fsCoverageTxOutline,
         type: 'line',
         source: LAYER_IDS.fsCoverageTxSource,
-        paint: { 'line-color': '#EF4444', 'line-width': 1, 'line-opacity': 0.5 },
+        paint: { 'line-color': '#3B82F6', 'line-width': 1.5, 'line-opacity': 0.6 },
       })
     }
 
-    // Add RX coverage source + layers (blue)
-    if (rxFeatures.length > 0) {
+    // Mid layer (60%)
+    if (midFeatures.length > 0) {
       map.addSource(LAYER_IDS.fsCoverageRxSource, {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: rxFeatures },
+        data: { type: 'FeatureCollection', features: midFeatures },
       })
       map.addLayer({
         id: LAYER_IDS.fsCoverageRxFill,
         type: 'fill',
         source: LAYER_IDS.fsCoverageRxSource,
-        paint: { 'fill-color': '#3B82F6', 'fill-opacity': 0.2 },
+        paint: { 'fill-color': '#F59E0B', 'fill-opacity': 0.15 },
       })
       map.addLayer({
         id: LAYER_IDS.fsCoverageRxOutline,
         type: 'line',
         source: LAYER_IDS.fsCoverageRxSource,
-        paint: { 'line-color': '#3B82F6', 'line-width': 1, 'line-opacity': 0.5 },
+        paint: { 'line-color': '#D97706', 'line-width': 1, 'line-opacity': 0.5 },
       })
     }
 
-    // Add link corridor source + layers (teal)
-    if (linkFeatures.length > 0) {
+    // Inner layer (30%)
+    if (innerFeatures.length > 0) {
       map.addSource(LAYER_IDS.fsCoverageLinkSource, {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: linkFeatures },
+        data: { type: 'FeatureCollection', features: innerFeatures },
       })
       map.addLayer({
         id: LAYER_IDS.fsCoverageLinkFill,
         type: 'fill',
         source: LAYER_IDS.fsCoverageLinkSource,
-        paint: { 'fill-color': '#0D9488', 'fill-opacity': 0.15 },
+        paint: { 'fill-color': '#EF4444', 'fill-opacity': 0.15 },
       })
       map.addLayer({
         id: LAYER_IDS.fsCoverageLinkOutline,
         type: 'line',
         source: LAYER_IDS.fsCoverageLinkSource,
-        paint: { 'line-color': '#0D9488', 'line-width': 1, 'line-opacity': 0.6 },
+        paint: { 'line-color': '#DC2626', 'line-width': 1, 'line-opacity': 0.5 },
       })
     }
 
-    // Show FS name on hover
+    // Hover/click
     const hoverLayers = [
       LAYER_IDS.fsCoverageTxFill, LAYER_IDS.fsCoverageRxFill, LAYER_IDS.fsCoverageLinkFill,
     ]
