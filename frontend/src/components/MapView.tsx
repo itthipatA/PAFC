@@ -1313,8 +1313,8 @@ async function loadFSLinks(
     map.on('mouseenter', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', LAYER_IDS.fsLinksLine, () => { map.getCanvas().style.cursor = '' })
 
-    // Draw Coordination Zone (tapered, FSLP-derived) with 3-layer gradient
-    drawTaperedCoordinationZone(map, links)
+    // Draw coverage from engine GeoJSON polygons
+    fetchAndDrawFSCoverage(map, fetchWithAuth, links)
   } catch (err) {
     console.warn('FS links not available:', err)
   }
