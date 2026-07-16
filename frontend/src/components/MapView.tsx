@@ -78,47 +78,6 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * c
 }
 
-// Haversine distance in meters
-function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  return haversineKm(lat1, lon1, lat2, lon2) * 1000
-}
-
-// Bearing (azimuth) from point 1 to point 2, in degrees (0-360)
-function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const y = Math.sin(dLon) * Math.cos((lat2 * Math.PI) / 180)
-  const x =
-    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
-    Math.sin((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.cos(dLon)
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
-}
-
-// Great-circle destination point given start [lat, lon], bearing (degrees), and distance (meters)
-// Returns [lon, lat] (GeoJSON order)
-function destPoint(
-  lat: number,
-  lon: number,
-  bearingDeg_: number,
-  distanceM: number,
-): [number, number] {
-  const R = 6371000
-  const brg = (bearingDeg_ * Math.PI) / 180
-  const dOverR = distanceM / R
-  const lat1 = (lat * Math.PI) / 180
-  const lon1 = (lon * Math.PI) / 180
-
-  const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(dOverR) +
-    Math.cos(lat1) * Math.sin(dOverR) * Math.cos(brg),
-  )
-  const lon2 =
-    lon1 +
-    Math.atan2(
-      Math.sin(brg) * Math.sin(dOverR) * Math.cos(lat1),
-      Math.cos(dOverR) - Math.sin(lat1) * Math.sin(lat2),
-    )
-  return [(lon2 * 180) / Math.PI, (lat2 * 180) / Math.PI]
-}
 
 function txMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
@@ -237,12 +196,15 @@ const LAYER_IDS = {
   fsLinksSource: 'fs-links-source',
   fsTxMarkers: 'fs-tx-markers',
   fsRxMarkers: 'fs-rx-markers',
-  fsCoordFill: 'fs-coord-fill',
-  fsCoordSource: 'fs-coord-source',
-  fsCoordMidFill: 'fs-coord-mid-fill',
-  fsCoordMidSource: 'fs-coord-mid-source',
-  fsCoordInnerFill: 'fs-coord-inner-fill',
-  fsCoordInnerSource: 'fs-coord-inner-source',
+  fsCoverageTxFill: 'fs-coverage-tx-fill',
+  fsCoverageTxOutline: 'fs-coverage-tx-outline',
+  fsCoverageTxSource: 'fs-coverage-tx-source',
+  fsCoverageRxFill: 'fs-coverage-rx-fill',
+  fsCoverageRxOutline: 'fs-coverage-rx-outline',
+  fsCoverageRxSource: 'fs-coverage-rx-source',
+  fsCoverageLinkFill: 'fs-coverage-link-fill',
+  fsCoverageLinkOutline: 'fs-coverage-link-outline',
+  fsCoverageLinkSource: 'fs-coverage-link-source',
   imtCoverageFill: 'imt-coverage-fill',
   imtCoverageOutline: 'imt-coverage-outline',
   imtCoverageSource: 'imt-coverage-source',

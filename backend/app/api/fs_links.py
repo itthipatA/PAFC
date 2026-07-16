@@ -1,6 +1,4 @@
-"""
-FS Links — CRUD API
-"""
+"""FS Links - CRUD API + Phase 37 Coverage"""
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -8,8 +6,32 @@ import csv
 import io
 from app.db.database import get_db
 from app.models.fs_link import FSLink
+from app.services.fs_coverage import compute_all_fs_coverages
 
 router = APIRouter()
+
+
+@router.get("/coverage")
+async def get_fs_coverage(db: AsyncSession = Depends(get_db)):
+    """Get -120dBm coverage polygons for all active FS links."""
+    result = await db.execute(select(FSLink).where(FSLink.status == "active"))
+    links = result.scalars().all()
+    
+    coverages = compute_all_fs_coverages(links)
+    
+    result_dict = {}
+    for fid, cov in coverages.items():
+        result_dict[fid] = {
+            "name": cov["name"],
+            "operator": cov["operator"],
+            "tx_coverage": cov["tx_coverage"],
+            "rx_coverage": cov["rx_coverage"],
+            "link_corridor": cov["link_corridor"],
+            "max_distance_km": cov["max_distance_km"],
+            "freq_mhz": cov["freq_mhz"],
+        }
+    
+    return {"coverage": result_dict, "count": len(result_dict)}
 
 
 @router.get("/")
@@ -132,6 +154,7 @@ def _fs_to_dict(link: FSLink) -> dict:
             "tx_antenna_gain": link.tx_antenna_gain,
             "rx_antenna_gain": link.rx_antenna_gain,
             "azimuth": link.azimuth,
+            "beamwidth_deg": getattr(link, 'beamwidth_deg', 3.0) or 3.0,
             "polarization": link.polarization,
         },
         "channel_plan": link.channel_plan,
