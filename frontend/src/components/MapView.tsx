@@ -995,9 +995,10 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
   // Remove GeoJSON layers
   const ids = [
     LAYER_IDS.fsLinksLine, LAYER_IDS.fsTxMarkers, LAYER_IDS.fsRxMarkers,
-    LAYER_IDS.fsCoverageTxFill, LAYER_IDS.fsCoverageTxOutline,
-    LAYER_IDS.fsCoverageRxFill, LAYER_IDS.fsCoverageRxOutline,
-    LAYER_IDS.fsCoverageLinkFill, LAYER_IDS.fsCoverageLinkOutline,
+    LAYER_IDS.fsCoverageTxFill,
+    LAYER_IDS.fsCoverageRxFill,
+    LAYER_IDS.fsCoverageLinkFill,
+    'fs-azimuth-line',
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
@@ -1006,6 +1007,7 @@ function cleanupFSLayers(map: maplibregl.Map, fsMarkersRef: React.MutableRefObje
     LAYER_IDS.fsLinksSource,
     LAYER_IDS.fsCoverageTxSource, LAYER_IDS.fsCoverageRxSource,
     LAYER_IDS.fsCoverageLinkSource,
+    'fs-azimuth-source',
   ]
   sources.forEach((sid) => {
     if (map.getSource(sid)) map.removeSource(sid)
@@ -1119,12 +1121,6 @@ async function fetchAndDrawFSCoverage(
         source: LAYER_IDS.fsCoverageTxSource,
         paint: { 'fill-color': '#60A5FA', 'fill-opacity': 0.12 },
       })
-      map.addLayer({
-        id: LAYER_IDS.fsCoverageTxOutline,
-        type: 'line',
-        source: LAYER_IDS.fsCoverageTxSource,
-        paint: { 'line-color': '#3B82F6', 'line-width': 1.5, 'line-opacity': 0.6 },
-      })
     }
 
     // Mid layer (60%)
@@ -1138,12 +1134,6 @@ async function fetchAndDrawFSCoverage(
         type: 'fill',
         source: LAYER_IDS.fsCoverageRxSource,
         paint: { 'fill-color': '#F59E0B', 'fill-opacity': 0.15 },
-      })
-      map.addLayer({
-        id: LAYER_IDS.fsCoverageRxOutline,
-        type: 'line',
-        source: LAYER_IDS.fsCoverageRxSource,
-        paint: { 'line-color': '#D97706', 'line-width': 1, 'line-opacity': 0.5 },
       })
     }
 
@@ -1159,11 +1149,38 @@ async function fetchAndDrawFSCoverage(
         source: LAYER_IDS.fsCoverageLinkSource,
         paint: { 'fill-color': '#EF4444', 'fill-opacity': 0.15 },
       })
+    }
+
+    // Azimuth direction lines — show antenna pointing direction
+    const azimuthFeatures: any[] = []
+    for (const link of links) {
+      const txLon = link.tx?.lon ?? link.tx_lon
+      const txLat = link.tx?.lat ?? link.tx_lat
+      const rxLon = link.rx?.lon ?? link.rx_lon
+      const rxLat = link.rx?.lat ?? link.rx_lat
+      if (txLon != null && txLat != null && rxLon != null && rxLat != null) {
+        azimuthFeatures.push({
+          type: 'Feature',
+          properties: { name: link.name, side: 'TX→RX' },
+          geometry: { type: 'LineString', coordinates: [[txLon, txLat], [rxLon, rxLat]] },
+        })
+      }
+    }
+    if (azimuthFeatures.length > 0) {
+      map.addSource('fs-azimuth-source', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: azimuthFeatures },
+      })
       map.addLayer({
-        id: LAYER_IDS.fsCoverageLinkOutline,
+        id: 'fs-azimuth-line',
         type: 'line',
-        source: LAYER_IDS.fsCoverageLinkSource,
-        paint: { 'line-color': '#DC2626', 'line-width': 1, 'line-opacity': 0.5 },
+        source: 'fs-azimuth-source',
+        paint: {
+          'line-color': '#F59E0B',
+          'line-width': 2,
+          'line-opacity': 0.7,
+          'line-dasharray': [3, 2],
+        },
       })
     }
 
