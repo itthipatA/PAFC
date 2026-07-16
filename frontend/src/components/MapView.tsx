@@ -1107,7 +1107,7 @@ async function fetchAndDrawFSCoverage(
         id: LAYER_IDS.fsCoverageTxFill,
         type: 'fill',
         source: LAYER_IDS.fsCoverageTxSource,
-        paint: { 'fill-color': '#EF4444', 'fill-opacity': 0.1 },
+        paint: { 'fill-color': '#EF4444', 'fill-opacity': 0.2 },
       })
       map.addLayer({
         id: LAYER_IDS.fsCoverageTxOutline,
@@ -1127,7 +1127,7 @@ async function fetchAndDrawFSCoverage(
         id: LAYER_IDS.fsCoverageRxFill,
         type: 'fill',
         source: LAYER_IDS.fsCoverageRxSource,
-        paint: { 'fill-color': '#3B82F6', 'fill-opacity': 0.1 },
+        paint: { 'fill-color': '#3B82F6', 'fill-opacity': 0.2 },
       })
       map.addLayer({
         id: LAYER_IDS.fsCoverageRxOutline,

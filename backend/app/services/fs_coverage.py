@@ -36,7 +36,7 @@ F699_BEAMWIDTH_DEG = 3.0      # typical half-power beamwidth
 F699_FIRST_SIDELOBE_DB = -20  # first sidelobe level relative to peak
 
 # Number of radial samples for polygon generation
-NUM_RADIAL_SAMPLES = 72  # every 5 degrees
+NUM_RADIAL_SAMPLES = 360  # every 1 degree — smooth curves
 
 
 # ── Physics — FSPL ──────────────────────────────────────────────────────
