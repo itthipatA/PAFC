@@ -218,39 +218,36 @@ def fs_station_coverage_polygon(
     """
     eirp_dbm = tx_power_dbm + tx_antenna_gain_dbi
     
-    # Compute max distance (on main beam, 0° discrimination)
-    max_d_km = distance_for_rx_level(
-        eirp_dbm=eirp_dbm,
-        rx_gain_dbi=rx_antenna_gain_dbi,
-        freq_mhz=freq_mhz,
-        target_rx_dbm=target_rx_dbm,
-    )
-    
-    # Generate polygon vertices at each angle
-    coords = []
+    # Compute RAW distances (without cap) at each angle to get directional shape
+    raw_distances = []
     for i in range(NUM_RADIAL_SAMPLES):
-        angle_from_azimuth = i * (360.0 / NUM_RADIAL_SAMPLES)  # 0-360
-        
-        # Get pattern discrimination at this off-axis angle
+        angle_from_azimuth = i * (360.0 / NUM_RADIAL_SAMPLES)
         discrimination_db = itu_f699_pattern_discrimination(
             angle_deg=angle_from_azimuth,
             peak_gain_dbi=tx_antenna_gain_dbi,
             beamwidth_deg=beamwidth_deg,
         )
-        
-        # Effective EIRP at this angle
         effective_eirp = eirp_dbm + discrimination_db
+        # Compute raw distance WITHOUT THE CAP (use a direct FSPL solve)
+        required_fspl = effective_eirp + rx_antenna_gain_dbi - target_rx_dbm
+        exponent = (required_fspl - 20.0 * math.log10(freq_mhz) - 32.45) / 20.0
+        raw_d = max(0.001, 10.0 ** exponent)
+        raw_distances.append(raw_d)
+    
+    # Find raw max distance (on main beam)
+    raw_max_d = max(raw_distances)
+    
+    # Preserve directional shape: scale all distances proportionally
+    # so max distance fits within radio horizon cap
+    scale_factor = min(1.0, MAX_COVERAGE_RADIUS_KM / raw_max_d) if raw_max_d > 0 else 1.0
+    
+    # Generate polygon vertices at each angle (scaled)
+    coords = []
+    for i in range(NUM_RADIAL_SAMPLES):
+        angle_from_azimuth = i * (360.0 / NUM_RADIAL_SAMPLES)
         
-        # Distance where received power = target
-        d_km = distance_for_rx_level(
-            eirp_dbm=effective_eirp,
-            rx_gain_dbi=rx_antenna_gain_dbi,
-            freq_mhz=freq_mhz,
-            target_rx_dbm=target_rx_dbm,
-        )
-        
-        # Cap at main-beam distance (avoid numerical blowup at nulls)
-        d_km = min(d_km, max_d_km)
+        # Scaled distance — preserves directional shape within radio horizon
+        d_km = raw_distances[i] * scale_factor
         d_km = max(d_km, 0.001)  # floor at 1m
         
         # Bearing from station
