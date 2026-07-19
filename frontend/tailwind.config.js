@@ -26,8 +26,8 @@ export default {
         }
       },
       fontFamily: {
-        thai: ['Noto Sans Thai', 'Sarabun', 'sans-serif'],
-        mono: ['Fira Code', 'monospace'],
+        thai: ['Sarabun', 'Noto Sans Thai', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
       },
       animation: {
         'fade-in': 'fadeIn var(--dur-normal) var(--ease-expo) both',

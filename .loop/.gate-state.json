@@ -1,15 +1,15 @@
 {
-  "session_id": "20260716-214220",
-  "created": "2026-07-16T14:42:20.740163+00:00",
+  "session_id": "20260719-144416",
+  "created": "2026-07-19T07:44:16.491131+00:00",
   "gates": {
     "loop": {
       "passed": true,
-      "timestamp": "2026-07-16T14:56:18.959990+00:00",
+      "timestamp": "2026-07-19T07:44:16.588761+00:00",
       "detail": "Score: 100/100 — L3 (Production Loop)"
     },
     "understand": {
       "passed": true,
-      "timestamp": "2026-07-16T14:56:18.960067+00:00",
+      "timestamp": "2026-07-19T07:44:16.588827+00:00",
       "detail": "Exists (46,137 bytes, updated 2026-07-03 10:12)"
     },
     "graphify": {
@@ -18,9 +18,9 @@
       "detail": ""
     },
     "honcho": {
-      "passed": false,
-      "timestamp": "",
-      "detail": ""
+      "passed": true,
+      "timestamp": "2026-07-19T07:44:22.818286+00:00",
+      "detail": "honcho searched at session start"
     },
     "obsidian": {
       "passed": false,
@@ -28,22 +28,22 @@
       "detail": ""
     },
     "l1gate": {
-      "passed": false,
-      "timestamp": "",
-      "detail": ""
+      "passed": true,
+      "timestamp": "2026-07-19T07:44:22.840642+00:00",
+      "detail": "l1-gate loaded"
     },
     "impact": {
       "passed": true,
-      "timestamp": "2026-07-16T14:56:18.960088+00:00",
+      "timestamp": "2026-07-19T07:44:16.588847+00:00",
       "detail": "impact-plan: 12:36, impact-map: 12:36"
     },
     "design": {
       "passed": true,
-      "timestamp": "2026-07-16T14:56:18.960164+00:00",
+      "timestamp": "2026-07-19T07:44:16.588907+00:00",
       "detail": "No frontend — DESIGN.md not required"
     }
   },
   "project": "PAFC",
   "loop_score": 100,
-  "updated": "2026-07-16T14:56:18.960171+00:00"
+  "updated": "2026-07-19T07:44:22.840750+00:00"
 }

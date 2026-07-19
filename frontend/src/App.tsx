@@ -22,6 +22,14 @@ import { useAuth } from './contexts/AuthContext'
 
 type Tab = 'dashboard' | 'fslinks' | 'imt' | 'polygon' | 'search'
 
+const NAV_ITEMS: { tab: Tab; icon: typeof Layout; label: string }[] = [
+  { tab: 'dashboard', icon: Layout, label: 'Dashboard' },
+  { tab: 'fslinks', icon: MapIcon, label: 'FS Links' },
+  { tab: 'imt', icon: Radio, label: 'IMT' },
+  { tab: 'polygon', icon: Octagon, label: 'สร้างโพลีกอน' },
+  { tab: 'search', icon: Search, label: 'ค้นหา' },
+]
+
 export default function App() {
   const { isAuthenticated, user, logout } = useAuth()
 
@@ -104,266 +112,263 @@ function AuthenticatedApp({
     }
   }, [tab])
 
-  return (
-    <div className="h-screen flex flex-col">
-      {/* Top Navigation Bar */}
-      <nav className="nbtc-header px-6 py-3 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-white/15 rounded-lg flex items-center justify-center">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold leading-tight">PAFC</h1>
-              <p className="text-xs opacity-80 leading-tight">
-                ระบบจัดสรรคลื่นความถี่ | 4800-4990 MHz
-              </p>
-            </div>
-          </div>
-        </div>
+  const renderContent = () => {
+    if (tab === 'dashboard') {
+      return (
+        <div className="flex-1 relative overflow-hidden animate-fade-in">
+          <MapView
+            key={dashboardRefreshKey}
+            onMapClick={handleMapClick}
+            selectedLat={selectedLat}
+            selectedLon={selectedLon}
+            blocks={[]}
+            mapStyle={mapStyle}
+            cellRadius={workspaceCellRadius}
+            centerLat={selectedLat}
+            centerLon={selectedLon}
+            clickMode="pan"
+            workspaceOpen={showDashboardWorkspace}
+            highlightStationNames={highlightStationNames}
+            parcelPolygon={plottedPolygon}
+            parcelTowers={parcelTowers}
+            parcelCentroid={parcelCentroid}
+            view3D={parcelView3D}
+          />
 
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setTab('dashboard')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === 'dashboard'
-                ? 'bg-white/20 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            <Layout className="w-4 h-4" />
-            Dashboard
-          </button>
-          <button
-            onClick={() => setTab('fslinks')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === 'fslinks'
-                ? 'bg-white/20 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            <MapIcon className="w-4 h-4" />
-            FS Links
-          </button>
-          <button
-            onClick={() => setTab('imt')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === 'imt'
-                ? 'bg-white/20 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            <Radio className="w-4 h-4" />
-            IMT
-          </button>
-          <button
-            onClick={() => setTab('polygon')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === 'polygon'
-                ? 'bg-white/20 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            <Octagon className="w-4 h-4" />
-            สร้างโพลีกอน
-          </button>
-          <button
-            onClick={() => setTab('search')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === 'search'
-                ? 'bg-white/20 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            <Search className="w-4 h-4" />
-            ค้นหา
-          </button>
-
-          <div className="flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1">
-            <Globe className="w-4 h-4 opacity-70" />
-            <select
-              value={mapStyle}
-              onChange={(e) => setMapStyle(e.target.value)}
-              className="bg-transparent text-white text-sm cursor-pointer border-none outline-none"
-            >
-              {Object.entries(MAP_STYLES).map(([key, s]) => (
-                <option key={key} value={key} className="text-gray-900">{s.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="ml-4 flex items-center gap-2 pl-4 border-l border-white/20">
-            <span className="text-xs text-white/70">
-              {user?.username || 'ผู้ใช้'} ({user?.role || '-'})
-            </span>
+          {/* Floating 3D toggle */}
+          {plottedPolygon && (
             <button
-              onClick={onLogout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-              title="ออกจากระบบ"
+              onClick={() => setParcelView3D(!parcelView3D)}
+              className={`absolute bottom-4 left-4 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors z-10 ${
+                parcelView3D
+                  ? 'bg-[#C00000] text-white border-[#C00000]'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 shadow-sm'
+              }`}
             >
-              <LogOut className="w-4 h-4" />
-              ออกจากระบบ
+              {parcelView3D ? '2D' : '3D'}
             </button>
-          </div>
+          )}
+
+          {/* Floating "เพิ่ม IMT" button */}
+          {!showDashboardWorkspace && (
+            <button
+              onClick={handleOpenWorkspace}
+              className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2.5 rounded-full text-sm font-semibold transition-colors shadow-lg z-10"
+            >
+              <PlusCircle className="w-4 h-4" />
+              เพิ่ม IMT
+            </button>
+          )}
+
+          {/* Dashboard workspace panel — slides from right (40% width) */}
+          {(showDashboardWorkspace || workspaceClosing) && (
+            <div
+              className={`absolute inset-y-0 right-0 w-[40%] min-w-[400px] bg-white border-l border-[#E5E5E0] shadow-2xl z-20 ${
+                workspaceClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
+              }`}
+            >
+              <IMTAddWorkspace
+                onBack={handleCloseWorkspace}
+                mode="panel"
+                onPlotPolygon={(vertices) => {
+                  setPlottedPolygon(vertices.length > 0 ? vertices : null)
+                }}
+              />
+            </div>
+          )}
         </div>
-      </nav>
+      )
+    }
 
-      {/* Tab Content */}
-      {tab === 'dashboard' ? (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shadow-sm z-10">
-            <h2 className="text-sm font-semibold text-[#1A1A2E]">
-              แผนที่จัดสรรคลื่นความถี่ 4800-4990 MHz
-            </h2>
-            {!showDashboardWorkspace && (
-              <div className="flex items-center gap-2">
-                {plottedPolygon && (
-                  <button
-                    onClick={() => setParcelView3D(!parcelView3D)}
-                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                      parcelView3D ? 'bg-[#C00000] text-white border-[#C00000]' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {parcelView3D ? '2D' : '3D'}
-                  </button>
-                )}
-                <button
-                  onClick={handleOpenWorkspace}
-                  className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
-                >
-                  <PlusCircle className="w-4 h-4" />
-                  เพิ่ม IMT
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 relative overflow-hidden">
-            <MapView
-              key={dashboardRefreshKey}
-              onMapClick={handleMapClick}
-              selectedLat={selectedLat}
-              selectedLon={selectedLon}
-              blocks={[]}
-              mapStyle={mapStyle}
-              cellRadius={workspaceCellRadius}
-              centerLat={selectedLat}
-              centerLon={selectedLon}
-              clickMode="pan"
-              workspaceOpen={showDashboardWorkspace}
-              highlightStationNames={highlightStationNames}
-              parcelPolygon={plottedPolygon}
-              parcelTowers={parcelTowers}
-              parcelCentroid={parcelCentroid}
-              view3D={parcelView3D}
-            />
-
-            {(showDashboardWorkspace || workspaceClosing) && (
-              <div
-                className={`absolute inset-y-0 right-0 w-[60%] min-w-[400px] bg-white border-l border-gray-300 shadow-2xl z-20 ${
-                  workspaceClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
-                }`}
-              >
-                <IMTAddWorkspace
-                  onBack={handleCloseWorkspace}
-                  mode="panel"
-                  onPlotPolygon={(vertices) => {
-                    setPlottedPolygon(vertices.length > 0 ? vertices : null)
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      ) : tab === 'fslinks' ? (
-        <div className="flex-1 overflow-hidden">
+    if (tab === 'fslinks') {
+      return (
+        <div className="flex-1 overflow-hidden animate-fade-in">
           <FSLinkManager />
         </div>
-      ) : tab === 'imt' ? (
-        <div className="flex-1 overflow-hidden">
-          <IMTManager onViewPolygon={(coords, towers, centroid) => {
-            setPlottedPolygon(coords)
-            setParcelTowers(towers)
-            setParcelCentroid(centroid)
-            setTab('dashboard')  // Auto-switch to see polygon on map
-          }} />
+      )
+    }
+
+    if (tab === 'imt') {
+      return (
+        <div className="flex-1 overflow-hidden animate-fade-in">
+          <IMTManager
+            onViewPolygon={(coords, towers, centroid) => {
+              setPlottedPolygon(coords)
+              setParcelTowers(towers)
+              setParcelCentroid(centroid)
+              setTab('dashboard')
+            }}
+            onAdd={() => {
+              setTab('dashboard')
+              handleOpenWorkspace()
+            }}
+          />
         </div>
-      ) : tab === 'polygon' ? (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shadow-sm z-10">
-            <h2 className="text-sm font-semibold text-[#1A1A2E]">
-              สร้างโพลีกอนที่ดิน
-            </h2>
-            {!showPolygonWorkspace && (
-              <button
-                onClick={() => {
-                  setShowPolygonWorkspace(true)
-                  setPolygonVertices([])
+      )
+    }
+
+    if (tab === 'polygon') {
+      return (
+        <div className="flex-1 relative overflow-hidden animate-fade-in">
+          <MapView
+            key={dashboardRefreshKey}
+            onMapClick={(lat, lon) => {
+              if (polygonDrawingMode) {
+                setPolygonVertices(prev => [...prev, [lon, lat]])
+              }
+            }}
+            onVertexDrag={(index, lon, lat) => {
+              setPolygonVertices(prev => {
+                const next = [...prev]
+                next[index] = [lon, lat]
+                return next
+              })
+            }}
+            selectedLat={selectedLat}
+            selectedLon={selectedLon}
+            blocks={[]}
+            mapStyle={mapStyle}
+            cellRadius={workspaceCellRadius}
+            centerLat={selectedLat}
+            centerLon={selectedLon}
+            clickMode={polygonDrawingMode ? 'draw_polygon' : 'pan'}
+            workspaceOpen={showPolygonWorkspace}
+            highlightStationNames={undefined}
+            polygonVertices={polygonVertices}
+          />
+
+          {/* Floating "เพิ่มที่ดิน" button */}
+          {!showPolygonWorkspace && (
+            <button
+              onClick={() => {
+                setShowPolygonWorkspace(true)
+                setPolygonVertices([])
+              }}
+              className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2.5 rounded-full text-sm font-semibold transition-colors shadow-lg z-10"
+            >
+              <PlusCircle className="w-4 h-4" />
+              เพิ่มที่ดิน
+            </button>
+          )}
+
+          {/* Polygon creator panel — slides from right (40% width) */}
+          {(showPolygonWorkspace || polygonClosing) && (
+            <div
+              className={`absolute inset-y-0 right-0 w-[40%] min-w-[400px] bg-white border-l border-[#E5E5E0] shadow-2xl z-20 ${
+                polygonClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
+              }`}
+            >
+              <PolygonCreator
+                onClose={() => {
+                  setPolygonClosing(true)
+                  setTimeout(() => {
+                    setShowPolygonWorkspace(false)
+                    setPolygonClosing(false)
+                    setPolygonDrawingMode(false)
+                    setPolygonVertices([])
+                  }, 600)
                 }}
-                className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+                vertices={polygonVertices}
+                onVerticesChange={setPolygonVertices}
+                drawingMode={polygonDrawingMode}
+                onDrawingModeChange={setPolygonDrawingMode}
+              />
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // search tab
+    return (
+      <div className="flex-1 overflow-hidden animate-fade-in">
+        <QueryPanel onZoomTo={handleZoomTo} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-screen flex">
+      {/* ── SIDEBAR (56px, dark navy #1A1A2E) ────────────────── */}
+      <aside className="w-[56px] bg-[#1A1A2E] flex flex-col items-center py-2 shrink-0">
+        {/* Logo */}
+        <div className="w-10 h-10 mb-2 flex items-center justify-center">
+          <Shield className="w-5 h-5 text-white" />
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex flex-col items-center gap-1 flex-1">
+          {NAV_ITEMS.map(({ tab: navTab, icon: Icon, label }) => (
+            <div key={navTab} className="relative group">
+              <button
+                onClick={() => setTab(navTab)}
+                className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
+                  tab === navTab
+                    ? 'bg-[#C00000] text-white'
+                    : 'text-white/70 hover:bg-white/10 hover:text-white'
+                }`}
+                aria-label={label}
               >
-                <PlusCircle className="w-4 h-4" />
-                เพิ่มที่ดิน
+                <Icon className="w-5 h-5" />
               </button>
-            )}
-          </div>
-          <div className="flex-1 relative overflow-hidden">
-            <MapView
-              key={dashboardRefreshKey}
-              onMapClick={(lat, lon) => {
-                if (polygonDrawingMode) {
-                  setPolygonVertices(prev => [...prev, [lon, lat]])
-                }
-              }}
-              onVertexDrag={(index, lon, lat) => {
-                setPolygonVertices(prev => {
-                  const next = [...prev]
-                  next[index] = [lon, lat]
-                  return next
-                })
-              }}
-              selectedLat={selectedLat}
-              selectedLon={selectedLon}
-              blocks={[]}
-              mapStyle={mapStyle}
-              cellRadius={workspaceCellRadius}
-              centerLat={selectedLat}
-              centerLon={selectedLon}
-              clickMode={polygonDrawingMode ? 'draw_polygon' : 'pan'}
-              workspaceOpen={showPolygonWorkspace}
-              highlightStationNames={undefined}
-              polygonVertices={polygonVertices}
-            />
-            {(showPolygonWorkspace || polygonClosing) && (
-              <div
-                className={`absolute inset-y-0 right-0 w-[40%] min-w-[380px] bg-white border-l border-gray-300 shadow-2xl z-20 ${
-                  polygonClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
+              {/* Tooltip */}
+              <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-[#1A1A2E] text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                {label}
+              </span>
+            </div>
+          ))}
+        </nav>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Map style selector */}
+        <div className="relative group mb-2">
+          <button
+            className="w-10 h-10 flex items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+            aria-label="เปลี่ยนรูปแบบแผนที่"
+          >
+            <Globe className="w-5 h-5" />
+          </button>
+          {/* Tooltip */}
+          <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-[#1A1A2E] text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+            เปลี่ยนรูปแบบแผนที่
+          </span>
+          {/* Dropdown menu */}
+          <div className="absolute left-full bottom-0 ml-2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 w-36 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity z-50">
+            {Object.entries(MAP_STYLES).map(([key, s]) => (
+              <button
+                key={key}
+                onClick={() => setMapStyle(key)}
+                className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 transition-colors ${
+                  mapStyle === key ? 'text-[#C00000] font-semibold' : 'text-gray-700'
                 }`}
               >
-                <PolygonCreator
-                  onClose={() => {
-                    setPolygonClosing(true)
-                    setTimeout(() => {
-                      setShowPolygonWorkspace(false)
-                      setPolygonClosing(false)
-                      setPolygonDrawingMode(false)
-                      setPolygonVertices([])
-                    }, 600)
-                  }}
-                  vertices={polygonVertices}
-                  onVerticesChange={setPolygonVertices}
-                  drawingMode={polygonDrawingMode}
-                  onDrawingModeChange={setPolygonDrawingMode}
-                />
-              </div>
-            )}
+                {s.label}
+              </button>
+            ))}
           </div>
         </div>
-      ) : (
-        <div className="flex-1 overflow-hidden">
-          <QueryPanel onZoomTo={handleZoomTo} />
-        </div>
-      )}
+
+        {/* User avatar (first letter) */}
+        {user && (
+          <div className="w-8 h-8 rounded-full bg-[#C00000] flex items-center justify-center text-white text-xs font-bold mb-1">
+            {user.username.charAt(0).toUpperCase()}
+          </div>
+        )}
+
+        {/* Logout */}
+        <button
+          onClick={onLogout}
+          className="w-10 h-10 flex items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white transition-colors"
+          title="ออกจากระบบ"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
+      </aside>
+
+      {/* ── MAIN CONTENT AREA (flex-1) ──────────────────────── */}
+      {renderContent()}
     </div>
   )
 }

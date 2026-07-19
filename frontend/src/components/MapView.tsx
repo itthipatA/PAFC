@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
-import { circle } from '@turf/turf'
+import { circle, buffer } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
 import type { AllocationBlock, IMTAllocation } from '../types'
 
@@ -155,37 +155,35 @@ function rxMarkerEl(): HTMLDivElement {
 
 function imtMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  // MapLibre GL applies its own className — do NOT override it
-  // Apply fixed size on the marker element to prevent zoom scaling
-  el.style.cssText = `
-    width: 28px !important;
-    height: 36px !important;
-    overflow: visible !important;
-  `
-  // Drop animation via opacity keyframe (no transform — MapLibre uses transform for positioning)
-  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="28" height="36" style="display:block;animation:markerDrop 500ms var(--ease-back) both">
+  el.style.cssText = 'width:44px;height:52px;cursor:pointer;pointer-events:auto'
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="44" height="52" style="display:block;pointer-events:auto">
       <g stroke="#4A5568" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
         <line x1="40" y1="38" x2="40" y2="112" stroke-width="3" />
         <line x1="50" y1="42" x2="50" y2="115" stroke-width="3" />
         <line x1="60" y1="38" x2="60" y2="112" stroke-width="3" />
-        <line x1="40" y1="112" x2="50" y2="94" /><line x1="50" y1="115" x2="60" y2="92" />
-        <line x1="40" y1="92" x2="50" y2="94" stroke-width="2"/><line x1="50" y1="94" x2="60" y2="92" stroke-width="2"/>
-        <line x1="40" y1="92" x2="50" y2="74" /><line x1="50" y1="94" x2="60" y2="72" />
-        <line x1="40" y1="72" x2="50" y2="74" stroke-width="2"/><line x1="50" y1="74" x2="60" y2="72" stroke-width="2"/>
-        <line x1="40" y1="72" x2="50" y2="54" /><line x1="50" y1="74" x2="60" y2="52" />
-        <line x1="40" y1="52" x2="50" y2="54" stroke-width="2"/><line x1="50" y1="54" x2="60" y2="52" stroke-width="2"/>
-        <line x1="40" y1="52" x2="50" y2="38" /><line x1="50" y1="54" x2="60" y2="35" />
-        <line x1="40" y1="35" x2="50" y2="38" stroke-width="2.5"/><line x1="50" y1="38" x2="60" y2="35" stroke-width="2.5"/>
+
+        <line x1="40" y1="112" x2="50" y2="94" /> <line x1="50" y1="115" x2="60" y2="92" />
+        <line x1="40" y1="92" x2="50" y2="94" stroke-width="2"/> <line x1="50" y1="94" x2="60" y2="92" stroke-width="2"/>
+        <line x1="40" y1="92" x2="50" y2="74" /> <line x1="50" y1="94" x2="60" y2="72" />
+        <line x1="40" y1="72" x2="50" y2="74" stroke-width="2"/> <line x1="50" y1="74" x2="60" y2="72" stroke-width="2"/>
+        <line x1="40" y1="72" x2="50" y2="54" /> <line x1="50" y1="74" x2="60" y2="52" />
+        <line x1="40" y1="52" x2="50" y2="54" stroke-width="2"/> <line x1="50" y1="54" x2="60" y2="52" stroke-width="2"/>
+        <line x1="40" y1="52" x2="50" y2="38" /> <line x1="50" y1="54" x2="60" y2="35" />
+        <line x1="40" y1="35" x2="50" y2="38" stroke-width="2.5"/> <line x1="50" y1="38" x2="60" y2="35" stroke-width="2.5"/>
       </g>
+
       <polygon points="35,32 50,36 65,32 50,28" fill="#CBD5E1" stroke="#334155" stroke-width="2" />
+
       <g>
         <polygon points="30,20 40,24 40,58 30,54" fill="#94A3B8" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
         <polygon points="25,18 30,20 30,54 25,52" fill="#64748B" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
       </g>
+
       <g>
         <polygon points="60,24 70,20 70,54 60,58" fill="#F1F5F9" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
         <polygon points="70,20 75,18 75,52 70,54" fill="#CBD5E1" stroke="#334155" stroke-width="2" stroke-linejoin="round" />
       </g>
+
       <line x1="50" y1="28" x2="50" y2="10" stroke="#334155" stroke-width="2.5" stroke-linecap="round" />
     </svg>`
   return el
@@ -211,6 +209,8 @@ const LAYER_IDS = {
   imtCoverageFill: 'imt-coverage-fill',
   imtCoverageOutline: 'imt-coverage-outline',
   imtCoverageSource: 'imt-coverage-source',
+  imtBufferFill: 'imt-buffer-fill',
+  imtBufferSource: 'imt-buffer-source',
   imtCenters: 'imt-centers-fill',
   imtCentersSource: 'imt-centers-source',
   cellRadiusFill: 'cell-radius-fill',
@@ -1284,6 +1284,44 @@ function escapeHTML(s: string): string {
   return div.innerHTML
 }
 
+/** Generate the full 4800-4990 MHz spectrum bar HTML for IMT popups */
+function generateSpectrumBarHTML(blocks: { freq_low: number; freq_high: number; status: string }[]): string {
+  const BLOCK_COLORS: Record<string, string> = { allocated: '#2E7D32', guard: '#E65100' }
+  const allocBlocks = blocks.filter((b) => b.status === 'allocated')
+  const guardBlocks = blocks.filter((b) => b.status === 'guard')
+  const blockDivs = blocks.map((b) => {
+    const left = ((b.freq_low - 4800) / 190) * 100
+    const width = ((b.freq_high - b.freq_low) / 190) * 100 - 0.15
+    const color = BLOCK_COLORS[b.status] || '#9E9E9E'
+    return '<div style="position:absolute;left:' + left + '%;width:' + width + '%;height:100%;background:' + color + ';border-left:1px solid rgba(0,0,0,0.5);border-right:1px solid rgba(0,0,0,0.5);box-sizing:border-box" title="' + b.freq_low + '-' + b.freq_high + ' ' + b.status + '"></div>'
+  }).join('')
+
+  const fmtRanges = (arr: { freq_low: number; freq_high: number }[]) =>
+    arr.map((b) => b.freq_low + '-' + b.freq_high).join(', ')
+
+  const allocText = allocBlocks.length > 0
+    ? '<div style="font-size:11px;color:#2E7D32;margin-top:4px">จัดสรร: ' + fmtRanges(allocBlocks) + '</div>'
+    : ''
+
+  const guardText = guardBlocks.length > 0
+    ? '<div style="font-size:11px;color:#E65100;margin-top:4px">Guard: ' + fmtRanges(guardBlocks) + '</div>'
+    : ''
+
+  return ''
+    + '<div style="position:relative;width:100%;height:32px;background:#E5E5E0;border:1px solid #000;border-radius:3px;overflow:hidden;margin-top:6px;box-sizing:border-box">'
+    + blockDivs
+    + '</div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:10px;font-family:JetBrains Mono,monospace;color:#555;margin-top:2px">'
+    + '<span>4800</span><span>4990</span>'
+    + '</div>'
+    + '<div style="display:flex;gap:14px;align-items:center;margin-top:4px;font-size:12px;color:#555">'
+    + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;background:#2E7D32;border:1px solid #000;border-radius:2px"></span> จัดสรร</span>'
+    + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;background:#E65100;border:1px solid #000;border-radius:2px"></span> Guard</span>'
+    + '</div>'
+    + allocText
+    + guardText
+}
+
 /** Compute centroid from a GeoJSON Polygon's coordinates. Returns null if invalid. */
 function getPolygonCentroid(geojson: any): { lat: number; lon: number } | null {
   if (!geojson) return null
@@ -1292,11 +1330,12 @@ function getPolygonCentroid(geojson: any): { lat: number; lon: number } | null {
     try { geojson = JSON.parse(geojson) } catch { return null }
   }
   let coords: number[][] | undefined
-  if (geojson.type === 'Polygon') {
-    coords = geojson.coordinates?.[0]
-  } else if (geojson.type === 'Geometry' && geojson.coordinates) {
+  // Handle Feature {type:'Feature', geometry:{type:'Polygon', coordinates:[[...]]}}
+  if (geojson.type === 'Feature' && geojson.geometry?.coordinates?.[0]) {
+    coords = geojson.geometry.coordinates[0]
+  } else if (geojson.type === 'Polygon' && geojson.coordinates?.[0]) {
     coords = geojson.coordinates[0]
-  } else if (Array.isArray(geojson.coordinates)) {
+  } else if (Array.isArray(geojson.coordinates?.[0])) {
     coords = geojson.coordinates[0]
   }
   if (!coords || coords.length === 0) return null
@@ -1340,12 +1379,13 @@ function cleanupIMTLayers(map: maplibregl.Map, imtMarkersRef: React.MutableRefOb
 
   const ids = [
     LAYER_IDS.imtCoverageFill, LAYER_IDS.imtCoverageOutline,
+    LAYER_IDS.imtBufferFill,
     LAYER_IDS.imtCenters
   ]
   ids.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id)
   })
-  const srcIds = [LAYER_IDS.imtCoverageSource]
+  const srcIds = [LAYER_IDS.imtCoverageSource, LAYER_IDS.imtBufferSource]
   srcIds.forEach((id) => {
     if (map.getSource(id)) map.removeSource(id)
   })
@@ -1358,7 +1398,7 @@ async function loadIMTAllocations(
   imtAllocDataRef: React.MutableRefObject<any[]>,
 ) {
   try {
-    const res = await fetchWithAuth('/api/imt/?status=active')
+    const res = await fetchWithAuth('/api/imt/')
     if (!res.ok) {
       console.warn('IMT allocations not available (auth required)')
       return
@@ -1384,81 +1424,89 @@ async function loadIMTAllocations(
 
       // Add polygon as coverage feature
       if (alloc.polygon_geojson) {
-        const feature = {
-          type: 'Feature',
-          properties: {
-            id: alloc.id, name: alloc.name, operator: alloc.operator,
-            blocks: alloc.blocks, created_at: alloc.created_at,
-            frame_structure: alloc.frame_structure,
-          },
-          geometry: alloc.polygon_geojson,
+        let geometry: any = alloc.polygon_geojson
+        // polygon_geojson may be a JSON string — parse it
+        if (typeof geometry === 'string') {
+          try { geometry = JSON.parse(geometry) } catch { geometry = null }
         }
-        coverageFeatures.push(feature)
+        // Extract actual geometry from Feature wrapper
+        if (geometry && geometry.type === 'Feature' && geometry.geometry) {
+          geometry = geometry.geometry
+        }
+        if (geometry && geometry.type === 'Polygon' && geometry.coordinates) {
+          const feature = {
+            type: 'Feature' as const,
+            properties: {
+              id: alloc.id, name: alloc.name, operator: alloc.operator,
+              blocks: alloc.blocks, created_at: alloc.created_at,
+              frame_structure: alloc.frame_structure,
+            },
+            geometry,
+          }
+          coverageFeatures.push(feature)
+        }
       }
 
       // Center marker
       const el = imtMarkerEl()
-      const marker = new maplibregl.Marker({ element: el })
+    el.addEventListener('click', (e) => {
+      e.stopPropagation()
+      e.preventDefault()
+      const blocks = alloc.blocks || []
+
+      // Remove any existing popups first
+      const existingPopups = document.querySelectorAll('.maplibregl-popup')
+      existingPopups.forEach(p => p.remove())
+
+      new maplibregl.Popup({ maxWidth: '400px', closeButton: true, closeOnClick: true })
         .setLngLat([lon, lat])
+        .setHTML(`
+          <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:260px;padding:4px">
+            <strong style="color:#1A1A2E;font-size:14px">${escapeHTML(alloc.name)}</strong><br/>
+            <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(alloc.operator)}</span><br/>
+            <span style="color:#6C757D">TDD Pattern: ${alloc.frame_structure || '—'}</span>
+            ${generateSpectrumBarHTML(blocks)}
+          </div>`)
         .addTo(map)
+    })
 
-      el.addEventListener('click', () => {
-        const blocks = alloc.blocks || []
-        const totalMHz = blocks
-          .filter((b: any) => b.status === 'allocated')
-          .reduce((sum: number, b: any) => sum + (b.freq_high - b.freq_low), 0)
-
-        // Build colored blocks HTML for spectrum bar (4800-4990, 10MHz each)
-        const spectrumBlocks: string[] = []
-        for (let f = 4800; f < 4990; f += 10) {
-          const allocBlock = blocks.find((b: any) => b.freq_low === f)
-          let bg = '#E5E7EB'  // unallocated - light gray
-          if (allocBlock) {
-            bg = allocBlock.status === 'allocated' ? '#16A34A' : '#9CA3AF'
-          }
-          spectrumBlocks.push(
-            `<div style="flex:1;height:14px;background:${bg};margin:0 0.5px;border-radius:1px" title="${f}-${f+10} MHz"></div>`
-          )
-        }
-        const blockLabels = [4800, 4820, 4840, 4860, 4880, 4900, 4920, 4940, 4960, 4980, 4990]
-
-        // List allocated blocks
-        const allocBlocks = blocks.filter((b: any) => b.status === 'allocated')
-        const guardBlocks = blocks.filter((b: any) => b.status === 'guard')
-
-        new maplibregl.Popup({ maxWidth: '360px' })
-          .setLngLat([lon, lat])
-          .setHTML(`
-            <div style="font-family:Sarabun,sans-serif;font-size:12px;line-height:1.5;min-width:280px;max-width:340px">
-              <strong style="color:#1A1A2E;font-size:14px">${escapeHTML(alloc.name)}</strong>
-              <span style="color:#16A34A;margin-left:4px;font-size:10px;font-weight:600">IMT</span><br/>
-              <span style="color:#6C757D">${escapeHTML(alloc.operator)} | ${alloc.frame_structure || "DDDSU"}</span>
-
-              <div style="margin-top:6px;padding:6px;background:#F9FAFB;border-radius:4px;border:1px solid #E5E7EB">
-                <div style="display:flex;gap:0;margin:4px 0">
-                  ${spectrumBlocks.join('')}
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:7px;color:#9CA3AF;font-family:monospace;margin-top:1px">
-                  ${blockLabels.map(f => `<span>${f}</span>`).join('')}
-                </div>
-                <div style="margin-top:4px;font-size:10px;color:#374151">
-                  <span style="color:#166534;font-weight:600">■ จัดสรร</span>
-                  ${allocBlocks.length > 0 ? `<span style="color:#166534"> ${allocBlocks.map(b => `${b.freq_low}-${b.freq_high}`).join(', ')}</span>` : ''}
-                  ${guardBlocks.length > 0 ? ` <span style="color:#6B7280">■ Guard</span>` : ''}
-                  <span style="color:#9CA3AF"> ■ ว่าง</span>
-                </div>
-              </div>
-              <div style="margin-top:4px;font-size:10px;color:#6C757D">
-                จัดสรร: <strong style="color:#166534">${totalMHz} MHz</strong>
-                ${guardBlocks.length > 0 ? ` | Guard: <strong>${guardBlocks.length * 10} MHz</strong>` : ''}
-              </div>
-            </div>`)
-          .addTo(map)
-      })
+    const marker = new maplibregl.Marker({ element: el })
+      .setLngLat([lon, lat])
+      .addTo(map)
       markers.push(marker)
     })
 
     imtMarkersRef.current = markers
+
+    // 100m buffer around each IMT polygon SHAPE (not centroid)
+    const bufferFeatures: any[] = []
+    coverageFeatures.forEach((feat) => {
+      try {
+        // Buffer the polygon shape by 100m (0.1 km)
+        const geometry = feat.geometry
+        if (geometry && geometry.type === 'Polygon') {
+          const buffered = buffer({ type: 'Feature', geometry, properties: {} } as any, 0.1, { units: 'kilometers' })
+          if (buffered) bufferFeatures.push(buffered)
+        }
+      } catch (_e) { /* skip invalid */ }
+    })
+
+    if (bufferFeatures.length > 0) {
+      // Clean up old
+      if (map.getLayer(LAYER_IDS.imtBufferFill)) map.removeLayer(LAYER_IDS.imtBufferFill)
+      if (map.getSource(LAYER_IDS.imtBufferSource)) map.removeSource(LAYER_IDS.imtBufferSource)
+
+      map.addSource(LAYER_IDS.imtBufferSource, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: bufferFeatures },
+      })
+      map.addLayer({
+        id: LAYER_IDS.imtBufferFill,
+        type: 'fill',
+        source: LAYER_IDS.imtBufferSource,
+        paint: { 'fill-color': '#C00000', 'fill-opacity': 0.1 },
+      })
+    }
 
     if (coverageFeatures.length === 0) return
 
@@ -1485,45 +1533,15 @@ async function loadIMTAllocations(
       if (!e.features?.[0]) return
       const p = e.features[0].properties
       const blocks = p.blocks || []
-      const totalMHz = blocks
-        .filter((b: any) => b.status === 'allocated')
-        .reduce((sum: number, b: any) => sum + (b.freq_high - b.freq_low), 0)
 
-      // Build colored blocks HTML for spectrum bar (4800-4990, 10MHz each)
-      const spectrumBlocks: string[] = []
-      for (let f = 4800; f < 4990; f += 10) {
-        const allocBlock = blocks.find((b: any) => b.freq_low === f)
-        let bg = '#E5E7EB'  // unallocated - light gray
-        if (allocBlock) {
-          bg = allocBlock.status === 'allocated' ? '#16A34A' : '#9CA3AF'
-        }
-        spectrumBlocks.push(
-          `<div style="flex:1;height:14px;background:${bg};margin:0 0.5px;border-radius:1px" title="${f}-${f+10} MHz"></div>`
-        )
-      }
-      const blockLabels = [4800, 4820, 4840, 4860, 4880, 4900, 4920, 4940, 4960, 4980, 4990]
-      const allocBlocks = blocks.filter((b: any) => b.status === 'allocated')
-      const guardBlocks = blocks.filter((b: any) => b.status === 'guard')
-      const allocListStr = allocBlocks.map((b: any) => `${b.freq_low}-${b.freq_high}`).join(', ')
-      const labelsStr = blockLabels.map((f: number) => `<span>${f}</span>`).join('')
-      const guardStr = guardBlocks.length > 0 ? ` | Guard: <strong>${guardBlocks.length * 10} MHz</strong>` : ''
-      const allocGuardLegend = guardBlocks.length > 0 ? ' <span style="color:#6B7280">■ Guard</span>' : ''
-
-      new maplibregl.Popup({ maxWidth: '360px' })
+      new maplibregl.Popup({ maxWidth: '400px' })
         .setLngLat(e.lngLat)
         .setHTML(`
-          <div style="font-family:Sarabun,sans-serif;font-size:12px;line-height:1.5;min-width:280px;max-width:340px">
-            <strong style="color:#1A1A2E;font-size:14px">${escapeHTML(p.name)}</strong>
-            <span style="color:#16A34A;margin-left:4px;font-size:10px;font-weight:600">IMT</span><br/>
-            <span style="color:#6C757D">${escapeHTML(p.operator)} | ${p.frame_structure || "DDDSU"}</span>
-            <div style="margin-top:6px;padding:6px;background:#F9FAFB;border-radius:4px;border:1px solid #E5E7EB">
-              <div style="display:flex;gap:0;margin:4px 0">${spectrumBlocks.join('')}</div>
-              <div style="display:flex;justify-content:space-between;font-size:7px;color:#9CA3AF;font-family:monospace;margin-top:1px">${labelsStr}</div>
-              <div style="margin-top:4px;font-size:10px;color:#374151">
-                <span style="color:#166534;font-weight:600">■ จัดสรร</span>${allocListStr ? `<span style="color:#166534"> ${allocListStr}</span>` : ''}${allocGuardLegend} <span style="color:#9CA3AF">■ ว่าง</span>
-              </div>
-            </div>
-            <div style="margin-top:4px;font-size:10px;color:#6C757D">จัดสรร: <strong style="color:#166534">${totalMHz} MHz</strong>${guardStr}</div>
+          <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:240px">
+            <strong style="color:#1A1A2E">${escapeHTML(p.name)}</strong><br/>
+            <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(p.operator)}</span><br/>
+            <span style="color:#6C757D">TDD Pattern: ${p.frame_structure || '—'}</span>
+            ${generateSpectrumBarHTML(blocks)}
           </div>`)
         .addTo(map)
     })
