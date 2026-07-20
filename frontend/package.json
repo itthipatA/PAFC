@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@maplibre/maplibre-gl-geocoder": "^1.9.4",
     "@turf/turf": "^7.3.5",
     "lucide-react": "^1.23.0",
     "maplibre-gl": "^4.7.1",

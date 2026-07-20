@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
+import '@maplibre/maplibre-gl-geocoder/dist/maplibre-gl-geocoder.css'
+import MaplibreGeocoder, { MaplibreGeocoderFeatureResults } from '@maplibre/maplibre-gl-geocoder'
 import { circle, buffer } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
 import type { AllocationBlock, IMTAllocation } from '../types'
@@ -227,6 +229,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   const imtAllocDataRef = useRef<any[]>([])
   const vertexMarkersRef = useRef<maplibregl.Marker[]>([])
   const parcelTowerMarkersRef = useRef<maplibregl.Marker[]>([])
+  const geocoderRef = useRef<MaplibreGeocoder | null>(null)
   const { fetchWithAuth } = useAuth()
 
   // Refs to keep event handlers current without re-initializing map
@@ -262,6 +265,37 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     })
 
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
+
+    // Geocoder — search places like Google Maps
+    const geocoder = new MaplibreGeocoder(
+      {
+        forwardGeocode: async (config): Promise<MaplibreGeocoderFeatureResults> => {
+          const q = typeof config.query === 'string' ? config.query : ''
+          if (!q) return { type: 'FeatureCollection', features: [] }
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=geojson&limit=5&accept-language=th`
+          )
+          if (!resp.ok) return { type: 'FeatureCollection', features: [] }
+          const data = await resp.json()
+          return data
+        },
+      },
+      {
+        maplibregl: maplibregl,
+        showResultMarkers: true,
+        showResultsWhileTyping: true,
+        placeholder: 'ค้นหาสถานที่...',
+        marker: true,
+        flyTo: true,
+        language: 'th',
+        countries: 'TH',
+        limit: 5,
+        debounceSearch: 300,
+      }
+    )
+
+    map.addControl(geocoder, 'top-left')
+    geocoderRef.current = geocoder
 
     // Default cursor
     map.getCanvas().style.cursor = 'grab'

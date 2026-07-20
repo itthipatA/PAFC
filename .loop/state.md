@@ -5,7 +5,7 @@
 ## Current
 
 - **Phase:** 38 (Gridgeist UI Redesign)
-- **Git commit:** pending
+- **Git commit:** 894dc03
 - **Services:** backend=8001 (running), frontend=5173 (running), db=5432 (running)
 
 ## Engineering Status
@@ -14,6 +14,7 @@
 - **Phase 37 Backend:** ✅ Complete — 4 new services + updated API
 - **Phase 37 DB:** ✅ Complete — Migration 004 applied
 - **Phase 38 Frontend:** ✅ Complete — Gridgeist Constitution v1.0
+- **Phase 38.1 IMT Registration:** ✅ Complete — 3 fields (name, site_owner, station_type MNO/PNO/Enterprise)
 
 ## Phase 38 — Gridgeist UI Redesign (2026-07-19)
 
