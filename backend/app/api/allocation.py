@@ -32,7 +32,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         "polygon_geojson": {...},          // GeoJSON Polygon — IMT land area
         "frame_structure": "DDDSU",        // TDD frame configuration
         "name": "โรงงาน A",               // site name (optional for preview)
-        "operator": "บริษัท เอกชน จำกัด"  // operator name (optional for preview)
+        "site_owner": "บริษัท เอกชน จำกัด"  // site owner name (optional for preview)
     }
     
     Response:
@@ -59,7 +59,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     
     frame_structure = data.get("frame_structure", "DDDSU")
     name = data.get("name", "")
-    operator = data.get("operator", "")
+    site_owner = data.get("site_owner", "")
     
     # Validate polygon
     try:
@@ -76,7 +76,7 @@ async def analyze_allocation(data: dict, db: AsyncSession = Depends(get_db)):
         polygon_geojson=polygon_geojson,
         frame_structure=frame_structure,
         name=name,
-        operator=operator,
+        site_owner=site_owner,
     )
     
     return {
@@ -109,9 +109,10 @@ async def save_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     Request body:
     {
         "name": "โรงงาน A",
-        "operator": "บริษัท เอกชน จำกัด",
+        "site_owner": "บริษัท เอกชน จำกัด",
         "polygon_geojson": {...},
         "frame_structure": "DDDSU",
+        "station_type": "MNO",
         "selected_blocks": [
             {"freq_low": 4800, "freq_high": 4810, "status": "allocated"},
             {"freq_low": 4810, "freq_high": 4820, "status": "guard"},
@@ -120,15 +121,16 @@ async def save_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     }
     """
     name = data.get("name", "").strip()
-    operator = data.get("operator", "").strip()
+    site_owner = data.get("site_owner", "").strip()
     polygon_geojson = data.get("polygon_geojson")
     frame_structure = data.get("frame_structure", "DDDSU")
+    station_type = data.get("station_type")
     selected_blocks = data.get("selected_blocks", [])
     
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
-    if not operator:
-        raise HTTPException(status_code=400, detail="operator is required")
+    if not site_owner:
+        raise HTTPException(status_code=400, detail="site_owner is required")
     if not selected_blocks:
         raise HTTPException(status_code=400, detail="selected_blocks is required")
     
@@ -152,11 +154,12 @@ async def save_allocation(data: dict, db: AsyncSession = Depends(get_db)):
     imt = IMTAllocation(
         id=allocation_id,
         name=name,
-        operator=operator,
+        site_owner=site_owner,
         area_wkt=area_wkt,
         antenna_height=15,  # default metadata
         max_eirp=23,         # default metadata
         frame_structure=frame_structure,
+        station_type=station_type,
         polygon_geojson=json.dumps(polygon_geojson) if isinstance(polygon_geojson, dict) else polygon_geojson,
         status="active",
         valid_from=date.today(),
@@ -201,9 +204,10 @@ async def list_allocations(db: AsyncSession = Depends(get_db)):
         items.append({
             "id": str(imt.id),
             "name": imt.name,
-            "operator": imt.operator,
+            "site_owner": imt.site_owner,
             "status": imt.status,
             "frame_structure": imt.frame_structure,
+            "station_type": imt.station_type,
             "blocks": [
                 {
                     "freq_low": b.freq_low,

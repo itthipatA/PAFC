@@ -1437,7 +1437,8 @@ async function loadIMTAllocations(
           const feature = {
             type: 'Feature' as const,
             properties: {
-              id: alloc.id, name: alloc.name, operator: alloc.operator,
+              id: alloc.id, name: alloc.name, site_owner: alloc.site_owner,
+              station_type: alloc.station_type,
               blocks: alloc.blocks, created_at: alloc.created_at,
               frame_structure: alloc.frame_structure,
             },
@@ -1463,7 +1464,8 @@ async function loadIMTAllocations(
         .setHTML(`
           <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:260px;padding:4px">
             <strong style="color:#1A1A2E;font-size:14px">${escapeHTML(alloc.name)}</strong><br/>
-            <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(alloc.operator)}</span><br/>
+            <span style="color:#6C757D">เจ้าของ/ผู้ให้บริการ: ${escapeHTML(alloc.site_owner)}</span><br/>
+            <span style="color:#6C757D">ประเภท: ${escapeHTML(alloc.station_type || '-')}</span><br/>
             <span style="color:#6C757D">TDD Pattern: ${alloc.frame_structure || '—'}</span>
             ${generateSpectrumBarHTML(blocks)}
           </div>`)
@@ -1539,7 +1541,8 @@ async function loadIMTAllocations(
         .setHTML(`
           <div style="font-family:Sarabun,sans-serif;font-size:13px;line-height:1.6;min-width:240px">
             <strong style="color:#1A1A2E">${escapeHTML(p.name)}</strong><br/>
-            <span style="color:#6C757D">ผู้ให้บริการ: ${escapeHTML(p.operator)}</span><br/>
+            <span style="color:#6C757D">เจ้าของ/ผู้ให้บริการ: ${escapeHTML(p.site_owner)}</span><br/>
+            <span style="color:#6C757D">ประเภท: ${escapeHTML(p.station_type || '-')}</span><br/>
             <span style="color:#6C757D">TDD Pattern: ${p.frame_structure || '—'}</span>
             ${generateSpectrumBarHTML(blocks)}
           </div>`)

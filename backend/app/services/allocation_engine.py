@@ -83,7 +83,7 @@ class AllocationEngine:
         result = await engine.analyze(
             polygon_geojson=...,
             frame_structure="DDDSU",
-            operator="บริษัท A",
+            site_owner="บริษัท A",
             name="โรงงาน X",
         )
     """
@@ -95,7 +95,7 @@ class AllocationEngine:
         self,
         polygon_geojson,
         frame_structure: str = "DDDSU",
-        operator: str = "",
+        site_owner: str = "",
         name: str = "",
     ) -> AllocationResult:
         """
@@ -104,7 +104,7 @@ class AllocationEngine:
         Args:
             polygon_geojson: GeoJSON polygon of proposed IMT area
             frame_structure: TDD frame configuration
-            operator: operator name
+            site_owner: site owner name
             name: site name
         
         Returns:
@@ -117,7 +117,7 @@ class AllocationEngine:
         log: List[str] = []
         log.append("=" * 60)
         log.append("PAFC Allocation Engine — Phase 37")
-        log.append(f"ชื่อสถานี: {name} | ผู้ให้บริการ: {operator}")
+        log.append(f"ชื่อสถานี: {name} | ผู้ให้บริการ: {site_owner}")
         log.append(f"รูปแบบ TDD: {frame_structure}")
         log.append(f"เกณฑ์การตรวจสอบ: FS -120dBm, IMT 100m buffer, Frame Structure")
         log.append("=" * 60)
@@ -268,9 +268,9 @@ class AllocationEngine:
                     # Check buffer intersection
                     if does_imt_buffer_intersect_fs_coverage(imt_buffer, imt_buf):
                         block.status = "blocked_by_imt"
-                        block.blocked_by.append(f"IMT: {imt.name} ({imt.operator})")
+                        block.blocked_by.append(f"IMT: {imt.name} ({imt.site_owner})")
                         block.reason_th = (
-                            f"❌ ไม่สามารถจัดสรร — IMT {imt.name} ({imt.operator}) "
+                            f"❌ ไม่สามารถจัดสรร — IMT {imt.name} ({imt.site_owner}) "
                             f"ใช้คลื่น {block_f_low}-{block_f_high} MHz "
                             f"ในพื้นที่ใกล้เคียง (Buffer 100m ทับซ้อน)"
                         )

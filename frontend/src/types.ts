@@ -36,7 +36,8 @@ export interface SaveBlock {
 
 export interface AllocationSaveRequest {
   name: string
-  operator: string
+  site_owner: string
+  station_type: string
   polygon_geojson: object
   frame_structure: string
   selected_blocks: SaveBlock[]
@@ -65,7 +66,8 @@ export interface FSLink {
 export interface IMTAllocation {
   id: string
   name: string
-  operator: string
+  site_owner: string
+  station_type: string | null
   polygon_geojson: object | null
   area_wkt?: string | null
   frame_structure: string | null

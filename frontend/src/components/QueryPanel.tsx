@@ -38,7 +38,8 @@ interface FSResult {
 interface IMTResult {
   id: string
   name: string
-  operator: string
+  site_owner: string
+  station_type: string | null
   center_lat: number
   center_lon: number
   cell_radius: number
@@ -115,7 +116,8 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
       const allocations = (data.allocations || data || []).map((a: any) => ({
         id: a.id,
         name: a.name,
-        operator: a.operator,
+        site_owner: a.site_owner,
+        station_type: a.station_type,
         center_lat: a.center_lat,
         center_lon: a.center_lon,
         cell_radius: a.cell_radius,
@@ -160,7 +162,7 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
     ? imtResults.filter(
         (r) =>
           r.name.toLowerCase().includes(q) ||
-          r.operator.toLowerCase().includes(q),
+          r.site_owner.toLowerCase().includes(q),
       )
     : imtResults
 
@@ -439,7 +441,7 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                     {/* ── Operator ───────────────────────── */}
                     <p className="text-xs text-[#666666] mt-0.5 flex items-center gap-1">
                       <Building2 className="w-3 h-3" />
-                      {r.operator}
+                      {r.site_owner}
                     </p>
 
                     {/* ── Location (mono) ────────────────── */}

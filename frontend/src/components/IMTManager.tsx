@@ -121,14 +121,16 @@ const monoInputCls = inputCls + ' font-mono'
 /* ── Edit form type ───────────────────────────────────── */
 interface EditForm {
   name: string
-  operator: string
+  site_owner: string
+  station_type: string
   frame_structure: string
   status: string
 }
 
 const EMPTY_FORM: EditForm = {
   name: '',
-  operator: '',
+  site_owner: '',
+  station_type: '',
   frame_structure: '',
   status: 'active',
 }
@@ -201,7 +203,8 @@ export default function IMTManager({
     setEditingId(alloc.id)
     setForm({
       name: alloc.name,
-      operator: alloc.operator,
+      site_owner: alloc.site_owner,
+      station_type: alloc.station_type || '',
       frame_structure: alloc.frame_structure || '',
       status: alloc.status || 'active',
     })
@@ -235,7 +238,7 @@ export default function IMTManager({
     e.preventDefault()
     setFormError('')
 
-    if (!form.name.trim() || !form.operator.trim()) {
+    if (!form.name.trim() || !form.site_owner.trim()) {
       setFormError('กรุณากรอกชื่อสถานีและชื่อผู้ให้บริการ')
       return
     }
@@ -253,7 +256,8 @@ export default function IMTManager({
 
       const body = {
         name: form.name.trim(),
-        operator: form.operator.trim(),
+        site_owner: form.site_owner.trim(),
+        station_type: form.station_type,
         frame_structure: form.frame_structure || null,
         status: form.status,
         selected_blocks: selectedBlocks,
@@ -389,7 +393,7 @@ export default function IMTManager({
                   <tr className="bg-[#1A1A2E] text-white">
                     <th className={`${headerRowCls} rounded-tl-lg w-10`}></th>
                     <th className={headerRowCls}>ชื่อสถานี</th>
-                    <th className={headerRowCls}>ผู้ให้บริการ</th>
+                    <th className={headerRowCls}>เจ้าของ/ผู้ให้บริการ</th>
                     <th className={headerRowCls}>ตำแหน่ง</th>
                     <th className={headerRowCls}>พื้นที่</th>
                     <th className={headerRowCls}>TDD Pattern</th>
@@ -425,7 +429,7 @@ export default function IMTManager({
                           <td className={dataCellCls}>
                             <span className="font-semibold text-[#1A1A2E]">{alloc.name}</span>
                           </td>
-                          <td className={dataCellCls}>{alloc.operator}</td>
+                          <td className={dataCellCls}>{alloc.site_owner}</td>
                           <td className={dataMonoCls}>
                             {centroid
                               ? `${centroid.lat.toFixed(4)}°, ${centroid.lon.toFixed(4)}°`
@@ -721,17 +725,29 @@ export default function IMTManager({
                         className={inputCls}
                       />
                     </Field>
-                    <Field label="ผู้ให้บริการ *">
+                    <Field label="เจ้าของ/ผู้ให้บริการ *">
                       <input
                         type="text"
-                        value={form.operator}
-                        onChange={(e) => handleFieldChange('operator', e.target.value)}
+                        value={form.site_owner}
+                        onChange={(e) => handleFieldChange('site_owner', e.target.value)}
                         placeholder="เช่น AIS, True, NT"
                         className={inputCls}
                       />
                     </Field>
                   </div>
                   <div className="grid grid-cols-2 gap-4 mt-4">
+                    <Field label="ประเภท">
+                      <select
+                        value={form.station_type}
+                        onChange={(e) => handleFieldChange('station_type', e.target.value)}
+                        className={selectCls}
+                      >
+                        <option value="">-- เลือกประเภท --</option>
+                        <option value="MNO">MNO</option>
+                        <option value="PNO">PNO</option>
+                        <option value="Enterprise">Enterprise</option>
+                      </select>
+                    </Field>
                     <Field label="เทคโนโลยี (Frame Structure)">
                       <select
                         value={form.frame_structure}

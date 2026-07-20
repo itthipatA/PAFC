@@ -55,9 +55,10 @@ def _imt_to_dict(a: IMTAllocation, blocks: list) -> dict:
     return {
         "id": str(a.id),
         "name": a.name,
-        "operator": a.operator,
+        "site_owner": a.site_owner,
         "area_wkt": a.area_wkt,
         "frame_structure": a.frame_structure,
+        "station_type": a.station_type,
         "polygon_geojson": a.polygon_geojson,
         "status": a.status,
         "blocks": [

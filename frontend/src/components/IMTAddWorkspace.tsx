@@ -73,7 +73,7 @@ const blockKey = (freqLow: number, freqHigh: number) => `${freqLow}-${freqHigh}`
 
 /* ══════════════════════════════════════════════════════════
    IMTAddWorkspace — Redesign 2026-07-19
-   New input order: polygon → TDD pattern → station → operator
+   New input order: polygon → TDD pattern → station → site_owner → station_type
    Results: calc log first (white bg) → spectrum single row
    ══════════════════════════════════════════════════════════ */
 export default function IMTAddWorkspace({
@@ -88,7 +88,8 @@ export default function IMTAddWorkspace({
   const [geojsonData, setGeojsonData] = useState<any>(null)
   const [polygonVertices, setPolygonVertices] = useState<[number, number][]>([])
   const [name, setName] = useState('')
-  const [operator, setOperator] = useState('')
+  const [siteOwner, setSiteOwner] = useState('')
+  const [stationType, setStationType] = useState('')
   const [frameStructure, setFrameStructure] = useState('DDDSU')
   const [frameOptions, setFrameOptions] = useState<FrameStructureOption[]>([])
   const [analysisResult, setAnalysisResult] = useState<AllocationAnalyzeResponse | null>(null)
@@ -143,7 +144,8 @@ export default function IMTAddWorkspace({
           polygon_geojson: geojsonData,
           frame_structure: frameStructure,
           name: name.trim(),
-          operator: operator.trim(),
+          site_owner: siteOwner.trim(),
+          station_type: stationType,
           technology: '5G',
           cell_radius_m: 500,
         }),
@@ -161,7 +163,7 @@ export default function IMTAddWorkspace({
     } finally {
       setLoading(false)
     }
-  }, [geojsonData, frameStructure, name, operator, fetchWithAuth])
+  }, [geojsonData, frameStructure, name, siteOwner, stationType, fetchWithAuth])
 
   // ── Toggle block based on active selection mode ──────
   const toggleBlock = useCallback((key: string) => {
@@ -203,7 +205,8 @@ export default function IMTAddWorkspace({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          operator: operator.trim(),
+          site_owner: siteOwner.trim(),
+          station_type: stationType,
           polygon_geojson: geojsonData,
           frame_structure: frameStructure,
           selected_blocks: blocksToSave,
@@ -219,7 +222,7 @@ export default function IMTAddWorkspace({
     } finally {
       setSaving(false)
     }
-  }, [geojsonData, selectedBlocks, name, operator, frameStructure, fetchWithAuth, onBack])
+  }, [geojsonData, selectedBlocks, name, siteOwner, stationType, frameStructure, fetchWithAuth, onBack])
 
   // ── Block counts ──────────────────────────────────────
   const counts = useMemo(() => {
@@ -368,18 +371,35 @@ export default function IMTAddWorkspace({
           />
         </section>
 
-        {/* ── 4. ชื่อผู้ให้บริการ ────────────────────────── */}
+        {/* ── 4. ชื่อเจ้าของ/ผู้ให้บริการ ────────────────────── */}
         <section className="bg-white rounded-lg border border-[#E5E5E0] p-4">
           <label className="block text-sm font-bold text-[#333333] mb-2 font-thai">
-            ชื่อผู้ให้บริการ
+            ชื่อเจ้าของ/ผู้ให้บริการ
           </label>
           <input
             type="text"
-            value={operator}
-            onChange={e => setOperator(e.target.value)}
+            value={siteOwner}
+            onChange={e => setSiteOwner(e.target.value)}
             placeholder="เช่น บริษัท เอกชน จำกัด"
             className={inputClass + ' font-thai'}
           />
+        </section>
+
+        {/* ── 5. ประเภท ──────────────────────────────────── */}
+        <section className="bg-white rounded-lg border border-[#E5E5E0] p-4">
+          <label className="block text-sm font-bold text-[#333333] mb-2 font-thai">
+            ประเภท
+          </label>
+          <select
+            value={stationType}
+            onChange={e => setStationType(e.target.value)}
+            className={inputClass + ' font-thai'}
+          >
+            <option value="">-- เลือกประเภท --</option>
+            <option value="MNO">MNO</option>
+            <option value="PNO">PNO</option>
+            <option value="Enterprise">Enterprise</option>
+          </select>
         </section>
 
         {/* ═══════════════════════════════════════════════════
@@ -632,7 +652,7 @@ export default function IMTAddWorkspace({
             <div className="flex gap-3">
               <button
                 onClick={handleSave}
-                disabled={selectedBlocks.size === 0 || !name.trim() || !operator.trim() || saving}
+                disabled={selectedBlocks.size === 0 || !name.trim() || !siteOwner.trim() || saving}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-thai"
                 style={{ backgroundColor: '#2E7D32' }}
               >

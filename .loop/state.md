@@ -75,4 +75,11 @@ Frontend:
 
 ## Last Session
 - **Date:** 2026-07-19
-- **Tasks:** Phase 38 Gridgeist UI Redesign — fixed PAFC accessibility, full Gridgeist grid redesign
+- **Tasks:** Phase 38 IMT Block Selection UX + Marker Popup Spectrum Bar
+- **Key Changes:**
+  - Available blocks: gray→green (#2E7D32) + Check icon on selection
+  - Guard blocks: orange (#E65100) + Shield icon, guard suggestion light orange (#FFE0B2)
+  - IMT marker: new 3-tower SVG icon (44×52px)
+  - Popup: full 4800-4990 MHz proportional spectrum bar with block divisions + allocation text
+  - MultiPolygon GeoJSON support added
+  - No auto-select blocks — user must pick every block

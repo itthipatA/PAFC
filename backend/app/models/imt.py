@@ -12,7 +12,7 @@ class IMTAllocation(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, index=True)
-    operator = Column(String(255), nullable=False)
+    site_owner = Column(String(255), nullable=False)
 
     # Area — stored as GeoJSON WKT in text (PostGIS geometry optional)
     area_wkt = Column(String, nullable=False)  # "POLYGON((...))"
@@ -23,6 +23,9 @@ class IMTAllocation(Base):
 
     # Frame structure — TDD configuration (Phase 37)
     frame_structure = Column(String(20), nullable=True)  # e.g. "DDDSU", "DDDDDDDSU"
+
+    # Station type (Phase 38)
+    station_type = Column(String(20), nullable=True)  # MNO, PNO, Enterprise
 
     # Polygon/Shape mode (Phase 35)
     polygon_geojson = Column(String, nullable=True)  # GeoJSON polygon geometry
