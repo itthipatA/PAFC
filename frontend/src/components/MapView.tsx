@@ -277,7 +277,16 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
           )
           if (!resp.ok) return { type: 'FeatureCollection', features: [] }
           const data = await resp.json()
-          return data
+          // Transform Nominatim → Carmen GeoJSON (geocoder needs text/place_name at feature level)
+          return {
+            type: 'FeatureCollection' as const,
+            features: data.features.map((f: any) => ({
+              ...f,
+              text: f.properties?.name || '',
+              place_name: f.properties?.display_name || '',
+              language: 'th',
+            })),
+          }
         },
       },
       {
