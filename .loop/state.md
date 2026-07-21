@@ -4,8 +4,8 @@
 
 ## Current
 
-- **Phase:** 38 (Gridgeist UI Redesign)
-- **Git commit:** 894dc03
+- **Phase:** 38.2 (Map Search Box Fix)
+- **Git commit:** 3d3a4c6
 - **Services:** backend=8001 (running), frontend=5173 (running), db=5432 (running)
 
 ## Engineering Status

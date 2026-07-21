@@ -264,9 +264,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       zoom: 8,
     })
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-left')
-
-    // Geocoder — search places like Google Maps
+    // Geocoder — search places like Google Maps (top-left, above zoom)
     const geocoder = new MaplibreGeocoder(
       {
         forwardGeocode: async (config): Promise<MaplibreGeocoderFeatureResults> => {
@@ -305,6 +303,7 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
 
     map.addControl(geocoder, 'top-left')
     geocoderRef.current = geocoder
+    map.addControl(new maplibregl.NavigationControl(), 'top-left')
 
     // Default cursor
     map.getCanvas().style.cursor = 'grab'
