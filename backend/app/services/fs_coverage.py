@@ -149,6 +149,26 @@ def itu_f699_pattern_discrimination(
         return min(transition_disc - 25.0 * math.log10(20.0 / transition_end), discrimination)
 
 
+# ── Pattern lookup from stored F.699-9 doc ───────────────────────────────
+
+def pattern_discrimination_from_doc(pattern_doc, angle_deg: float) -> float:
+    """Gain discrimination (dB) from a stored ITU-R F.699-9 pattern doc.
+
+    pattern_doc: dict with "pattern" = [[angle_deg, gain_dBi], ...] (0.1 deg grid)
+                 and "Gmax_dBi". Returns gain(angle) - Gmax (<= 0), or 0.0 if unusable.
+    """
+    if not pattern_doc or not pattern_doc.get("pattern"):
+        return 0.0
+    pts = pattern_doc["pattern"]
+    step = float(pattern_doc.get("step_deg", 0.1)) or 0.1
+    gmax = pattern_doc.get("Gmax_dBi")
+    if gmax is None:
+        gmax = pts[0][1]
+    a = abs(angle_deg) % 360.0
+    idx = int(round(a / step)) % len(pts)
+    return pts[idx][1] - gmax
+
+
 # ── Geo Computation ───────────────────────────────────────────────────────
 
 def _point_at_distance_bearing(
@@ -209,9 +229,13 @@ def fs_station_coverage_polygon(
     beamwidth_deg: float = 3.0,
     rx_antenna_gain_dbi: float = 0.0,
     target_rx_dbm: float = RX_THRESHOLD_DBM,
+    antenna_pattern: Optional[dict] = None,
 ) -> dict:
     """
     Generate -120dBm coverage polygon for a single FS station.
+    
+    Uses the stored per-link ITU-R F.699-9 pattern (antenna_pattern JSONB) when
+    provided, otherwise the simplified in-code discrimination model.
     
     Uses directional antenna pattern (ITU-R F.699) + FSPL to compute
     the distance at each angle where received power drops to target level.
@@ -236,11 +260,16 @@ def fs_station_coverage_polygon(
     coords = []
     for i in range(NUM_RADIAL_SAMPLES):
         angle_from_azimuth = i * (360.0 / NUM_RADIAL_SAMPLES)
-        discrimination_db = itu_f699_pattern_discrimination(
-            angle_deg=angle_from_azimuth,
-            peak_gain_dbi=tx_antenna_gain_dbi,
-            beamwidth_deg=beamwidth_deg,
-        )
+        if antenna_pattern:
+            discrimination_db = pattern_discrimination_from_doc(
+                antenna_pattern, angle_from_azimuth
+            )
+        else:
+            discrimination_db = itu_f699_pattern_discrimination(
+                angle_deg=angle_from_azimuth,
+                peak_gain_dbi=tx_antenna_gain_dbi,
+                beamwidth_deg=beamwidth_deg,
+            )
         effective_eirp = eirp_dbm + discrimination_db
         
         # Compute raw distance from FSPL
@@ -375,6 +404,7 @@ def fs_dogbone_coverage(
     beamwidth_deg: float = 3.0,
     azimuth_deg: Optional[float] = None,
     target_rx_dbm: float = RX_THRESHOLD_DBM,
+    antenna_pattern: Optional[dict] = None,
 ) -> dict:
     """
     Generate dog-bone shaped coverage for an FS link pair.
@@ -408,6 +438,7 @@ def fs_dogbone_coverage(
         beamwidth_deg=beamwidth_deg,
         rx_antenna_gain_dbi=rx_antenna_gain_dbi,
         target_rx_dbm=target_rx_dbm,
+        antenna_pattern=antenna_pattern,
     )
     
     # RX station coverage (lobe pointing toward TX)
@@ -421,6 +452,7 @@ def fs_dogbone_coverage(
         beamwidth_deg=beamwidth_deg,
         rx_antenna_gain_dbi=rx_antenna_gain_dbi,
         target_rx_dbm=target_rx_dbm,
+        antenna_pattern=antenna_pattern,
     )
     
     # Union → dog bone
@@ -439,6 +471,7 @@ def fs_link_corridor_polygon(
     beamwidth_deg: float = 3.0,
     azimuth_deg: Optional[float] = None,
     corridor_width_m: Optional[float] = None,
+    antenna_pattern: Optional[dict] = None,
 ) -> dict:
     """
     Generate a corridor polygon covering the FS link path.
@@ -481,6 +514,7 @@ def fs_link_corridor_polygon(
         return fs_station_coverage_polygon(
             tx_lat, tx_lon, tx_power_dbm, tx_antenna_gain_dbi,
             freq_mhz, azimuth_deg, beamwidth_deg, rx_antenna_gain_dbi,
+            antenna_pattern=antenna_pattern,
         )
     
     # Compute Fresnel zone radius at midpoint (widest point)
@@ -507,11 +541,13 @@ def fs_link_corridor_polygon(
     tx_coverage = fs_station_coverage_polygon(
         tx_lat, tx_lon, tx_power_dbm, tx_antenna_gain_dbi,
         freq_mhz, azimuth_deg, beamwidth_deg, rx_antenna_gain_dbi,
+        antenna_pattern=antenna_pattern,
     )
     rx_coverage = fs_station_coverage_polygon(
         rx_lat, rx_lon, tx_power_dbm, tx_antenna_gain_dbi,
         freq_mhz, (azimuth_deg + 180.0) % 360.0, beamwidth_deg,
         rx_antenna_gain_dbi,
+        antenna_pattern=antenna_pattern,
     )
     
     # Generate corridor as convex hull of TX+RX coverage + edge buffers
@@ -686,6 +722,7 @@ def compute_all_fs_coverages(
         azimuth = _bearing(fs.tx_lat, fs.tx_lon, fs.rx_lat, fs.rx_lon)  # always compute from coordinates
         bw = getattr(fs, 'beamwidth_deg', 3.0) or 3.0
         rx_gain = getattr(fs, 'rx_antenna_gain', 0.0) or 0.0
+        pattern = getattr(fs, 'antenna_pattern', None) or None
         
         # TX station coverage (directional lobe toward RX)
         tx_coverage = fs_station_coverage_polygon(
@@ -698,6 +735,7 @@ def compute_all_fs_coverages(
             beamwidth_deg=bw,
             rx_antenna_gain_dbi=rx_gain,
             target_rx_dbm=target_rx_dbm,
+            antenna_pattern=pattern,
         )
         
         # RX station coverage (directional lobe toward TX)
@@ -712,6 +750,7 @@ def compute_all_fs_coverages(
             beamwidth_deg=bw,
             rx_antenna_gain_dbi=rx_gain,
             target_rx_dbm=target_rx_dbm,
+            antenna_pattern=pattern,
         )
         
         # Dog-bone: geometric UNION of TX + RX directional lobes
@@ -725,6 +764,7 @@ def compute_all_fs_coverages(
             beamwidth_deg=bw,
             azimuth_deg=azimuth,
             target_rx_dbm=target_rx_dbm,
+            antenna_pattern=pattern,
         )
         
         # Link corridor (convex hull — kept for backward compatibility / allocation checks)
@@ -737,6 +777,7 @@ def compute_all_fs_coverages(
             freq_mhz=freq_mhz,
             beamwidth_deg=bw,
             azimuth_deg=azimuth,
+            antenna_pattern=pattern,
         )
         
         # Max distance on main beam

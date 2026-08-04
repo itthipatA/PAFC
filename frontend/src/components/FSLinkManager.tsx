@@ -332,6 +332,8 @@ export default function FSLinkManager() {
                     <th className={headerRowCls}>ผู้ให้บริการ</th>
                     <th className={headerRowCls}>ความถี่ (MHz)</th>
                     <th className={headerRowCls}>BW</th>
+                    <th className={headerRowCls}>Class of Emission</th>
+                    <th className={headerRowCls}>เสา (ม.)</th>
                     <th className={headerRowCls}>ระยะ (กม.)</th>
                     <th className={headerRowCls}>EIRP</th>
                     <th className={headerRowCls}>สถานะ</th>
@@ -364,6 +366,8 @@ export default function FSLinkManager() {
                           {link.frequency.low.toLocaleString()}–{link.frequency.high.toLocaleString()}
                         </td>
                         <td className={dataMonoCls}>{link.frequency.bandwidth}</td>
+                        <td className={dataMonoCls}>{link.license?.class_of_emission ?? '—'}</td>
+                        <td className={dataMonoCls}>{link.license?.antenna_diameter ?? '—'}</td>
                         <td className={dataMonoCls}>{dist.toFixed(2)}</td>
                         <td className={dataMonoCls}>{eirp.toFixed(1)} dBm</td>
                         <td className={dataCellCls}>

@@ -60,6 +60,17 @@ export interface FSLink {
   }
   antenna_pattern: string | null
   link_polygon: object | null
+  license: {
+    class_of_emission: string | null
+    antenna_diameter: number | null
+    eirp: number | null
+    quantity: number | null
+    tx_code: string | null
+    rx_code: string | null
+    distance_km: number | null
+    tx_address: string | null
+    rx_address: string | null
+  } | null
   status: string
 }
 

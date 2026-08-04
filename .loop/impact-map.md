@@ -15,3 +15,8 @@
 - **Graph consumers (5):** file:backend/app/db/database.py, file:backend/app/models/fs_link.py, file:backend/app/models/fs_link.py, file:backend/app/db/database.py, file:backend/app/api/fs_links.py
 - **Status:** predicted (pending verification)
 
+### 2026-08-04 11:05 — fs_coverage consume per-link antenna_pattern JSONB instead of simplified hardcoded F.699; FSLinkManager table shows license fields (class_of_emission, antenna_diameter)
+- **Source files:** backend/app/services/fs_coverage.py, frontend/src/types.ts, frontend/src/components/FSLinkManager.tsx
+- **Graph consumers (3):** file:frontend/src/contexts/AuthContext.tsx, file:frontend/src/types.ts, file:backend/app/api/fs_links.py
+- **Status:** predicted (pending verification)
+
