@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 import csv
 import io
+import math
 from app.db.database import get_db
 from app.models.fs_link import FSLink
 from app.services.fs_coverage import compute_all_fs_coverages, RX_THRESHOLD_DBM_VIS
@@ -33,6 +34,7 @@ async def get_fs_coverage(db: AsyncSession = Depends(get_db)):
             "dogbone": cov["dogbone"],
             "link_corridor": cov["link_corridor"],
             "max_distance_km": cov["max_distance_km"],
+            "rx_power_dbm": cov.get("rx_power_dbm"),
             "freq_mhz": cov["freq_mhz"],
         }
     
@@ -147,6 +149,14 @@ async def import_fs_csv(file: UploadFile = File(...), db: AsyncSession = Depends
 
 
 def _fs_to_dict(link: FSLink) -> dict:
+    # Link's own received power at the far-end dish (real link budget)
+    rx_power_dbm = None
+    eirp_l = float(link.tx_power or 0) + float(link.tx_antenna_gain or 0)
+    d_l = float(link.distance_km) if link.distance_km else 0
+    f_l = (float(link.freq_low or 0) + float(link.freq_high or 0)) / 2
+    if d_l > 0.001 and f_l > 0:
+        fspl_l = 20.0 * math.log10(d_l) + 20.0 * math.log10(f_l) + 32.45
+        rx_power_dbm = round(eirp_l + float(link.rx_antenna_gain or 0) - fspl_l, 1)
     return {
         "id": str(link.id),
         "name": link.name,
@@ -173,6 +183,7 @@ def _fs_to_dict(link: FSLink) -> dict:
             "distance_km": link.distance_km,
             "tx_address": link.tx_address,
             "rx_address": link.rx_address,
+            "rx_power_dbm": rx_power_dbm,
         },
         "status": link.status,
         "created_at": str(link.created_at),

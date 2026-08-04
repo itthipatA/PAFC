@@ -70,6 +70,7 @@ export interface FSLink {
     distance_km: number | null
     tx_address: string | null
     rx_address: string | null
+    rx_power_dbm: number | null
   } | null
   status: string
 }

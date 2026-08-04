@@ -78,6 +78,7 @@ def distance_for_rx_level(
     rx_gain_dbi: float,
     freq_mhz: float,
     target_rx_dbm: float = RX_THRESHOLD_DBM,
+    horizon_km: float = MAX_COVERAGE_RADIUS_KM,
 ) -> float:
     """
     Compute distance (km) where received power equals target level.
@@ -93,7 +94,7 @@ def distance_for_rx_level(
     required_fspl = eirp_dbm + rx_gain_dbi - target_rx_dbm
     exponent = (required_fspl - 20.0 * math.log10(freq_mhz) - 32.45) / 20.0
     d_km = 10.0 ** exponent
-    return min(max(0.001, d_km), MAX_COVERAGE_RADIUS_KM)
+    return min(max(0.001, d_km), horizon_km)
 
 
 # ── Antenna Pattern — ITU-R F.699 (Simplified) ───────────────────────────
@@ -237,6 +238,7 @@ def fs_station_coverage_polygon(
     rx_antenna_gain_dbi: float = 0.0,
     target_rx_dbm: float = RX_THRESHOLD_DBM,
     antenna_pattern: Optional[dict] = None,
+    horizon_km: float = MAX_COVERAGE_RADIUS_KM,
 ) -> dict:
     """
     Generate -120dBm coverage polygon for a single FS station.
@@ -284,9 +286,9 @@ def fs_station_coverage_polygon(
         exponent = (required_fspl - 20.0 * math.log10(freq_mhz) - 32.45) / 20.0
         raw_d_km = max(0.001, 10.0 ** exponent)
         
-        # Per-angle radio horizon cap — preserves directional shape
+        # Per-angle radio horizon cap — preserves true directional shape
         # (previous global scaling distorted sidelobe distances)
-        d_km = min(raw_d_km, MAX_COVERAGE_RADIUS_KM)
+        d_km = min(raw_d_km, horizon_km)
         
         # Bearing from station
         point_bearing = (azimuth_deg + angle_from_azimuth) % 360.0
@@ -412,6 +414,7 @@ def fs_dogbone_coverage(
     azimuth_deg: Optional[float] = None,
     target_rx_dbm: float = RX_THRESHOLD_DBM,
     antenna_pattern: Optional[dict] = None,
+    horizon_km: float = MAX_COVERAGE_RADIUS_KM,
 ) -> dict:
     """
     Generate dog-bone shaped coverage for an FS link pair.
@@ -446,6 +449,7 @@ def fs_dogbone_coverage(
         rx_antenna_gain_dbi=rx_antenna_gain_dbi,
         target_rx_dbm=target_rx_dbm,
         antenna_pattern=antenna_pattern,
+        horizon_km=horizon_km,
     )
     
     # RX station coverage (lobe pointing toward TX)
@@ -460,6 +464,7 @@ def fs_dogbone_coverage(
         rx_antenna_gain_dbi=rx_antenna_gain_dbi,
         target_rx_dbm=target_rx_dbm,
         antenna_pattern=antenna_pattern,
+        horizon_km=horizon_km,
     )
     
     # Union → dog bone
@@ -479,6 +484,7 @@ def fs_link_corridor_polygon(
     azimuth_deg: Optional[float] = None,
     corridor_width_m: Optional[float] = None,
     antenna_pattern: Optional[dict] = None,
+    horizon_km: float = MAX_COVERAGE_RADIUS_KM,
 ) -> dict:
     """
     Generate a corridor polygon covering the FS link path.
@@ -522,6 +528,7 @@ def fs_link_corridor_polygon(
             tx_lat, tx_lon, tx_power_dbm, tx_antenna_gain_dbi,
             freq_mhz, azimuth_deg, beamwidth_deg, rx_antenna_gain_dbi,
             antenna_pattern=antenna_pattern,
+            horizon_km=horizon_km,
         )
     
     # Compute Fresnel zone radius at midpoint (widest point)
@@ -549,12 +556,14 @@ def fs_link_corridor_polygon(
         tx_lat, tx_lon, tx_power_dbm, tx_antenna_gain_dbi,
         freq_mhz, azimuth_deg, beamwidth_deg, rx_antenna_gain_dbi,
         antenna_pattern=antenna_pattern,
+        horizon_km=horizon_km,
     )
     rx_coverage = fs_station_coverage_polygon(
         rx_lat, rx_lon, tx_power_dbm, tx_antenna_gain_dbi,
         freq_mhz, (azimuth_deg + 180.0) % 360.0, beamwidth_deg,
         rx_antenna_gain_dbi,
         antenna_pattern=antenna_pattern,
+        horizon_km=horizon_km,
     )
     
     # Generate corridor as convex hull of TX+RX coverage + edge buffers
@@ -737,6 +746,10 @@ def compute_all_fs_coverages(
         bw = getattr(fs, 'beamwidth_deg', 3.0) or 3.0
         rx_gain = victim_rx_gain_dbi if victim_rx_gain_dbi is not None else (getattr(fs, 'rx_antenna_gain', 0.0) or 0.0)
         pattern = getattr(fs, 'antenna_pattern', None) or None
+        # Per-link radio horizon (ITU-R P.525): d_km = 4.12·(√h_tx + √h_rx) — real tower heights
+        h_tx = getattr(fs, 'tx_altitude', None) or 15.0
+        h_rx = getattr(fs, 'rx_altitude', None) or 10.0
+        horizon = 4.12 * (math.sqrt(h_tx) + math.sqrt(h_rx))
         
         # TX station coverage (directional lobe toward RX)
         tx_coverage = fs_station_coverage_polygon(
@@ -750,6 +763,7 @@ def compute_all_fs_coverages(
             rx_antenna_gain_dbi=rx_gain,
             target_rx_dbm=target_rx_dbm,
             antenna_pattern=pattern,
+            horizon_km=horizon,
         )
         
         # RX station coverage (directional lobe toward TX)
@@ -765,6 +779,7 @@ def compute_all_fs_coverages(
             rx_antenna_gain_dbi=rx_gain,
             target_rx_dbm=target_rx_dbm,
             antenna_pattern=pattern,
+            horizon_km=horizon,
         )
         
         # Dog-bone: geometric UNION of TX + RX directional lobes
@@ -779,6 +794,7 @@ def compute_all_fs_coverages(
             azimuth_deg=azimuth,
             target_rx_dbm=target_rx_dbm,
             antenna_pattern=pattern,
+            horizon_km=horizon,
         )
         
         # Link corridor (convex hull — kept for backward compatibility / allocation checks)
@@ -792,11 +808,20 @@ def compute_all_fs_coverages(
             beamwidth_deg=bw,
             azimuth_deg=azimuth,
             antenna_pattern=pattern,
+            horizon_km=horizon,
         )
         
-        # Max distance on main beam
+        # Max distance on main beam (per-link horizon)
         eirp = fs.tx_power + fs.tx_antenna_gain
-        max_d = distance_for_rx_level(eirp, rx_gain, freq_mhz, target_rx_dbm)
+        max_d = distance_for_rx_level(eirp, rx_gain, freq_mhz, target_rx_dbm, horizon_km=horizon)
+
+        # Link's own received power at the far-end dish (real link budget check)
+        rx_power_dbm = None
+        d_km = getattr(fs, 'distance_km', None) or 0
+        if d_km and d_km > 0.001:
+            own_rx_gain = getattr(fs, 'rx_antenna_gain', 0.0) or 0.0
+            fspl_db = 20.0 * math.log10(d_km) + 20.0 * math.log10(freq_mhz) + 32.45
+            rx_power_dbm = round(eirp + own_rx_gain - fspl_db, 1)
         
         result[str(fs.id)] = {
             "name": fs.name,
@@ -806,6 +831,7 @@ def compute_all_fs_coverages(
             "dogbone": dogbone,
             "link_corridor": corridor,
             "max_distance_km": round(max_d, 2),
+            "rx_power_dbm": rx_power_dbm,
             "freq_mhz": round(freq_mhz, 1),
             "freq_low": fs.freq_low,
             "freq_high": fs.freq_high,

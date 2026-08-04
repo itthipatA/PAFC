@@ -426,6 +426,9 @@ export default function FSLinkManager() {
                                 <span className="text-xs font-mono text-white/80">{link.license?.class_of_emission ?? '—'}</span>
                                 <span className="text-xs text-white/60">{link.license?.distance_km ?? dist.toFixed(2)} กม.</span>
                                 <span className="text-xs text-white/60">EIRP {eirp.toFixed(1)} dBm</span>
+                                <span className={`text-xs font-mono ${(link.license?.rx_power_dbm ?? -99) > -80 ? 'text-emerald-300' : 'text-amber-300'}`}>
+                                  Pr {link.license?.rx_power_dbm ?? '—'} dBm
+                                </span>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <StatusBadge status={link.status} />
