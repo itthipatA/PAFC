@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment, type FormEvent } from 'react'
 import {
   PlusCircle,
   Pencil,
@@ -62,6 +62,61 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${m.cls}`}>
       {m.label}
     </span>
+  )
+}
+
+/* ── Station row (pair view — แนวทาง B) ───────────────────── */
+
+function shortAddr(code: string, addr: string | null | undefined): string {
+  if (!addr) return '—'
+  let a = addr.replace(/^[A-Z0-9]+ ?: ?/, '')  // strip leading station code
+  a = a.replace(/ \| /g, ' · ')
+  return a.length > 64 ? `${a.slice(0, 62)}…` : a
+}
+
+function StationRow({
+  code,
+  side,
+  address,
+  lat,
+  lon,
+  azimuth,
+  height,
+  hub,
+  band,
+}: {
+  code: string
+  side: 'TX' | 'RX'
+  address: string
+  lat: number
+  lon: number
+  azimuth: number
+  height: number | null
+  hub: boolean
+  band: string
+}) {
+  return (
+    <tr className={`${band} bg-white border-b border-[#F0F0EC] hover:bg-[#F8F8F5]`}>
+      <td className="px-4 py-2.5">
+        <span className="font-semibold text-[#1A1A2E]">{code}</span>
+        {hub && (
+          <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#FFDAD6] text-[#C00000]">
+            hub
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-2.5">
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${side === 'TX' ? 'bg-[#1A1A2E] text-white' : 'bg-[#C00000] text-white'}`}>
+          {side}
+        </span>
+      </td>
+      <td className="px-4 py-2.5 text-xs text-[#666666] max-w-[300px]">{address}</td>
+      <td className="px-4 py-2.5 text-xs font-mono text-[#333333]">
+        {lat.toFixed(5)}, {lon.toFixed(5)}
+      </td>
+      <td className="px-4 py-2.5 text-xs font-mono text-[#333333]">{azimuth.toFixed(1)}°</td>
+      <td className="px-4 py-2.5 text-xs text-[#333333]">{height != null ? `${height} ม.` : '—'}</td>
+    </tr>
   )
 }
 
@@ -251,16 +306,24 @@ export default function FSLinkManager() {
   const totalPages = Math.ceil(links.length / PAGE_SIZE)
   const displayed = links.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
+  // Hub detection — station codes that appear in more than one link
+  const stationCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const l of links) {
+      if (l.license?.tx_code) m.set(l.license.tx_code, (m.get(l.license.tx_code) ?? 0) + 1)
+      if (l.license?.rx_code) m.set(l.license.rx_code, (m.get(l.license.rx_code) ?? 0) + 1)
+    }
+    return m
+  }, [links])
+  const isHub = (code: string) => (stationCounts.get(code) ?? 0) > 1
+
   /* ── Render ─────────────────────────────────────────── */
 
   const headerRowCls =
     'text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide'
-  const dataCellCls = 'px-4 py-2.5 text-sm text-[#333333]'
-  const dataMonoCls = 'px-4 py-2.5 text-sm font-mono text-[#333333]'
-  const actionCellCls = 'px-4 py-2.5 text-right'
 
   return (
-    <div className="h-full flex flex-col bg-[#F5F5F0] font-[TH_Sarabun_New]">
+    <div className="h-full flex flex-col bg-[#F5F5F0] font-[Sarabun]">
       {/* ══════════ Page Header ══════════ */}
       <div className="flex items-center justify-between px-6 py-5">
         <div>
@@ -328,70 +391,87 @@ export default function FSLinkManager() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-[#1A1A2E] text-white">
-                    <th className={`${headerRowCls} rounded-tl-lg`}>ชื่อ FS Link</th>
-                    <th className={headerRowCls}>ผู้ให้บริการ</th>
-                    <th className={headerRowCls}>ความถี่ (MHz)</th>
-                    <th className={headerRowCls}>BW</th>
-                    <th className={headerRowCls}>Class of Emission</th>
-                    <th className={headerRowCls}>เสา (ม.)</th>
-                    <th className={headerRowCls}>ระยะ (กม.)</th>
-                    <th className={headerRowCls}>EIRP</th>
-                    <th className={headerRowCls}>สถานะ</th>
-                    <th className={`${headerRowCls} text-right rounded-tr-lg`}>จัดการ</th>
+                    <th className={`${headerRowCls} rounded-tl-lg`}>สถานี</th>
+                    <th className={headerRowCls}>บทบาท</th>
+                    <th className={headerRowCls}>ที่ตั้ง</th>
+                    <th className={headerRowCls}>พิกัด</th>
+                    <th className={headerRowCls}>Azimuth</th>
+                    <th className={`${headerRowCls} rounded-tr-lg`}>ความสูง</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayed.map((link, i) => {
-                    const dist = haversineKm(
-                      link.tx.lat, link.tx.lon,
-                      link.rx.lat, link.rx.lon,
-                    )
-                    const eirp = link.rf.tx_power + link.rf.tx_antenna_gain
-                    const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-[#FAFAFA]'
+                    const nameParts = link.name.includes('-') ? link.name.split('-') : [link.name, '']
+                    const txCode = link.license?.tx_code ?? nameParts[0]
+                    const rxCode = link.license?.rx_code ?? nameParts[1]
+                    const dist = haversineKm(link.tx.lat, link.tx.lon, link.rx.lat, link.rx.lon)
+                    const eirp = link.license?.eirp ?? link.rf.tx_power + link.rf.tx_antenna_gain
+                    const bandCls = 'border-l-[3px] border-l-[#C00000]'
                     return (
-                      <tr
-                        key={link.id}
-                        className={`${rowBg} hover:bg-[#F0F0F0] transition-colors border-b border-[#F0F0EC]`}
-                      >
-                        <td className={dataCellCls}>
-                          <span className="font-semibold text-[#1A1A2E]">{link.name}</span>
-                          <span className="block text-xs text-[#888888] mt-0.5">
-                            {link.tx.lat.toFixed(4)}&deg;, {link.tx.lon.toFixed(4)}&deg;
-                            {' → '}
-                            {link.rx.lat.toFixed(4)}&deg;, {link.rx.lon.toFixed(4)}&deg;
-                          </span>
-                        </td>
-                        <td className={dataCellCls}>{link.operator}</td>
-                        <td className={dataMonoCls}>
-                          {link.frequency.low.toLocaleString()}–{link.frequency.high.toLocaleString()}
-                        </td>
-                        <td className={dataMonoCls}>{link.frequency.bandwidth}</td>
-                        <td className={dataMonoCls}>{link.license?.class_of_emission ?? '—'}</td>
-                        <td className={dataMonoCls}>{link.license?.antenna_diameter ?? '—'}</td>
-                        <td className={dataMonoCls}>{dist.toFixed(2)}</td>
-                        <td className={dataMonoCls}>{eirp.toFixed(1)} dBm</td>
-                        <td className={dataCellCls}>
-                          <StatusBadge status={link.status} />
-                        </td>
-                        <td className={actionCellCls}>
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => openEdit(link)}
-                              className="p-1.5 text-[#666666] hover:text-[#C00000] hover:bg-red-50 rounded transition-colors"
-                              title="แก้ไข"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => confirmDelete(link)}
-                              className="p-1.5 text-[#666666] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                              title="ลบ"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                      <Fragment key={link.id}>
+                        {/* ── Group header: link pair summary ── */}
+                        <tr className="bg-[#1A1A2E] text-white">
+                          <td colSpan={6} className="px-4 py-2.5">
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <div className="flex items-center gap-2.5 flex-wrap">
+                                <Radio className="w-4 h-4 text-[#FF8A80]" />
+                                <span className="mono font-bold text-sm">
+                                  {txCode} <span className="text-[#FF8A80]">⇄</span> {rxCode}
+                                </span>
+                                <span className="text-xs text-white/60">{link.operator}</span>
+                                <span className="text-xs font-mono text-white/80">
+                                  {link.frequency.low.toLocaleString()}–{link.frequency.high.toLocaleString()} MHz
+                                </span>
+                                <span className="text-xs text-white/60">BW {link.frequency.bandwidth}</span>
+                                <span className="text-xs font-mono text-white/80">{link.license?.class_of_emission ?? '—'}</span>
+                                <span className="text-xs text-white/60">{link.license?.distance_km ?? dist.toFixed(2)} กม.</span>
+                                <span className="text-xs text-white/60">EIRP {eirp.toFixed(1)} dBm</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <StatusBadge status={link.status} />
+                                <button
+                                  onClick={() => openEdit(link)}
+                                  className="p-1.5 text-white/60 hover:text-white hover:bg-white/10 rounded transition-colors"
+                                  title="แก้ไข"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => confirmDelete(link)}
+                                  className="p-1.5 text-white/60 hover:text-[#FF8A80] hover:bg-white/10 rounded transition-colors"
+                                  title="ลบ"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ── TX station ── */}
+                        <StationRow
+                          code={txCode}
+                          side="TX"
+                          address={shortAddr(txCode, link.license?.tx_address)}
+                          lat={link.tx.lat}
+                          lon={link.tx.lon}
+                          azimuth={link.rf.azimuth}
+                          height={link.tx.altitude}
+                          hub={isHub(txCode)}
+                          band={bandCls}
+                        />
+                        {/* ── RX station ── */}
+                        <StationRow
+                          code={rxCode}
+                          side="RX"
+                          address={shortAddr(rxCode, link.license?.rx_address)}
+                          lat={link.rx.lat}
+                          lon={link.rx.lon}
+                          azimuth={(link.rf.azimuth + 180) % 360}
+                          height={link.rx.altitude}
+                          hub={isHub(rxCode)}
+                          band={bandCls}
+                        />
+                      </Fragment>
                     )
                   })}
                 </tbody>
