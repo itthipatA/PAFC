@@ -10,3 +10,8 @@
 - **Graph consumers (17):** file:frontend/src/components/MapView.tsx, file:frontend/src/components/LoginPage.tsx, file:frontend/src/components/FSLinkManager.tsx, file:frontend/src/components/IMTManager.tsx, file:frontend/src/components/IMTAddWorkspace.tsx, file:frontend/src/components/QueryPanel.tsx, file:frontend/src/contexts/AuthContext.tsx, file:backend/app/api/auth.py, config:backend/app/core/config.py, module:backend/app/api/__init__.py + 7 more
 - **Status:** predicted (pending verification)
 
+### 2026-08-04 10:54 — Add 9 real FS-link columns (class_of_emission, antenna_diameter, eirp, quantity, tx/rx_code, distance_km, tx/rx_address) + F.699-9 antenna_pattern generator + ingest 60 real AWN links replacing 11 mock rows
+- **Source files:** backend/app/models/fs_link.py, backend/app/api/fs_links.py, backend/app/services/antenna_pattern.py, backend/scripts/ingest_fs_links.py
+- **Graph consumers (5):** file:backend/app/db/database.py, file:backend/app/models/fs_link.py, file:backend/app/models/fs_link.py, file:backend/app/db/database.py, file:backend/app/api/fs_links.py
+- **Status:** predicted (pending verification)
+

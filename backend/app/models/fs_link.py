@@ -1,8 +1,8 @@
 """
 Fixed Service Link Model — incumbent microwave links
 """
-from sqlalchemy import Column, String, Float, DateTime, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Float, Integer, Text, DateTime, func
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 from app.db.database import Base
 
@@ -38,10 +38,21 @@ class FSLink(Base):
     polarization = Column(String(10), nullable=True)  # H, V, or dual
 
     # Antenna pattern for directional calculation (Phase 37)
-    antenna_pattern = Column(String, nullable=True)  # JSON string — azimuth→gain mapping
+    antenna_pattern = Column(JSONB, nullable=True)  # JSON — ITU-R F.699-9 pattern doc
+
+    # Real AWN license data (2026-08-04 — migration 006)
+    class_of_emission = Column(String(20), nullable=True)   # e.g. 28M0D7W
+    antenna_diameter = Column(Float, nullable=True)          # m
+    eirp = Column(Float, nullable=True)                      # dBm (tx_power + tx_antenna_gain)
+    quantity = Column(Integer, default=1)                    # number of radio units
+    tx_code = Column(String(20), nullable=True, index=True)  # station code (e.g. BTT1M)
+    rx_code = Column(String(20), nullable=True, index=True)
+    distance_km = Column(Float, nullable=True)               # link length
+    tx_address = Column(Text, nullable=True)                 # locality / land-title reference
+    rx_address = Column(Text, nullable=True)
 
     # Computed link corridor polygon (Phase 37)
-    link_polygon = Column(String, nullable=True)  # GeoJSON polygon string
+    link_polygon = Column(JSONB, nullable=True)  # GeoJSON polygon
 
     # Additional
     channel_plan = Column(String(50), nullable=True)

@@ -159,6 +159,17 @@ def _fs_to_dict(link: FSLink) -> dict:
             "polarization": link.polarization,
         },
         "channel_plan": link.channel_plan,
+        "license": {
+            "class_of_emission": link.class_of_emission,
+            "antenna_diameter": link.antenna_diameter,
+            "eirp": link.eirp,
+            "quantity": link.quantity,
+            "tx_code": link.tx_code,
+            "rx_code": link.rx_code,
+            "distance_km": link.distance_km,
+            "tx_address": link.tx_address,
+            "rx_address": link.rx_address,
+        },
         "status": link.status,
         "created_at": str(link.created_at),
     }
