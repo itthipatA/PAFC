@@ -6,7 +6,7 @@ import csv
 import io
 from app.db.database import get_db
 from app.models.fs_link import FSLink
-from app.services.fs_coverage import compute_all_fs_coverages
+from app.services.fs_coverage import compute_all_fs_coverages, RX_THRESHOLD_DBM_VIS
 
 router = APIRouter()
 
@@ -17,7 +17,7 @@ async def get_fs_coverage(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(FSLink).where(FSLink.status == "active"))
     links = result.scalars().all()
     
-    coverages = compute_all_fs_coverages(links)
+    coverages = compute_all_fs_coverages(links, target_rx_dbm=RX_THRESHOLD_DBM_VIS)
     
     result_dict = {}
     for fid, cov in coverages.items():

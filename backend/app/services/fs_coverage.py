@@ -27,8 +27,15 @@ except ImportError:
 
 # ── Constants ────────────────────────────────────────────────────────────
 
-# -120 dBm detection threshold (user-specified)
+# -120 dBm detection threshold (user-specified) — used for interference assessment
 RX_THRESHOLD_DBM = -120.0
+
+# Visualization threshold for the map coverage polygons (2026-08-04)
+# The -120 dBm contour saturates at the radio-horizon cap in nearly every direction
+# (F.699-9 conservative sidelobe floor is high), producing a circle. -85 dBm is a
+# realistic operating contour — the directional beam / beamwidth / azimuth become visible.
+# Allocation/interference analysis keeps using RX_THRESHOLD_DBM (-120).
+RX_THRESHOLD_DBM_VIS = -85.0
 
 # Radio Horizon Cap — realistic for 5 GHz microwave (typical range 10-30 km)
 # ITU-R P.525: d_max_km = 4.12 * (√h1 + √h2)
