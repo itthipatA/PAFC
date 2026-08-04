@@ -4,9 +4,12 @@
 
 ## Current
 
-- **Phase:** 38.2 (Map Search Box Fix)
-- **Git commit:** 3d3a4c6
-- **Services:** backend=8001 (running), frontend=5173 (running), db=5432 (running)
+- **Phase:** 38.3 (Real AWN FS Link Data — 2026-08-04)
+- **Git commit:** (after 7fe254e) — "feat: ingest 60 real AWN FS links + ITU-R F.699-9 antenna patterns"
+- **Services:** backend=8001 (running), frontend=5173 (running), db=5432 (running), ngrok → lilith-whalelike-lisa.ngrok-free.dev (PAFC public)
+- **DB:** fs_links = 60 REAL AWN links (mock 11 rows cleared). Migration 006 added: class_of_emission, antenna_diameter, eirp, quantity, tx_code, rx_code, distance_km, tx_address, rx_address. antenna_pattern/link_polygon model = JSONB (match schema).
+- **Data source:** Google Sheet 19L21No7tBfcX7QrqezM-gAa-3CfGwbzzbBgI6eTdOUU tabs FS_Links_Geocoded / FS_Stations_Geocoded (60 links, operator AWN, 4800-4990 MHz, 28M0D7W). Pailin 7 GHz link excluded per user.
+- **Tools:** backend/app/services/antenna_pattern.py (ITU-R F.699-9, section 2.2.1, 0.1° = 3601 pts) + backend/scripts/ingest_fs_links.py (CSV → TRUNCATE → insert). Re-ingest: export FS_Stations_Geocoded → CSV → run ingest with --clear.
 
 ## Engineering Status
 
