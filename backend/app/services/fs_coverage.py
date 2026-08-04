@@ -702,15 +702,22 @@ def _point_in_polygon(lat: float, lon: float, coords: List[List[float]]) -> bool
 def compute_all_fs_coverages(
     fs_links: list,
     target_rx_dbm: float = RX_THRESHOLD_DBM,
+    victim_rx_gain_dbi: Optional[float] = None,
 ) -> dict:
     """
     Compute coverage polygons for all FS links in the database.
-    
+
     Args:
         fs_links: list of FSLink ORM objects (must have tx_lat, tx_lon, rx_lat, rx_lon,
                   tx_power, tx_antenna_gain, rx_antenna_gain, freq_low, freq_high,
                   beamwidth_deg, azimuth)
-    
+        target_rx_dbm: received-power contour threshold (default -120 dBm interference level)
+        victim_rx_gain_dbi: gain of the receiving victim antenna. Default None → uses the
+                  link's own rx_antenna_gain (far-end dish, e.g. 29.2 dBi). Pass 0.0 for an
+                  omnidirectional victim (correct for IMT-interference footprint / map visual —
+                  the long "hundreds of km" range is boresight-only; with a dish gain at every
+                  angle the contour saturates the horizon cap and looks circular).
+
     Returns:
         {
             "<link_id>": {
@@ -728,7 +735,7 @@ def compute_all_fs_coverages(
         freq_mhz = (fs.freq_low + fs.freq_high) / 2.0
         azimuth = _bearing(fs.tx_lat, fs.tx_lon, fs.rx_lat, fs.rx_lon)  # always compute from coordinates
         bw = getattr(fs, 'beamwidth_deg', 3.0) or 3.0
-        rx_gain = getattr(fs, 'rx_antenna_gain', 0.0) or 0.0
+        rx_gain = victim_rx_gain_dbi if victim_rx_gain_dbi is not None else (getattr(fs, 'rx_antenna_gain', 0.0) or 0.0)
         pattern = getattr(fs, 'antenna_pattern', None) or None
         
         # TX station coverage (directional lobe toward RX)
