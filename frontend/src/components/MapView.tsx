@@ -37,31 +37,39 @@ interface MapViewProps {
 }
 
 // Map styles
-export const MAP_STYLES: Record<string, { label: string; url: string; attribution: string }> = {
-  voyager: {
-    label: 'Voyager',
-    url: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-    attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://osm.org">OSM</a>',
-  },
+// 2026-08-31: CARTO raster tiles ปั๊มลายน้ำ "API KEY REQUIRED" → เปลี่ยน basemap เป็น
+// OpenFreeMap vector styles (ฟรี ไม่มี key ไม่มีลายน้ำ) + Esri satellite (raster, ยังฟรี)
+// type: 'vector' → style URL (map.setStyle), type: 'raster' → tile URL (setTiles)
+export const MAP_STYLES: Record<string, { label: string; url: string; attribution: string; type: 'vector' | 'raster' }> = {
   positron: {
-    label: 'Positron',
-    url: 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-    attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://osm.org">OSM</a>',
+    label: 'Light',
+    url: 'https://tiles.openfreemap.org/styles/positron',
+    attribution: '© <a href="https://osm.org">OSM</a> © <a href="https://openfreemap.org">OpenFreeMap</a>',
+    type: 'vector',
+  },
+  voyager: {
+    label: 'Streets',
+    url: 'https://tiles.openfreemap.org/styles/liberty',
+    attribution: '© <a href="https://osm.org">OSM</a> © <a href="https://openfreemap.org">OpenFreeMap</a>',
+    type: 'vector',
   },
   dark: {
-    label: 'Dark Matter',
-    url: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-    attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://osm.org">OSM</a>',
+    label: 'Dark',
+    url: 'https://tiles.openfreemap.org/styles/dark',
+    attribution: '© <a href="https://osm.org">OSM</a> © <a href="https://openfreemap.org">OpenFreeMap</a>',
+    type: 'vector',
   },
   satellite: {
     label: 'Satellite',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: '© <a href="https://www.esri.com/">Esri</a>',
+    type: 'raster',
   },
   osm: {
     label: 'OSM Basic',
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '© <a href="https://osm.org">OSM</a>',
+    type: 'raster',
   },
 }
 
@@ -248,17 +256,17 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: {
-        version: 8,
+      style: style.type === 'vector' ? style.url : {
+        version: 8 as const,
         sources: {
           basemap: {
-            type: 'raster',
+            type: 'raster' as const,
             tiles: [style.url],
             tileSize: 256,
             attribution: style.attribution,
           },
         },
-        layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
+        layers: [{ id: 'basemap', type: 'raster' as const, source: 'basemap' }],
       },
       center: [100.5, 13.75],
       zoom: 8,
@@ -335,11 +343,25 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   useEffect(() => {
     if (!mapRef.current) return
     const map = mapRef.current
-    const source = map.getSource('basemap') as maplibregl.RasterTileSource
-    if (!source) return
-
     const style = MAP_STYLES[mapStyle] || MAP_STYLES.positron
-    source.setTiles([style.url])
+
+    if (style.type === 'vector') {
+      map.setStyle(style.url)
+    } else {
+      const source = map.getSource('basemap') as maplibregl.RasterTileSource | undefined
+      if (source) {
+        source.setTiles([style.url])
+      } else {
+        // current style is vector — swap to inline raster style
+        map.setStyle({
+          version: 8,
+          sources: {
+            basemap: { type: 'raster', tiles: [style.url], tileSize: 256, attribution: style.attribution },
+          },
+          layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
+        })
+      }
+    }
   }, [mapStyle])
 
   // Update cursor based on click mode
