@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { LogIn, Shield } from 'lucide-react'
 import MapView, { MAP_STYLES } from './MapView'
 import type { AllocationBlock } from '../types'
+import { isGoogleMapsConfigured } from '../lib/googleMaps'
 
 interface PublicDashboardProps {
   onNavigateLogin: () => void
@@ -11,7 +12,7 @@ export default function PublicDashboard({ onNavigateLogin }: PublicDashboardProp
   const [selectedLat, setSelectedLat] = useState<number | null>(null)
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
   const [blocks] = useState<AllocationBlock[]>([])
-  const [mapStyle] = useState('voyager')
+  const [mapStyle] = useState(isGoogleMapsConfigured() ? 'google' : 'voyager')
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
     setSelectedLat(lat)

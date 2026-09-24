@@ -5,6 +5,7 @@ import MaplibreGeocoder, { MaplibreGeocoderFeatureResults } from '@maplibre/mapl
 import { circle, buffer } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
 import type { AllocationBlock, IMTAllocation } from '../types'
+import { createTileSession, getGoogleTileUrl } from '../lib/googleTiles'
 
 export interface HighlightStation {
   name: string
@@ -40,7 +41,7 @@ interface MapViewProps {
 // 2026-08-31: CARTO raster tiles ปั๊มลายน้ำ "API KEY REQUIRED" → เปลี่ยน basemap เป็น
 // OpenFreeMap vector styles (ฟรี ไม่มี key ไม่มีลายน้ำ) + Esri satellite (raster, ยังฟรี)
 // type: 'vector' → style URL (map.setStyle), type: 'raster' → tile URL (setTiles)
-export const MAP_STYLES: Record<string, { label: string; url: string; attribution: string; type: 'vector' | 'raster' }> = {
+export const MAP_STYLES: Record<string, { label: string; url: string; attribution: string; type: 'vector' | 'raster'; googleMapType?: 'roadmap' | 'satellite' }> = {
   positron: {
     label: 'Light',
     url: 'https://tiles.openfreemap.org/styles/positron',
@@ -70,6 +71,20 @@ export const MAP_STYLES: Record<string, { label: string; url: string; attributio
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '© <a href="https://osm.org">OSM</a>',
     type: 'raster',
+  },
+  google: {
+    label: 'Google',
+    url: '',
+    attribution: '© Google',
+    type: 'raster',
+    googleMapType: 'roadmap',
+  },
+  google_satellite: {
+    label: 'Google Satellite',
+    url: '',
+    attribution: '© Google',
+    type: 'raster',
+    googleMapType: 'satellite',
   },
 }
 
@@ -247,12 +262,16 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   onMapClickRef.current = onMapClick
   const onVertexDragRef = useRef(onVertexDrag)
   onVertexDragRef.current = onVertexDrag
+  const mapStyleRef = useRef(mapStyle)
+  mapStyleRef.current = mapStyle
 
   // Init map
   useEffect(() => {
     if (!containerRef.current) return
 
-    const style = MAP_STYLES[mapStyle] || MAP_STYLES.positron
+    const rawInit = MAP_STYLES[mapStyle] || MAP_STYLES.positron
+    // Google entries need an async session token — boot on voyager, the style-switch effect upgrades
+    const style = rawInit.googleMapType ? MAP_STYLES.voyager : rawInit
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -343,24 +362,44 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   useEffect(() => {
     if (!mapRef.current) return
     const map = mapRef.current
-    const style = MAP_STYLES[mapStyle] || MAP_STYLES.positron
+    const requested = mapStyle
+    const style = MAP_STYLES[requested] || MAP_STYLES.positron
 
-    if (style.type === 'vector') {
-      map.setStyle(style.url)
-    } else {
+    const applyRasterTiles = (tileUrl: string) => {
       const source = map.getSource('basemap') as maplibregl.RasterTileSource | undefined
       if (source) {
-        source.setTiles([style.url])
+        source.setTiles([tileUrl])
       } else {
         // current style is vector — swap to inline raster style
         map.setStyle({
           version: 8,
           sources: {
-            basemap: { type: 'raster', tiles: [style.url], tileSize: 256, attribution: style.attribution },
+            basemap: { type: 'raster', tiles: [tileUrl], tileSize: 256, attribution: style.attribution },
           },
           layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
         })
       }
+    }
+
+    if (style.googleMapType) {
+      // Google Map Tiles API: fetch session token, then apply same raster logic
+      createTileSession(style.googleMapType)
+        .then((session) => {
+          if (mapStyleRef.current !== requested) return // stale: style changed mid-flight
+          applyRasterTiles(getGoogleTileUrl(session))
+        })
+        .catch((err) => {
+          console.warn('Google basemap unavailable, falling back to Streets:', err)
+          if (mapStyleRef.current !== requested) return
+          map.setStyle(MAP_STYLES.voyager.url)
+        })
+      return
+    }
+
+    if (style.type === 'vector') {
+      map.setStyle(style.url)
+    } else {
+      applyRasterTiles(style.url)
     }
   }, [mapStyle])
 

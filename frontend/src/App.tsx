@@ -19,6 +19,7 @@ import IMTAddWorkspace from './components/IMTAddWorkspace'
 import PolygonCreator from './components/PolygonCreator'
 import QueryPanel from './components/QueryPanel'
 import { useAuth } from './contexts/AuthContext'
+import { isGoogleMapsConfigured } from './lib/googleMaps'
 
 type Tab = 'dashboard' | 'fslinks' | 'imt' | 'polygon' | 'search'
 
@@ -52,7 +53,7 @@ function AuthenticatedApp({
 
   const [selectedLat, setSelectedLat] = useState<number | null>(null)
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
-  const [mapStyle, setMapStyle] = useState('voyager')
+  const [mapStyle, setMapStyle] = useState(isGoogleMapsConfigured() ? 'google' : 'voyager')
   const [showDashboardWorkspace, setShowDashboardWorkspace] = useState(false)
   const [workspaceClosing, setWorkspaceClosing] = useState(false)
   const [workspaceCellRadius, setWorkspaceCellRadius] = useState(500)
