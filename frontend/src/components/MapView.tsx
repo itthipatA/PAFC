@@ -5,6 +5,7 @@ import MaplibreGeocoder, { MaplibreGeocoderFeatureResults } from '@maplibre/mapl
 import { circle, buffer } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
 import type { AllocationBlock, IMTAllocation } from '../types'
+import LayerSwitcher from './LayerSwitcher'
 import { createTileSession, getGoogleTileUrl } from '../lib/googleTiles'
 import { isGoogleMapsConfigured } from '../lib/googleMaps'
 import { createPlaceAutocompleteElement, searchTextFirst } from '../lib/placesSearch'
@@ -37,6 +38,7 @@ interface MapViewProps {
     cell_radius_m?: number
   } | null
   view3D?: boolean
+  onMapStyleChange?: (style: string) => void
 }
 
 // Map styles
@@ -244,7 +246,7 @@ const LAYER_IDS = {
   cellRadiusSource: 'cell-radius-source',
 }
 
-export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames, polygonVertices, onVertexDrag, parcelPolygon, parcelTowers, parcelCentroid, packResults, view3D }: MapViewProps) {
+export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, mapStyle, cellRadius, centerLat, centerLon, clickMode = 'place', workspaceOpen, highlightStationNames, polygonVertices, onVertexDrag, parcelPolygon, parcelTowers, parcelCentroid, packResults, view3D, onMapStyleChange }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
@@ -266,6 +268,8 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
   onVertexDragRef.current = onVertexDrag
   const mapStyleRef = useRef(mapStyle)
   mapStyleRef.current = mapStyle
+  const onMapStyleChangeRef = useRef(onMapStyleChange)
+  onMapStyleChangeRef.current = onMapStyleChange
 
   // Init map
   useEffect(() => {
@@ -448,16 +452,22 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     }
 
     if (style.googleMapType) {
-      // Google Map Tiles API: fetch session token, then apply same raster logic
+      // Google Map Tiles API: fetch session token, then apply same raster logic.
+      // Guards: BOTH map identity (StrictMode double-mount leaves a removed map
+      // whose getSource throws) AND style (user switched mid-flight).
       createTileSession(style.googleMapType)
         .then((session) => {
+          if (mapRef.current !== map) return // stale: map remounted mid-flight
           if (mapStyleRef.current !== requested) return // stale: style changed mid-flight
           applyRasterTiles(getGoogleTileUrl(session))
         })
         .catch((err) => {
+          if (mapRef.current !== map) return // stale: current map's own attempt decides
           console.warn('Google basemap unavailable, falling back to Streets:', err)
           if (mapStyleRef.current !== requested) return
           map.setStyle(MAP_STYLES.voyager.url)
+          // Honest sync: tell the parent so the menu stops lying about the active style
+          onMapStyleChangeRef.current?.('voyager')
         })
       return
     }
@@ -936,7 +946,11 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     }
   }, [view3D, polygonVertices])
 
-  return <div ref={containerRef} className="w-full h-full" />
+  return (
+    <div ref={containerRef} className="w-full h-full relative">
+      {onMapStyleChange && <LayerSwitcher current={mapStyle} onChange={onMapStyleChange} />}
+    </div>
+  )
 }
 
 // ── Polygon Creator Layers ─────────────────────────────────────────

@@ -124,6 +124,7 @@ function AuthenticatedApp({
             selectedLon={selectedLon}
             blocks={[]}
             mapStyle={mapStyle}
+            onMapStyleChange={setMapStyle}
             cellRadius={workspaceCellRadius}
             centerLat={selectedLat}
             centerLon={selectedLon}
@@ -229,6 +230,7 @@ function AuthenticatedApp({
             selectedLon={selectedLon}
             blocks={[]}
             mapStyle={mapStyle}
+            onMapStyleChange={setMapStyle}
             cellRadius={workspaceCellRadius}
             centerLat={selectedLat}
             centerLon={selectedLon}
