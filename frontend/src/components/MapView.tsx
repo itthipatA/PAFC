@@ -6,6 +6,8 @@ import { circle, buffer } from '@turf/turf'
 import { useAuth } from '../contexts/AuthContext'
 import type { AllocationBlock, IMTAllocation } from '../types'
 import { createTileSession, getGoogleTileUrl } from '../lib/googleTiles'
+import { isGoogleMapsConfigured } from '../lib/googleMaps'
+import { createPlaceAutocompleteElement } from '../lib/placesSearch'
 
 export interface HighlightStation {
   name: string
@@ -291,45 +293,93 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
       zoom: 8,
     })
 
-    // Geocoder — search places like Google Maps (top-left, above zoom)
-    const geocoder = new MaplibreGeocoder(
-      {
-        forwardGeocode: async (config): Promise<MaplibreGeocoderFeatureResults> => {
-          const q = typeof config.query === 'string' ? config.query : ''
-          if (!q) return { type: 'FeatureCollection', features: [] }
-          const resp = await fetch(
-            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=geojson&limit=5&accept-language=th`
-          )
-          if (!resp.ok) return { type: 'FeatureCollection', features: [] }
-          const data = await resp.json()
-          // Transform Nominatim → Carmen GeoJSON (geocoder needs text/place_name at feature level)
-          return {
-            type: 'FeatureCollection' as const,
-            features: data.features.map((f: any) => ({
-              ...f,
-              text: f.properties?.name || '',
-              place_name: f.properties?.display_name || '',
-              language: 'th',
-            })),
-          }
+    // Search (top-left, above zoom): official Google PlaceAutocompleteElement
+    // when a key is configured, otherwise the Nominatim geocoder exactly as
+    // before. Any Maps JS / places load failure silently swaps in Nominatim.
+    const addNominatimGeocoder = () => {
+      const geocoder = new MaplibreGeocoder(
+        {
+          forwardGeocode: async (config): Promise<MaplibreGeocoderFeatureResults> => {
+            const q = typeof config.query === 'string' ? config.query : ''
+            if (!q) return { type: 'FeatureCollection', features: [] }
+            const resp = await fetch(
+              `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=geojson&limit=5&accept-language=th`
+            )
+            if (!resp.ok) return { type: 'FeatureCollection', features: [] }
+            const data = await resp.json()
+            // Transform Nominatim → Carmen GeoJSON (geocoder needs text/place_name at feature level)
+            return {
+              type: 'FeatureCollection' as const,
+              features: data.features.map((f: any) => ({
+                ...f,
+                text: f.properties?.name || '',
+                place_name: f.properties?.display_name || '',
+                language: 'th',
+              })),
+            }
+          },
         },
-      },
-      {
-        maplibregl: maplibregl,
-        showResultMarkers: true,
-        showResultsWhileTyping: true,
-        placeholder: 'ค้นหาสถานที่...',
-        marker: true,
-        flyTo: true,
-        language: 'th',
-        countries: 'TH',
-        limit: 5,
-        debounceSearch: 300,
-      }
-    )
+        {
+          maplibregl: maplibregl,
+          showResultMarkers: true,
+          showResultsWhileTyping: true,
+          placeholder: 'ค้นหาสถานที่...',
+          marker: true,
+          flyTo: true,
+          language: 'th',
+          countries: 'TH',
+          limit: 5,
+          debounceSearch: 300,
+        }
+      )
 
-    map.addControl(geocoder, 'top-left')
-    geocoderRef.current = geocoder
+      map.addControl(geocoder, 'top-left')
+      geocoderRef.current = geocoder
+    }
+
+    if (!isGoogleMapsConfigured()) {
+      addNominatimGeocoder()
+    } else {
+      // Async load: guard against unmount mid-flight via mapRef (cleanup nulls it)
+      void (async () => {
+        try {
+          const autocompleteEl = await createPlaceAutocompleteElement()
+          if (mapRef.current !== map) return
+          const holder = document.createElement('div')
+          holder.className = 'maplibregl-ctrl'
+          holder.appendChild(autocompleteEl)
+          const googleControl: maplibregl.IControl = {
+            onAdd: () => holder,
+            onRemove: () => {
+              holder.parentNode?.removeChild(holder)
+            },
+          }
+          let searchMarker: maplibregl.Marker | null = null
+          const onPlaceSelect = async (event: Event) => {
+            try {
+              const place = (event as google.maps.places.PlaceSelectEvent).place
+              if (!place) return
+              await place.fetchFields({ fields: ['location', 'displayName', 'formattedAddress'] })
+              const loc = place.location
+              if (!loc) return
+              const lat = loc.lat()
+              const lon = loc.lng()
+              if (searchMarker) searchMarker.remove()
+              searchMarker = new maplibregl.Marker().setLngLat([lon, lat]).addTo(map)
+              map.flyTo({ center: [lon, lat], zoom: 14 })
+            } catch (_e) { /* keep current view on details failure */ }
+          }
+          // 'gmp-select' is the current event name, 'gmp-placeselect' the legacy one
+          autocompleteEl.addEventListener('gmp-select', onPlaceSelect)
+          autocompleteEl.addEventListener('gmp-placeselect', onPlaceSelect)
+          map.addControl(googleControl, 'top-left')
+        } catch (_e) {
+          // Maps JS / places unreachable (key, referrer, quota) — fall back silently
+          if (mapRef.current !== map) return
+          addNominatimGeocoder()
+        }
+      })()
+    }
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
 
     // Default cursor

@@ -18,14 +18,17 @@ export function isGoogleMapsConfigured(): boolean {
   return typeof key === 'string' && key.length > 10;
 }
 
-let cachedPromise: Promise<typeof google> | null = null;
+let cachedPromises: Record<string, Promise<typeof google>> = {};
 
-// Injects the Google Maps JS API script exactly once and reuses the
+// Injects the Google Maps JS API script once per library set and reuses the
 // cached promise on subsequent calls. Resolves with window.google.
-export function loadGoogleMaps(): Promise<typeof google> {
-  if (cachedPromise) return cachedPromise;
+export function loadGoogleMaps(opts?: { libraries?: string[] }): Promise<typeof google> {
+  const libraries = (opts?.libraries ?? []).slice().sort();
+  const cacheKey = libraries.join(',');
+  const cached = cachedPromises[cacheKey];
+  if (cached) return cached;
 
-  cachedPromise = new Promise((resolve, reject) => {
+  const promise = new Promise<typeof google>((resolve, reject) => {
     // Reuse the global if the script was already loaded elsewhere.
     if (typeof window !== 'undefined' && window.google) {
       resolve(window.google);
@@ -45,6 +48,7 @@ export function loadGoogleMaps(): Promise<typeof google> {
       region: 'TH',
       loading: 'async',
     });
+    if (libraries.length > 0) params.set('libraries', libraries.join(','));
     script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
     script.async = true;
     script.defer = true;
@@ -56,5 +60,7 @@ export function loadGoogleMaps(): Promise<typeof google> {
     document.head.appendChild(script);
   });
 
-  return cachedPromise;
+  cachedPromises[cacheKey] = promise;
+
+  return promise;
 }
