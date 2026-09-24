@@ -1,17 +1,15 @@
-# Impact Plan — 2026-08-04 11:05:12 ICT
+# Impact Plan — 2026-09-24 16:36:18 ICT
 
 ## Change
-- **What:** fs_coverage consume per-link antenna_pattern JSONB instead of simplified hardcoded F.699; FSLinkManager table shows license fields (class_of_emission, antenna_diameter)
-- **Files changed:** backend/app/services/fs_coverage.py, frontend/src/types.ts, frontend/src/components/FSLinkManager.tsx
+- **What:** Google Maps PREP: add @vis.gl/react-google-maps dep + new src/lib/googleMaps.ts loader + .env.example (no existing code touched, MapLibre stays default)
+- **Files changed:** frontend/package.json, frontend/src/lib/googleMaps.ts, frontend/.env.example
 
 ## Graph Analysis (Understand-Anything)
-- Changed nodes: file:frontend/src/components/FSLinkManager.tsx, file:frontend/src/types.ts
-- Consumer count: 3
+- Changed nodes: config:frontend/package.json
+- Consumer count: 1
 
 ### Consumers (from graph):
-1. `file:frontend/src/contexts/AuthContext.tsx` (imports)
-2. `file:frontend/src/types.ts` (imports)
-3. `file:backend/app/api/fs_links.py` (api_calls)
+1. `file:frontend/src/main.tsx` (defines_entry)
 
 ## Verification Checklist
 - [ ] All consumers from graph addressed?

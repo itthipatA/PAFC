@@ -20,3 +20,13 @@
 - **Graph consumers (3):** file:frontend/src/contexts/AuthContext.tsx, file:frontend/src/types.ts, file:backend/app/api/fs_links.py
 - **Status:** predicted (pending verification)
 
+### 2026-09-24 16:36 — Google Maps PREP: add @vis.gl/react-google-maps dep + new src/lib/googleMaps.ts loader + .env.example (no existing code touched, MapLibre stays default)
+- **Source files:** frontend/package.json, frontend/src/lib/googleMaps.ts, frontend/.env.example
+- **Graph consumers (1):** file:frontend/src/main.tsx
+- **Status:** predicted (pending verification)
+
+
+### Verification — 2026-09-24 16:39
+- **Status:** ⚠️ GAPS FOUND
+- **New consumers found (7):** see impact-plan.md
+
