@@ -11,14 +11,22 @@ function getApiKey(): string {
 }
 
 // Creates a tile session and returns the session token.
+// opts.overlay + layerTypes produce the transparent label layer used for
+// hybrid satellite (satellite imagery has no labels of its own).
 // Throws with the server message text when the request fails
 // (e.g. Map Tiles API not enabled on the key).
-export async function createTileSession(mapType: GoogleMapType): Promise<string> {
+export async function createTileSession(
+  mapType: GoogleMapType,
+  opts?: { overlay?: boolean; layerTypes?: string[] }
+): Promise<string> {
   const key = getApiKey();
+  const body: Record<string, unknown> = { mapType, language: 'th', region: 'TH' };
+  if (opts?.overlay) body.overlay = true;
+  if (opts?.layerTypes) body.layerTypes = opts.layerTypes;
   const res = await fetch(`https://tile.googleapis.com/v1/createSession?key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mapType, language: 'th', region: 'TH' }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const msg = await res.text();

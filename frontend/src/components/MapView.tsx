@@ -452,14 +452,43 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
     }
 
     if (style.googleMapType) {
-      // Google Map Tiles API: fetch session token, then apply same raster logic.
+      // Google Map Tiles API: fetch session token(s), then apply raster logic.
+      // Satellite imagery carries no labels — stack a transparent roadmap
+      // overlay session on top (true hybrid like Google Maps desktop).
       // Guards: BOTH map identity (StrictMode double-mount leaves a removed map
       // whose getSource throws) AND style (user switched mid-flight).
-      createTileSession(style.googleMapType)
-        .then((session) => {
+      const buildStyle = (tileUrl: string, overlayUrl?: string) => {
+        if (overlayUrl) {
+          map.setStyle({
+            version: 8,
+            sources: {
+              basemap: { type: 'raster', tiles: [tileUrl], tileSize: 256, attribution: style.attribution },
+              basemapOverlay: { type: 'raster', tiles: [overlayUrl], tileSize: 256 },
+            },
+            layers: [
+              { id: 'basemap', type: 'raster', source: 'basemap' },
+              { id: 'basemap-overlay', type: 'raster', source: 'basemapOverlay' },
+            ],
+          })
+        } else {
+          applyRasterTiles(tileUrl)
+        }
+      }
+      const sessionTask =
+        style.googleMapType === 'satellite'
+          ? Promise.all([
+              createTileSession('satellite'),
+              createTileSession('satellite', { overlay: true, layerTypes: ['layerRoadmap'] }),
+            ])
+          : createTileSession(style.googleMapType).then((s) => [s] as string[])
+      sessionTask
+        .then((sessions) => {
           if (mapRef.current !== map) return // stale: map remounted mid-flight
           if (mapStyleRef.current !== requested) return // stale: style changed mid-flight
-          applyRasterTiles(getGoogleTileUrl(session))
+          buildStyle(
+            getGoogleTileUrl(sessions[0]),
+            sessions[1] ? getGoogleTileUrl(sessions[1]) : undefined
+          )
         })
         .catch((err) => {
           if (mapRef.current !== map) return // stale: current map's own attempt decides
