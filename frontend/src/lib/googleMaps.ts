@@ -53,8 +53,25 @@ export function loadGoogleMaps(opts?: { libraries?: string[] }): Promise<typeof 
     script.async = true;
     script.defer = true;
     script.onload = () => {
-      if (window.google) resolve(window.google);
-      else reject(new Error('Google Maps script loaded without window.google'));
+      // loading=async bootstraps libraries AFTER script onload — the places
+      // namespace may not exist yet when onload fires (race → silent fallback
+      // to Nominatim at boot). importLibrary() is the official gate: it
+      // resolves only when the requested library is actually usable.
+      void (async () => {
+        try {
+          if (!window.google) throw new Error('Google Maps script loaded without window.google');
+          const mapsNs = window.google.maps as unknown as {
+            importLibrary?: (lib: string) => Promise<unknown>;
+          };
+          if (typeof mapsNs?.importLibrary === 'function') {
+            await Promise.all(libraries.map((lib) => mapsNs.importLibrary!(lib)));
+          }
+          if (window.google) resolve(window.google);
+          else reject(new Error('Google Maps script loaded without window.google'));
+        } catch (e) {
+          reject(e instanceof Error ? e : new Error('Google Maps library bootstrap failed'));
+        }
+      })();
     };
     script.onerror = () => reject(new Error('Failed to load Google Maps script'));
     document.head.appendChild(script);

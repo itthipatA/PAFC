@@ -13,8 +13,15 @@ export async function createPlaceAutocompleteElement(): Promise<google.maps.plac
     throw new Error('Missing VITE_GOOGLE_MAPS_API_KEY');
   }
   const g = await loadGoogleMaps({ libraries: ['places'] });
-  if (!g.maps?.places?.PlaceAutocompleteElement) {
-    throw new Error('Places library unavailable (check key restrictions and API enablement)');
+  // importLibrary() can resolve before the custom-element class is attached
+  // (lazy chunk) — poll briefly instead of trusting a single check.
+  // Proven 2026-09-24: boot-time check threw while the class appeared later.
+  const deadline = Date.now() + 5000;
+  while (typeof g.maps?.places?.PlaceAutocompleteElement !== 'function') {
+    if (Date.now() > deadline) {
+      throw new Error('Places library unavailable (check key restrictions and API enablement)');
+    }
+    await new Promise((r) => setTimeout(r, 100));
   }
   return new g.maps.places.PlaceAutocompleteElement({
     requestedRegion: 'TH',
