@@ -5,6 +5,57 @@
 
 import { loadGoogleMaps } from './googleMaps';
 
+export interface PlaceHit {
+  name: string;
+  address: string;
+  lat: number;
+  lon: number;
+}
+
+// Text Search for the top match (used for Enter-key parity with Google Maps:
+// the prediction rows live in closed shadow DOM, so Enter can't click them).
+// Returns null when nothing matches. Throws on API failure.
+export async function searchTextFirst(query: string): Promise<PlaceHit | null> {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+  if (!apiKey) {
+    throw new Error('Missing VITE_GOOGLE_MAPS_API_KEY');
+  }
+  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location',
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      languageCode: 'th',
+      regionCode: 'TH',
+      maxResultCount: 1,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Places Text Search failed: ${res.status}`);
+  }
+  const data = (await res.json()) as {
+    places?: Array<{
+      displayName?: { text?: string };
+      formattedAddress?: string;
+      location?: { latitude?: number; longitude?: number };
+    }>;
+  };
+  const top = data.places?.[0];
+  const lat = top?.location?.latitude;
+  const lon = top?.location?.longitude;
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+  return {
+    name: top?.displayName?.text ?? '',
+    address: top?.formattedAddress ?? '',
+    lat,
+    lon,
+  };
+}
+
 // Creates the official autocomplete web component with Thai language,
 // Thailand region bias, and the standard Thai placeholder.
 export async function createPlaceAutocompleteElement(): Promise<google.maps.places.PlaceAutocompleteElement> {

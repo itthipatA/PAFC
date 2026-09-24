@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 import type { AllocationBlock, IMTAllocation } from '../types'
 import { createTileSession, getGoogleTileUrl } from '../lib/googleTiles'
 import { isGoogleMapsConfigured } from '../lib/googleMaps'
-import { createPlaceAutocompleteElement } from '../lib/placesSearch'
+import { createPlaceAutocompleteElement, searchTextFirst } from '../lib/placesSearch'
 
 export interface HighlightStation {
   name: string
@@ -355,6 +355,11 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
             },
           }
           let searchMarker: maplibregl.Marker | null = null
+          const showSearchResult = (lat: number, lon: number) => {
+            if (searchMarker) searchMarker.remove()
+            searchMarker = new maplibregl.Marker().setLngLat([lon, lat]).addTo(map)
+            map.flyTo({ center: [lon, lat], zoom: 14 })
+          }
           const onPlaceSelect = async (event: Event) => {
             try {
               const place = (event as google.maps.places.PlaceSelectEvent).place
@@ -362,16 +367,27 @@ export default function MapView({ onMapClick, selectedLat, selectedLon, blocks, 
               await place.fetchFields({ fields: ['location', 'displayName', 'formattedAddress'] })
               const loc = place.location
               if (!loc) return
-              const lat = loc.lat()
-              const lon = loc.lng()
-              if (searchMarker) searchMarker.remove()
-              searchMarker = new maplibregl.Marker().setLngLat([lon, lat]).addTo(map)
-              map.flyTo({ center: [lon, lat], zoom: 14 })
+              showSearchResult(loc.lat(), loc.lng())
             } catch (_e) { /* keep current view on details failure */ }
           }
           // 'gmp-select' is the current event name, 'gmp-placeselect' the legacy one
           autocompleteEl.addEventListener('gmp-select', onPlaceSelect)
           autocompleteEl.addEventListener('gmp-placeselect', onPlaceSelect)
+          // Google Maps parity: Enter picks the top match via Text Search.
+          // (Prediction rows live in closed shadow DOM — unreachable from here.)
+          autocompleteEl.addEventListener('keydown', (event: Event) => {
+            if ((event as KeyboardEvent).key !== 'Enter') return
+            const q = (
+              autocompleteEl as unknown as { value?: unknown }
+            ).value
+            if (typeof q !== 'string' || !q.trim()) return
+            void (async () => {
+              try {
+                const hit = await searchTextFirst(q.trim())
+                if (hit && mapRef.current === map) showSearchResult(hit.lat, hit.lon)
+              } catch (_e) { /* keep current view on search failure */ }
+            })()
+          })
           map.addControl(googleControl, 'top-left')
         } catch (_e) {
           // Maps JS / places unreachable (key, referrer, quota) — fall back silently
