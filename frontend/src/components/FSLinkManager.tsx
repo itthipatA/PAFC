@@ -76,6 +76,62 @@ function shortAddr(code: string, addr: string | null | undefined): string {
   return a.length > 64 ? `${a.slice(0, 62)}…` : a
 }
 
+function fmtInt(v: number | null | undefined): string {
+  return v != null && Number.isFinite(v) ? v.toLocaleString() : '—'
+}
+
+function fmtFix(v: number | null | undefined, digits: number): string {
+  return v != null && Number.isFinite(v) ? v.toFixed(digits) : '—'
+}
+
+/* ── 5-segment signal meter ─────────────────────────── */
+function SignalMeter({ filled }: { filled: number }) {
+  return (
+    <span className="inline-flex items-center gap-[3px] ml-2 align-middle">
+      {Array.from({ length: 5 }, (_, i) => (
+        <span
+          key={i}
+          className="inline-block w-4 h-1.5 rounded-sm"
+          style={{ backgroundColor: i < filled ? '#C00000' : '#E5E5E0' }}
+        />
+      ))}
+    </span>
+  )
+}
+
+function eirpFill(eirp: number | null | undefined): number {
+  if (eirp == null || !Number.isFinite(eirp)) return 0
+  return Math.min(5, Math.max(1, Math.round((eirp - 30) / 8)))
+}
+
+function prFill(pr: number | null | undefined): number {
+  if (pr == null || !Number.isFinite(pr)) return 0
+  return Math.min(5, Math.max(1, Math.round((pr + 90) / 12)))
+}
+
+/* ── Spectrum strip: 4800–4990 step 10MHz (19 blocks) ── */
+function SpectrumStrip({ low, high }: { low: number | null | undefined; high: number | null | undefined }) {
+  return (
+    <div>
+      <div className="flex gap-[2px]">
+        {Array.from({ length: 19 }, (_, i) => {
+          const bStart = 4800 + i * 10
+          const bEnd = bStart + 10
+          const active = low != null && high != null && low < bEnd && high > bStart
+          return (
+            <div
+              key={i}
+              className="flex-1 h-4 rounded-[2px]"
+              style={{ backgroundColor: active ? '#C00000' : '#E5E5E0' }}
+              title={`${bStart}–${bEnd} MHz`}
+            />
+          )
+        })}
+      </div>
+      <div className="mt-1 text-[11px] text-[#888888]">แถบ 4800–4990 MHz</div>
+    </div>
+  )
+}
 function StationRow({
   code,
   side,
@@ -114,9 +170,9 @@ function StationRow({
       </td>
       <td className="px-4 py-2.5 text-xs text-[#666666] max-w-[300px]">{address}</td>
       <td className="px-4 py-2.5 text-xs font-mono-num text-[#333333]">
-        {lat.toFixed(5)}, {lon.toFixed(5)}
+        {lat != null && lon != null ? `${lat.toFixed(5)}, ${lon.toFixed(5)}` : '—'}
       </td>
-      <td className="px-4 py-2.5 text-xs font-mono-num text-[#333333]">{azimuth.toFixed(1)}°</td>
+      <td className="px-4 py-2.5 text-xs font-mono-num text-[#333333]">{azimuth != null ? `${azimuth.toFixed(1)}°` : '—'}</td>
       <td className="px-4 py-2.5 text-xs font-mono-num text-[#333333]">{height != null ? `${height} ม.` : '—'}</td>
     </tr>
   )
@@ -168,9 +224,10 @@ export default function FSLinkManager() {
   const [deleteTarget, setDeleteTarget] = useState<FSLink | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  // Sticky summary bar: operator filter + expand/collapse
+  // Sticky summary bar: operator filter
   const [operatorFilter, setOperatorFilter] = useState('ทั้งหมด')
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
+  // Link Passport expansion (per-group)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const fetchLinks = useCallback(async () => {
     setLoading(true)
@@ -327,7 +384,7 @@ export default function FSLinkManager() {
   const displayed = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   const toggleGroup = (id: string) => {
-    setCollapsedIds((prev) => {
+    setExpandedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -335,13 +392,13 @@ export default function FSLinkManager() {
     })
   }
 
-  const allCollapsed = displayed.length > 0 && displayed.every((l) => collapsedIds.has(l.id))
+  const allExpanded = displayed.length > 0 && displayed.every((l) => expandedIds.has(l.id))
 
   const toggleAll = () => {
-    if (allCollapsed) {
-      setCollapsedIds(new Set())
+    if (allExpanded) {
+      setExpandedIds(new Set())
     } else {
-      setCollapsedIds(new Set(filtered.map((l) => l.id)))
+      setExpandedIds(new Set(filtered.map((l) => l.id)))
     }
   }
 
@@ -456,7 +513,7 @@ export default function FSLinkManager() {
                   onClick={toggleAll}
                   className="px-3 py-1 text-xs font-semibold text-[#1A1A2E] border border-[#E5E5E0] rounded-full hover:border-[#1A1A2E] transition-colors"
                 >
-                  {allCollapsed ? 'ขยายทั้งหมด' : 'ยุบทั้งหมด'}
+                  {allExpanded ? 'ยุบทั้งหมด' : 'ขยายทั้งหมด'}
                 </button>
               </div>
             </div>
@@ -476,45 +533,60 @@ export default function FSLinkManager() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayed.map((link, i) => {
+                  {displayed.map((link) => {
                     const nameParts = link.name.includes('-') ? link.name.split('-') : [link.name, '']
                     const txCode = link.license?.tx_code ?? nameParts[0]
                     const rxCode = link.license?.rx_code ?? nameParts[1]
-                    const dist = haversineKm(link.tx.lat, link.tx.lon, link.rx.lat, link.rx.lon)
-                    const eirp = link.license?.eirp ?? link.rf.tx_power + link.rf.tx_antenna_gain
+                    const coordsOk =
+                      link.tx?.lat != null && link.tx?.lon != null &&
+                      link.rx?.lat != null && link.rx?.lon != null
+                    const dist = coordsOk
+                      ? haversineKm(link.tx.lat, link.tx.lon, link.rx.lat, link.rx.lon)
+                      : null
+                    const txP = link.rf?.tx_power
+                    const txG = link.rf?.tx_antenna_gain
+                    const eirp = link.license?.eirp
+                      ?? (txP != null && txG != null ? txP + txG : null)
+                    const pr = link.license?.rx_power_dbm ?? null
+                    const distShown = link.license?.distance_km ?? dist
+                    const rxAz = link.rf?.azimuth != null ? (link.rf.azimuth + 180) % 360 : null
                     const bandCls = 'border-l-[3px] border-l-[#C00000]'
-                    const isCollapsed = collapsedIds.has(link.id)
+                    const isExpanded = expandedIds.has(link.id)
+                    const isActive = link.status === 'active'
                     return (
                       <Fragment key={link.id}>
-                        {/* ── Group header: link pair summary ── */}
+                        {/* ── Group header: link pair summary (click toggles passport) ── */}
                         <tr className="bg-[#1A1A2E] text-white">
-                          <td colSpan={6} className="px-4 py-2.5">
+                          <td
+                            colSpan={6}
+                            className="px-4 py-2.5 cursor-pointer"
+                            onClick={() => toggleGroup(link.id)}
+                          >
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                               <div className="flex items-center gap-2.5 flex-wrap">
-                                <button
-                                  onClick={() => toggleGroup(link.id)}
-                                  className="p-1 text-white/60 hover:text-white hover:bg-white/10 rounded transition-colors"
-                                  title={isCollapsed ? 'ขยายทั้งหมด' : 'ยุบทั้งหมด'}
+                                <span
+                                  className="p-1 text-white/60 rounded"
+                                  title={isExpanded ? 'ยุบทั้งหมด' : 'ขยายทั้งหมด'}
                                 >
-                                  {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                </button>
+                                  {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                </span>
                                 <Radio className="w-4 h-4 text-[#FF8A80]" />
                                 <span className="font-mono-num font-bold text-sm">
                                   {txCode} <span className="text-[#FF8A80]">⇄</span> {rxCode}
                                 </span>
                                 <span className="text-xs text-white/60">{link.operator}</span>
                                 <span className="text-xs font-mono-num text-white/80">
-                                  {link.frequency.low.toLocaleString()}–{link.frequency.high.toLocaleString()} MHz
+                                  {fmtInt(link.frequency?.low)}–{fmtInt(link.frequency?.high)} MHz
                                 </span>
-                                <span className="text-xs text-white/60">BW <span className="font-mono-num">{link.frequency.bandwidth}</span></span>
+                                <span className="text-xs text-white/60">BW <span className="font-mono-num">{fmtInt(link.frequency?.bandwidth)}</span></span>
                                 <span className="text-xs font-mono-num text-white/80">{link.license?.class_of_emission ?? '—'}</span>
-                                <span className="text-xs text-white/60"><span className="font-mono-num">{link.license?.distance_km ?? dist.toFixed(2)}</span> กม.</span>
-                                <span className="text-xs text-white/60">EIRP <span className="font-mono-num">{eirp.toFixed(1)}</span> dBm</span>
-                                <span className={`text-xs font-mono-num ${(link.license?.rx_power_dbm ?? -99) > -80 ? 'text-emerald-300' : 'text-amber-300'}`}>
-                                  Pr {link.license?.rx_power_dbm ?? '—'} dBm
+                                <span className="text-xs text-white/60"><span className="font-mono-num">{fmtFix(distShown, 2)}</span> กม.</span>
+                                <span className="text-xs text-white/60">EIRP <span className="font-mono-num">{fmtFix(eirp, 1)}</span> dBm</span>
+                                <span className={`text-xs font-mono-num ${(pr ?? -99) > -80 ? 'text-emerald-300' : 'text-amber-300'}`}>
+                                  Pr {pr ?? '—'} dBm
                                 </span>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                                 <StatusBadge status={link.status} />
                                 <button
                                   onClick={() => openEdit(link)}
@@ -534,8 +606,130 @@ export default function FSLinkManager() {
                             </div>
                           </td>
                         </tr>
-                        {/* ── TX/RX stations (collapsible) ── */}
-                        {!isCollapsed && (
+                        {/* ── Link Passport (inline expansion) ── */}
+                        {isExpanded && (
+                        <tr>
+                          <td colSpan={6} className="bg-[#FAFAF7] px-4 py-3 border-b border-[#E5E5E0]">
+                            {/* Passport header: freq range + status */}
+                            <div className="flex items-center justify-between gap-3 flex-wrap pb-2 border-b border-[#E5E5E0]">
+                              <span className="font-mono-num font-bold text-lg text-[#1A1A2E]">
+                                {fmtInt(link.frequency?.low)}–{fmtInt(link.frequency?.high)} MHz
+                              </span>
+                              <span
+                                className="inline-block px-2 py-0.5 rounded text-xs font-medium"
+                                style={isActive
+                                  ? { backgroundColor: '#2E7D32', color: '#fff' }
+                                  : { backgroundColor: '#666666', color: '#fff' }}
+                              >
+                                {isActive ? 'ใช้งาน' : link.status}
+                              </span>
+                            </div>
+                            {/* 3-column fact grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-3">
+                              <div>
+                                <div className="text-xs font-semibold text-[#1A1A2E] mb-2 pb-1 border-b border-[#E5E5E0]">สถานี</div>
+                                <div className="space-y-2 text-xs">
+                                  <div>
+                                    <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#1A1A2E] text-white mr-1.5">TX</span>
+                                    <span className="font-semibold text-[#1A1A2E]">{txCode}</span>
+                                    <div className="text-[#666666] mt-0.5">{shortAddr(txCode, link.license?.tx_address)}</div>
+                                    <div className="font-mono-num text-[#333333]">
+                                      {link.tx?.lat != null && link.tx?.lon != null
+                                        ? `${link.tx.lat.toFixed(5)}, ${link.tx.lon.toFixed(5)}`
+                                        : '—'}
+                                    </div>
+                                    <div className="font-mono-num text-[#333333]">
+                                      {fmtFix(link.rf?.azimuth, 1)}° · {link.tx?.altitude != null ? `${link.tx.altitude} ม.` : '—'}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#C00000] text-white mr-1.5">RX</span>
+                                    <span className="font-semibold text-[#1A1A2E]">{rxCode}</span>
+                                    <div className="text-[#666666] mt-0.5">{shortAddr(rxCode, link.license?.rx_address)}</div>
+                                    <div className="font-mono-num text-[#333333]">
+                                      {link.rx?.lat != null && link.rx?.lon != null
+                                        ? `${link.rx.lat.toFixed(5)}, ${link.rx.lon.toFixed(5)}`
+                                        : '—'}
+                                    </div>
+                                    <div className="font-mono-num text-[#333333]">
+                                      {fmtFix(rxAz, 1)}° · {link.rx?.altitude != null ? `${link.rx.altitude} ม.` : '—'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs font-semibold text-[#1A1A2E] mb-2 pb-1 border-b border-[#E5E5E0]">RF</div>
+                                <dl className="space-y-1.5 text-xs">
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">กำลังส่ง</dt>
+                                    <dd className="font-mono-num text-[#333333]">{link.rf?.tx_power != null ? `${link.rf.tx_power} dBm` : '—'}</dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">เกน TX/RX</dt>
+                                    <dd className="font-mono-num text-[#333333]">
+                                      {link.rf?.tx_antenna_gain != null && link.rf?.rx_antenna_gain != null
+                                        ? `${link.rf.tx_antenna_gain}/${link.rf.rx_antenna_gain} dBi`
+                                        : '—'}
+                                    </dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">EIRP</dt>
+                                    <dd className="font-mono-num text-[#333333]">
+                                      {eirp != null ? `${fmtFix(eirp, 1)} dBm` : '—'}
+                                      <SignalMeter filled={eirpFill(eirp)} />
+                                    </dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">Pr</dt>
+                                    <dd className="font-mono-num text-[#333333]">
+                                      {pr != null ? `${pr} dBm` : '—'}
+                                      <SignalMeter filled={prFill(pr)} />
+                                    </dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">บีมวิดท์</dt>
+                                    <dd className="font-mono-num text-[#333333]">{link.rf?.beamwidth_deg != null ? `${link.rf.beamwidth_deg}°` : '—'}</dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">โพลาไรซ์</dt>
+                                    <dd className="font-mono-num text-[#333333]">{link.rf?.polarization ?? '—'}</dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">ระยะทาง</dt>
+                                    <dd className="font-mono-num text-[#333333]">{distShown != null ? `${fmtFix(distShown, 2)} กม.` : '—'}</dd>
+                                  </div>
+                                </dl>
+                              </div>
+                              <div>
+                                <div className="text-xs font-semibold text-[#1A1A2E] mb-2 pb-1 border-b border-[#E5E5E0]">ใบอนุญาต</div>
+                                <dl className="space-y-1.5 text-xs">
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">คลาส</dt>
+                                    <dd className="font-mono-num text-[#333333]">{link.license?.class_of_emission ?? '—'}</dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">รหัส TX/RX</dt>
+                                    <dd className="font-mono-num text-[#333333]">{txCode} / {rxCode}</dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">จาน</dt>
+                                    <dd className="font-mono-num text-[#333333]">{link.license?.antenna_diameter != null ? `${link.license.antenna_diameter} ม.` : '—'}</dd>
+                                  </div>
+                                  <div className="flex justify-between gap-2">
+                                    <dt className="text-[#666666]">จำนวน</dt>
+                                    <dd className="font-mono-num text-[#333333]">{link.license?.quantity ?? '—'}</dd>
+                                  </div>
+                                </dl>
+                              </div>
+                            </div>
+                            {/* Spectrum strip */}
+                            <div className="pt-1">
+                              <SpectrumStrip low={link.frequency?.low} high={link.frequency?.high} />
+                            </div>
+                          </td>
+                        </tr>
+                        )}
+                        {/* ── TX station (always shown) ── */}
                         <StationRow
                           code={txCode}
                           side="TX"
@@ -547,21 +741,18 @@ export default function FSLinkManager() {
                           hub={isHub(txCode)}
                           band={bandCls}
                         />
-                        )}
-                        {/* ── RX station ── */}
-                        {!isCollapsed && (
+                        {/* ── RX station (always shown) ── */}
                         <StationRow
                           code={rxCode}
                           side="RX"
                           address={shortAddr(rxCode, link.license?.rx_address)}
                           lat={link.rx.lat}
                           lon={link.rx.lon}
-                          azimuth={(link.rf.azimuth + 180) % 360}
+                          azimuth={rxAz ?? 0}
                           height={link.rx.altitude}
                           hub={isHub(rxCode)}
                           band={bandCls}
                         />
-                        )}
                       </Fragment>
                     )
                   })}
