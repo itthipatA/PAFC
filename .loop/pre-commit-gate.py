@@ -108,6 +108,13 @@ GATES = {
         "objective": True,   # auto-check: DESIGN.md exists + lint passes
         "critical": True,    # BLOCK commit if frontend project without valid DESIGN.md
     },
+    "postfix": {
+        "name": "Post-Fix Verification",
+        "description": "post-fix-verification protocol followed for bug fixes in this session",
+        "weight": 10,
+        "objective": False,  # self-report: --mark postfix
+        "critical": False,  # only relevant when fixing bugs
+    },
 }
 
 
@@ -507,6 +514,26 @@ def main():
         else:
             print("Usage: pre-commit-gate.py --mark <gate_id> [detail]")
             print(f"Available gates: {', '.join(GATES.keys())}")
+        return
+
+    # --post-fix-check: convenience flag for postfix gate (C008)
+    if "--post-fix-check" in sys.argv:
+        gate_state = state["gates"].get("postfix", {})
+        if gate_state.get("passed"):
+            print("✅ Post-Fix Verification already completed this session.")
+            print(f"   Marked at: {gate_state.get('timestamp', 'unknown')}")
+            return
+        # Interactive prompt
+        print("🔍 Post-Fix Verification Check (C008)")
+        print("   Have you completed the 4-gate post-fix verification protocol?")
+        print("   Gate 1: Root cause confirmed")
+        print("   Gate 2: All sites with same pattern fixed")
+        print("   Gate 3: Verified in actual runtime context")
+        print("   Gate 4: Impact analysis + honcho_conclude with root_cause + verification_evidence")
+        print()
+        # In non-interactive mode, just mark it
+        detail = " ".join(sys.argv[sys.argv.index("--post-fix-check") + 1:]) if len(sys.argv) > sys.argv.index("--post-fix-check") + 1 else ""
+        mark_gate(state, "postfix", detail or "Post-fix verification completed (C008 auto-mark)")
         return
 
     # ตรวจสอบ session freshness

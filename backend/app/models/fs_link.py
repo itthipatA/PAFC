@@ -45,8 +45,8 @@ class FSLink(Base):
     antenna_diameter = Column(Float, nullable=True)          # m
     eirp = Column(Float, nullable=True)                      # dBm (tx_power + tx_antenna_gain)
     quantity = Column(Integer, default=1)                    # number of radio units
-    tx_code = Column(String(20), nullable=True, index=True)  # station code (e.g. BTT1M)
-    rx_code = Column(String(20), nullable=True, index=True)
+    tx_code = Column(String(255), nullable=True, index=True)  # station code or full name (e.g. สถทค.เขาสลัดได)
+    rx_code = Column(String(255), nullable=True, index=True)
     distance_km = Column(Float, nullable=True)               # link length
     tx_address = Column(Text, nullable=True)                 # locality / land-title reference
     rx_address = Column(Text, nullable=True)
