@@ -18,6 +18,7 @@ import IMTManager from './components/IMTManager'
 import IMTAddWorkspace from './components/IMTAddWorkspace'
 import PolygonCreator from './components/PolygonCreator'
 import QueryPanel from './components/QueryPanel'
+import ProofStrip from './components/ProofStrip'
 import { useAuth } from './contexts/AuthContext'
 import { isGoogleMapsConfigured } from './lib/googleMaps'
 
@@ -50,6 +51,9 @@ function AuthenticatedApp({
 }) {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0)
+  const { fetchWithAuth } = useAuth()
+  const [fsCount, setFsCount] = useState<number | null>(null)
+  const [imtCount, setImtCount] = useState<number | null>(null)
 
   const [selectedLat, setSelectedLat] = useState<number | null>(null)
   const [selectedLon, setSelectedLon] = useState<number | null>(null)
@@ -81,6 +85,46 @@ function AuthenticatedApp({
     setSelectedLat(lat)
     setSelectedLon(lon)
   }, [])
+
+  const handlePlot = useCallback((lat: number, lon: number) => {
+    setTab('dashboard')
+    handleZoomTo(lat, lon)
+  }, [handleZoomTo])
+
+  // Sidebar badge counts — fetched once, tolerates bare array or { items: [...] }
+  useEffect(() => {
+    let cancelled = false
+    const countOf = (data: unknown): number => {
+      if (data && typeof data === 'object') {
+        const o = data as Record<string, unknown>
+        if (typeof o.count === 'number') return o.count
+        for (const k of ['links', 'allocations', 'items']) {
+          if (Array.isArray(o[k])) return (o[k] as unknown[]).length
+        }
+      }
+      if (Array.isArray(data)) return data.length
+      return 0
+    }
+    fetchWithAuth('/api/fs-links/')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled) setFsCount(countOf(data))
+      })
+      .catch(() => {
+        if (!cancelled) setFsCount(0)
+      })
+    fetchWithAuth('/api/imt/')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled) setImtCount(countOf(data))
+      })
+      .catch(() => {
+        if (!cancelled) setImtCount(0)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [fetchWithAuth])
 
   const handleOpenWorkspace = useCallback(() => {
     setShowDashboardWorkspace(true)
@@ -117,6 +161,7 @@ function AuthenticatedApp({
     if (tab === 'dashboard') {
       return (
         <div className="flex-1 relative overflow-hidden animate-fade-in">
+          <ProofStrip />
           <MapView
             key={dashboardRefreshKey}
             onMapClick={handleMapClick}
@@ -240,18 +285,37 @@ function AuthenticatedApp({
             polygonVertices={polygonVertices}
           />
 
-          {/* Floating "เพิ่มที่ดิน" button */}
+          {/* Polygon booking bar — bottom-center pill */}
           {!showPolygonWorkspace && (
-            <button
-              onClick={() => {
-                setShowPolygonWorkspace(true)
-                setPolygonVertices([])
-              }}
-              className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2.5 rounded-full text-sm font-semibold transition-colors shadow-lg z-10"
-            >
-              <PlusCircle className="w-4 h-4" />
-              เพิ่มที่ดิน
-            </button>
+            polygonDrawingMode ? (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-[#C00000] text-white pl-4 pr-1.5 py-1.5 rounded-full shadow-lg">
+                <span className="text-sm font-medium whitespace-nowrap">
+                  จุดที่ {polygonVertices.length} — แตะแผนที่เพื่อวางจุด
+                </span>
+                <button
+                  onClick={() => {
+                    setPolygonDrawingMode(false)
+                    setPolygonVertices([])
+                  }}
+                  className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1 rounded-full transition-colors"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            ) : (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+                <button
+                  onClick={() => {
+                    setShowPolygonWorkspace(true)
+                    setPolygonVertices([])
+                  }}
+                  className="flex items-center gap-1.5 bg-[#C00000] hover:bg-[#8B0000] text-white px-4 py-2.5 rounded-full text-sm font-semibold transition-colors shadow-lg"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  เริ่มวาดโพลีกอน
+                </button>
+              </div>
+            )
           )}
 
           {/* Polygon creator panel — slides from right (40% width) */}
@@ -285,7 +349,7 @@ function AuthenticatedApp({
     // search tab
     return (
       <div className="flex-1 overflow-hidden animate-fade-in">
-        <QueryPanel onZoomTo={handleZoomTo} />
+        <QueryPanel onZoomTo={handleZoomTo} {...{ onPlot: handlePlot }} />
       </div>
     )
   }
@@ -314,6 +378,15 @@ function AuthenticatedApp({
               >
                 <Icon className="w-5 h-5" />
               </button>
+              {(navTab === 'fslinks' || navTab === 'imt') &&
+                (navTab === 'fslinks' ? fsCount : imtCount) !== null && (
+                  <span
+                    className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-mono font-bold leading-none z-50"
+                    style={{ backgroundColor: '#C9A227', color: '#1A1A2E' }}
+                  >
+                    {navTab === 'fslinks' ? fsCount : imtCount}
+                  </span>
+                )}
               {/* Tooltip */}
               <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-[#1A1A2E] text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
                 {label}

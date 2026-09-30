@@ -26,6 +26,14 @@
   --dur-fast: 250ms;
   --dur-normal: 400ms;
   --dur-slow: 600ms;
+
+  /* PAFC theme tokens */
+  --pafc-accent: #C00000;
+  --pafc-accent-deep: #7A0000;
+  --pafc-accent-tint: #F9E8E6;
+  --pafc-gold: #C9A227;
+  --pafc-ink: #1A1A2E;
+  --pafc-paper: #F5F5F0;
 }
 
 /* ── Reduced Motion ─────────────────────────────────────── */
@@ -342,3 +350,22 @@ body {
 .stagger-8  { animation-delay: 350ms; }
 .stagger-9  { animation-delay: 400ms; }
 .stagger-10 { animation-delay: 450ms; }
+
+/* ── PAFC utilities ─────────────────────────────────────── */
+.font-mono-num {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.thin-table {
+  border-collapse: collapse;
+}
+
+.thin-table th,
+.thin-table td {
+  border-bottom: 1px solid #E5E5E0;
+}
+
+.thin-table tbody tr:hover {
+  background-color: #FAFAF7;
+}

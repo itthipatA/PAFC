@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext'
 
 interface QueryPanelProps {
   onZoomTo: (lat: number, lon: number) => void
+  onPlot?: (lat: number, lon: number) => void
 }
 
 type SearchTab = 'all' | 'fs' | 'imt'
@@ -28,8 +29,8 @@ interface FSResult {
   operator: string
   tx_lat: number
   tx_lon: number
-  rx_lat: number
-  rx_lon: number
+  rx_lat: number | null
+  rx_lon: number | null
   freq_low: number
   freq_high: number
   status: string
@@ -40,11 +41,36 @@ interface IMTResult {
   name: string
   site_owner: string
   station_type: string | null
-  center_lat: number
-  center_lon: number
+  center_lat: number | null
+  center_lon: number | null
   cell_radius: number
   status: string
   created_at: string
+}
+
+// ── Centroid of a GeoJSON Polygon/MultiPolygon (API has no center_lat/lon) ──
+function polygonCentroid(geojson: unknown): { lat: number; lon: number } | null {
+  try {
+    const g = geojson as { type?: string; coordinates?: unknown }
+    if (!g || !Array.isArray(g.coordinates)) return null
+    const rings: number[][][] =
+      g.type === 'Polygon'
+        ? (g.coordinates as number[][][])
+        : g.type === 'MultiPolygon'
+          ? (g.coordinates as number[][][][]).flat(1) as unknown as number[][][]
+          : []
+    const pts = rings.flat()
+    if (!pts.length) return null
+    let sx = 0
+    let sy = 0
+    for (const p of pts) {
+      sx += p[0]
+      sy += p[1]
+    }
+    return { lon: sx / pts.length, lat: sy / pts.length }
+  } catch {
+    return null
+  }
 }
 
 // ── Haversine distance (km) between two lat/lon points ────
@@ -66,7 +92,7 @@ function haversineKm(
 // ── Mini spectrum block colors ────────────────────────────
 const SPECTRUM_COLORS = ['#2E7D32', '#2E7D32', '#E65100', '#2E7D32', '#C62828', '#2E7D32', '#E65100', '#2E7D32', '#C62828', '#2E7D32']
 
-export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
+export default function QueryPanel({ onZoomTo, onPlot }: QueryPanelProps) {
   const { fetchWithAuth } = useAuth()
   const reducedMotion = useReducedMotion()
 
@@ -77,6 +103,41 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
   const [imtResults, setImtResults] = useState<IMTResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [recentQueries, setRecentQueries] = useState<string[]>([])
+
+  // ── Recent queries (localStorage, max 5, dedup) ──────────
+  const RECENT_KEY = 'pafc-recent-queries'
+  const EXAMPLE_QUERIES = ['ลิงก์ใกล้ Amata 20km', 'IMT 4800-4900 MHz']
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RECENT_KEY)
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr)) {
+          setRecentQueries(
+            arr.filter((q) => typeof q === 'string' && q.trim()).slice(0, 5),
+          )
+        }
+      }
+    } catch {
+      /* localStorage unavailable — ignore */
+    }
+  }, [])
+
+  const saveRecentQuery = useCallback((term: string) => {
+    const t = term.trim()
+    if (!t) return
+    setRecentQueries((prev) => {
+      const next = [t, ...prev.filter((q) => q !== t)].slice(0, 5)
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+      } catch {
+        /* localStorage unavailable — ignore */
+      }
+      return next
+    })
+  }, [])
 
   // ── API fetch callbacks (preserved logic) ───────────────
   const searchFS = useCallback(async () => {
@@ -113,17 +174,20 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
       const res = await fetchWithAuth('/api/imt/')
       if (!res.ok) throw new Error('ไม่สามารถโหลด IMT Allocations ได้')
       const data = await res.json()
-      const allocations = (data.allocations || data || []).map((a: any) => ({
-        id: a.id,
-        name: a.name,
-        site_owner: a.site_owner,
-        station_type: a.station_type,
-        center_lat: a.center_lat,
-        center_lon: a.center_lon,
-        cell_radius: a.cell_radius,
-        status: 'active',
-        created_at: a.created_at,
-      }))
+      const allocations = (data.allocations || data || []).map((a: any) => {
+        const c = polygonCentroid(a.polygon_geojson)
+        return {
+          id: a.id,
+          name: a.name,
+          site_owner: a.site_owner,
+          station_type: a.station_type,
+          center_lat: c?.lat ?? null,
+          center_lon: c?.lon ?? null,
+          cell_radius: a.cell_radius,
+          status: 'active',
+          created_at: a.created_at,
+        }
+      })
       setImtResults(allocations)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
@@ -186,7 +250,7 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
       <div className="px-6 py-5 bg-white border-b border-[#E5E5E0]">
         <h2
           className="text-[1.5rem] font-bold text-[#1A1A2E] mb-1"
-          style={{ fontFamily: 'TH Sarabun New, Sarabun, sans-serif' }}
+          style={{ fontFamily: 'Sarabun, sans-serif' }}
         >
           ค้นหา
         </h2>
@@ -205,12 +269,12 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { saveRecentQuery(query); handleSearch() } }}
             placeholder="ค้นหาด้วยชื่อ, พิกัด, operator..."
             className="w-full pl-12 pr-10 py-3.5 border border-[#CCCCCC] rounded-lg text-base
                        focus:outline-none focus:ring-2 focus:ring-[#C00000]/20 focus:border-[#C00000]
                        transition-shadow placeholder:text-[#999999] bg-white"
-            style={{ fontFamily: 'TH Sarabun New, Sarabun, sans-serif' }}
+            style={{ fontFamily: 'Sarabun, sans-serif' }}
           />
           {query && (
             <button
@@ -222,6 +286,40 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
             </button>
           )}
         </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════
+          ZONE 2b: RECENT + EXAMPLE QUERY CHIPS
+          ══════════════════════════════════════════════════════ */}
+      <div className="px-6 pb-3 flex flex-wrap items-center gap-2">
+        {recentQueries.map((rq) => (
+          <button
+            key={rq}
+            onClick={() => {
+              setQuery(rq)
+              saveRecentQuery(rq)
+              handleSearch()
+            }}
+            className="px-3 py-1.5 text-xs font-medium rounded-full bg-white text-[#333333]
+                       border border-[#CCCCCC] hover:border-[#C00000]/40 hover:text-[#C00000]
+                       transition-colors truncate max-w-full"
+            style={{ fontFamily: 'Sarabun, sans-serif' }}
+          >
+            {rq}
+          </button>
+        ))}
+        {EXAMPLE_QUERIES.map((ex) => (
+          <button
+            key={ex}
+            onClick={() => setQuery(ex)}
+            className="px-3 py-1.5 text-xs font-medium rounded-full bg-transparent text-[#666666]
+                       border border-dashed border-[#CCCCCC] hover:border-[#C00000]/40 hover:text-[#C00000]
+                       transition-colors truncate max-w-full"
+            style={{ fontFamily: 'Sarabun, sans-serif' }}
+          >
+            {ex}
+          </button>
+        ))}
       </div>
 
       {/* ══════════════════════════════════════════════════════
@@ -244,7 +342,7 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                 ? 'bg-[#C00000] text-white'
                 : 'bg-white text-[#666666] border border-[#CCCCCC] hover:bg-gray-50 hover:text-[#333333]'
             }`}
-            style={{ fontFamily: 'TH Sarabun New, Sarabun, sans-serif' }}
+            style={{ fontFamily: 'Sarabun, sans-serif' }}
           >
             <Icon className="w-3.5 h-3.5" />
             {label}
@@ -306,6 +404,9 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                 ? 'คลิก "ค้นหา" เพื่อโหลดข้อมูล'
                 : 'ไม่พบผลการค้นหา'}
             </p>
+            <p className="text-xs mt-1.5">
+              พิมพ์คำค้น หรือแตะคำค้นล่าสุดด้านบน
+            </p>
           </div>
         )}
 
@@ -340,7 +441,7 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                     {/* ── Name (bold) ───────────────────── */}
                     <h4
                       className="font-bold text-[#1A1A2E] text-sm group-hover:text-[#C00000] transition-colors truncate"
-                      style={{ fontFamily: 'TH Sarabun New, Sarabun, sans-serif' }}
+                      style={{ fontFamily: 'Sarabun, sans-serif' }}
                     >
                       {r.name}
                     </h4>
@@ -365,7 +466,9 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                         className="text-[#666666]"
                         style={{ fontFamily: 'JetBrains Mono, monospace' }}
                       >
-                        ({r.rx_lat.toFixed(4)}, {r.rx_lon.toFixed(4)})
+                        {r.rx_lat != null && r.rx_lon != null
+                          ? `(${r.rx_lat.toFixed(4)}, ${r.rx_lon.toFixed(4)})`
+                          : '—'}
                       </span>
                     </p>
 
@@ -382,9 +485,25 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                         className="text-xs text-[#333333]"
                         style={{ fontFamily: 'JetBrains Mono, monospace' }}
                       >
-                        {haversineKm(r.tx_lat, r.tx_lon, r.rx_lat, r.rx_lon).toFixed(1)} km
+                        {r.rx_lat != null && r.rx_lon != null
+                          ? `${haversineKm(r.tx_lat, r.tx_lon, r.rx_lat, r.rx_lon).toFixed(1)} km`
+                          : '—'}
                       </span>
                     </div>
+
+                    {/* ── Plot button ────────────────────────── */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (onPlot) onPlot(r.tx_lat, r.tx_lon)
+                        else onZoomTo(r.tx_lat, r.tx_lon)
+                      }}
+                      className="mt-2 px-3 py-1 text-xs font-medium rounded-lg border border-[#C00000]/40
+                                 text-[#C00000] hover:bg-[#C00000] hover:text-white transition-colors"
+                      style={{ fontFamily: 'Sarabun, sans-serif' }}
+                    >
+                      แสดงบนแผนที่
+                    </button>
                   </div>
 
                   {/* ── "ซูมไปที่" on hover ──────────────── */}
@@ -421,7 +540,7 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                     ? undefined
                     : { animationDelay: staggerDelay(idx) }
                 }
-                onClick={() => onZoomTo(r.center_lat, r.center_lon)}
+                onClick={() => { if (r.center_lat != null && r.center_lon != null) onZoomTo(r.center_lat, r.center_lon) }}
               >
                 <div className="flex items-start gap-3">
                   {/* ── Radio icon ──────────────────────── */}
@@ -433,7 +552,7 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                     {/* ── Name (bold) ───────────────────── */}
                     <h4
                       className="font-bold text-[#1A1A2E] text-sm group-hover:text-[#C00000] transition-colors truncate"
-                      style={{ fontFamily: 'TH Sarabun New, Sarabun, sans-serif' }}
+                      style={{ fontFamily: 'Sarabun, sans-serif' }}
                     >
                       {r.name}
                     </h4>
@@ -449,7 +568,9 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                       <span
                         style={{ fontFamily: 'JetBrains Mono, monospace' }}
                       >
-                        {r.center_lat.toFixed(4)}, {r.center_lon.toFixed(4)}
+                        {r.center_lat != null && r.center_lon != null
+                          ? `${r.center_lat.toFixed(4)}, ${r.center_lon.toFixed(4)}`
+                          : '—'}
                       </span>
                       <span className="text-[#CCCCCC] mx-1.5">|</span>
                       <span
@@ -471,6 +592,21 @@ export default function QueryPanel({ onZoomTo }: QueryPanelProps) {
                         />
                       ))}
                     </div>
+
+                    {/* ── Plot button ────────────────────────── */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (r.center_lat == null || r.center_lon == null) return
+                        if (onPlot) onPlot(r.center_lat, r.center_lon)
+                        else onZoomTo(r.center_lat, r.center_lon)
+                      }}
+                      className="mt-2 px-3 py-1 text-xs font-medium rounded-lg border border-[#C00000]/40
+                                 text-[#C00000] hover:bg-[#C00000] hover:text-white transition-colors"
+                      style={{ fontFamily: 'Sarabun, sans-serif' }}
+                    >
+                      แสดงบนแผนที่
+                    </button>
                   </div>
 
                   {/* ── "ซูมไปที่" on hover ──────────────── */}

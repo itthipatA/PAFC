@@ -6,6 +6,8 @@ import {
   RefreshCw,
   X,
   Radio,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { ScaleIn } from './AnimatePresence'
 import { useAuth } from '../contexts/AuthContext'
@@ -96,7 +98,7 @@ function StationRow({
   band: string
 }) {
   return (
-    <tr className={`${band} bg-white border-b border-[#F0F0EC] hover:bg-[#F8F8F5]`}>
+    <tr className={`${band} border-b border-[#E5E5E0] hover:bg-[#FAFAF7]`}>
       <td className="px-4 py-2.5">
         <span className="font-semibold text-[#1A1A2E]">{code}</span>
         {hub && (
@@ -111,11 +113,11 @@ function StationRow({
         </span>
       </td>
       <td className="px-4 py-2.5 text-xs text-[#666666] max-w-[300px]">{address}</td>
-      <td className="px-4 py-2.5 text-xs font-mono text-[#333333]">
+      <td className="px-4 py-2.5 text-xs font-mono-num text-[#333333]">
         {lat.toFixed(5)}, {lon.toFixed(5)}
       </td>
-      <td className="px-4 py-2.5 text-xs font-mono text-[#333333]">{azimuth.toFixed(1)}°</td>
-      <td className="px-4 py-2.5 text-xs text-[#333333]">{height != null ? `${height} ม.` : '—'}</td>
+      <td className="px-4 py-2.5 text-xs font-mono-num text-[#333333]">{azimuth.toFixed(1)}°</td>
+      <td className="px-4 py-2.5 text-xs font-mono-num text-[#333333]">{height != null ? `${height} ม.` : '—'}</td>
     </tr>
   )
 }
@@ -144,7 +146,7 @@ const inputCls =
   'bg-white placeholder-gray-400'
 
 const monoInputCls =
-  inputCls + ' font-mono'
+  inputCls + ' font-mono-num'
 
 /* ══════════════════════════════════════════════════════════
    FSLinkManager — Gridgeist redesign
@@ -165,6 +167,10 @@ export default function FSLinkManager() {
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<FSLink | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Sticky summary bar: operator filter + expand/collapse
+  const [operatorFilter, setOperatorFilter] = useState('ทั้งหมด')
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
 
   const fetchLinks = useCallback(async () => {
     setLoading(true)
@@ -303,8 +309,46 @@ export default function FSLinkManager() {
     }
   }
 
-  const totalPages = Math.ceil(links.length / PAGE_SIZE)
-  const displayed = links.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const OPERATOR_CHIPS = ['ทั้งหมด', 'AWN', 'NT', 'TRUE', 'อื่นๆ']
+
+  const matchOperator = (op: string | null | undefined, chip: string): boolean => {
+    if (chip === 'ทั้งหมด') return true
+    const norm = (op ?? '').trim().toUpperCase()
+    if (chip === 'อื่นๆ') return !['AWN', 'NT', 'TRUE'].includes(norm)
+    return norm === chip
+  }
+
+  const filtered = useMemo(
+    () => links.filter((l) => matchOperator(l.operator, operatorFilter)),
+    [links, operatorFilter],
+  )
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const displayed = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  const toggleGroup = (id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const allCollapsed = displayed.length > 0 && displayed.every((l) => collapsedIds.has(l.id))
+
+  const toggleAll = () => {
+    if (allCollapsed) {
+      setCollapsedIds(new Set())
+    } else {
+      setCollapsedIds(new Set(filtered.map((l) => l.id)))
+    }
+  }
+
+  const selectOperator = (chip: string) => {
+    setOperatorFilter(chip)
+    setPage(0)
+  }
 
   // Hub detection — station codes that appear in more than one link
   const stationCounts = useMemo(() => {
@@ -384,11 +428,43 @@ export default function FSLinkManager() {
             </button>
           </div>
         ) : (
-          /* ── Table ── */
+          <>
+          {/* ── Sticky summary bar + Table ── */}
+          <div className="sticky top-0 z-10 bg-[#F5F5F0] py-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap bg-white rounded-lg border border-[#E5E5E0] px-4 py-2.5"
+                 style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {OPERATOR_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    onClick={() => selectOperator(chip)}
+                    className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
+                      operatorFilter === chip
+                        ? 'bg-[#1A1A2E] text-white border-[#1A1A2E]'
+                        : 'text-[#4A4A5E] border-[#E5E5E0] hover:border-[#1A1A2E]'
+                    }`}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="text-xs text-[#666666]">
+                  แสดง <span className="font-mono-num font-semibold text-[#1A1A2E]">{filtered.length}</span> จาก <span className="font-mono-num font-semibold text-[#1A1A2E]">{links.length}</span> รายการ
+                </span>
+                <button
+                  onClick={toggleAll}
+                  className="px-3 py-1 text-xs font-semibold text-[#1A1A2E] border border-[#E5E5E0] rounded-full hover:border-[#1A1A2E] transition-colors"
+                >
+                  {allCollapsed ? 'ขยายทั้งหมด' : 'ยุบทั้งหมด'}
+                </button>
+              </div>
+            </div>
+          </div>
           <div className="bg-white rounded-lg border border-[#E5E5E0] overflow-hidden"
                style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm thin-table">
                 <thead>
                   <tr className="bg-[#1A1A2E] text-white">
                     <th className={`${headerRowCls} rounded-tl-lg`}>สถานี</th>
@@ -407,6 +483,7 @@ export default function FSLinkManager() {
                     const dist = haversineKm(link.tx.lat, link.tx.lon, link.rx.lat, link.rx.lon)
                     const eirp = link.license?.eirp ?? link.rf.tx_power + link.rf.tx_antenna_gain
                     const bandCls = 'border-l-[3px] border-l-[#C00000]'
+                    const isCollapsed = collapsedIds.has(link.id)
                     return (
                       <Fragment key={link.id}>
                         {/* ── Group header: link pair summary ── */}
@@ -414,19 +491,26 @@ export default function FSLinkManager() {
                           <td colSpan={6} className="px-4 py-2.5">
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                               <div className="flex items-center gap-2.5 flex-wrap">
+                                <button
+                                  onClick={() => toggleGroup(link.id)}
+                                  className="p-1 text-white/60 hover:text-white hover:bg-white/10 rounded transition-colors"
+                                  title={isCollapsed ? 'ขยายทั้งหมด' : 'ยุบทั้งหมด'}
+                                >
+                                  {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </button>
                                 <Radio className="w-4 h-4 text-[#FF8A80]" />
-                                <span className="mono font-bold text-sm">
+                                <span className="font-mono-num font-bold text-sm">
                                   {txCode} <span className="text-[#FF8A80]">⇄</span> {rxCode}
                                 </span>
                                 <span className="text-xs text-white/60">{link.operator}</span>
-                                <span className="text-xs font-mono text-white/80">
+                                <span className="text-xs font-mono-num text-white/80">
                                   {link.frequency.low.toLocaleString()}–{link.frequency.high.toLocaleString()} MHz
                                 </span>
-                                <span className="text-xs text-white/60">BW {link.frequency.bandwidth}</span>
-                                <span className="text-xs font-mono text-white/80">{link.license?.class_of_emission ?? '—'}</span>
-                                <span className="text-xs text-white/60">{link.license?.distance_km ?? dist.toFixed(2)} กม.</span>
-                                <span className="text-xs text-white/60">EIRP {eirp.toFixed(1)} dBm</span>
-                                <span className={`text-xs font-mono ${(link.license?.rx_power_dbm ?? -99) > -80 ? 'text-emerald-300' : 'text-amber-300'}`}>
+                                <span className="text-xs text-white/60">BW <span className="font-mono-num">{link.frequency.bandwidth}</span></span>
+                                <span className="text-xs font-mono-num text-white/80">{link.license?.class_of_emission ?? '—'}</span>
+                                <span className="text-xs text-white/60"><span className="font-mono-num">{link.license?.distance_km ?? dist.toFixed(2)}</span> กม.</span>
+                                <span className="text-xs text-white/60">EIRP <span className="font-mono-num">{eirp.toFixed(1)}</span> dBm</span>
+                                <span className={`text-xs font-mono-num ${(link.license?.rx_power_dbm ?? -99) > -80 ? 'text-emerald-300' : 'text-amber-300'}`}>
                                   Pr {link.license?.rx_power_dbm ?? '—'} dBm
                                 </span>
                               </div>
@@ -450,7 +534,8 @@ export default function FSLinkManager() {
                             </div>
                           </td>
                         </tr>
-                        {/* ── TX station ── */}
+                        {/* ── TX/RX stations (collapsible) ── */}
+                        {!isCollapsed && (
                         <StationRow
                           code={txCode}
                           side="TX"
@@ -462,7 +547,9 @@ export default function FSLinkManager() {
                           hub={isHub(txCode)}
                           band={bandCls}
                         />
+                        )}
                         {/* ── RX station ── */}
+                        {!isCollapsed && (
                         <StationRow
                           code={rxCode}
                           side="RX"
@@ -474,9 +561,17 @@ export default function FSLinkManager() {
                           hub={isHub(rxCode)}
                           band={bandCls}
                         />
+                        )}
                       </Fragment>
                     )
                   })}
+                  {displayed.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-[#888888]">
+                        ไม่พบรายการสำหรับตัวกรองนี้
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -485,8 +580,8 @@ export default function FSLinkManager() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-[#E5E5E0] bg-[#FAFAFA]">
                 <span className="text-xs text-[#888888]">
-                  แสดง {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, links.length)}
-                  {' '}จาก {links.length} รายการ
+                  แสดง <span className="font-mono-num">{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)}</span>
+                  {' '}จาก <span className="font-mono-num">{filtered.length}</span> รายการ
                 </span>
                 <div className="flex items-center gap-1">
                   <button
@@ -500,7 +595,7 @@ export default function FSLinkManager() {
                     <button
                       key={i}
                       onClick={() => setPage(i)}
-                      className={`w-7 h-7 text-xs rounded ${
+                      className={`w-7 h-7 text-xs rounded font-mono-num ${
                         i === page
                           ? 'bg-[#C00000] text-white'
                           : 'text-[#666666] hover:bg-[#E5E5E0]'
@@ -520,6 +615,7 @@ export default function FSLinkManager() {
               </div>
             )}
           </div>
+          </>
         )}
       </div>
 

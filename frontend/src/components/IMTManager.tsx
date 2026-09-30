@@ -316,7 +316,7 @@ export default function IMTManager({
   const headerRowCls =
     'text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide'
   const dataCellCls = 'px-4 py-2.5 text-sm text-[#333333]'
-  const dataMonoCls = 'px-4 py-2.5 text-sm font-mono text-[#333333]'
+  const dataMonoCls = 'px-4 py-2.5 text-sm font-mono-num text-[#333333]'
   const actionCellCls = 'px-4 py-2.5 text-right'
 
   /* ── Render ──────────────────────────────────────────── */
@@ -397,7 +397,6 @@ export default function IMTManager({
                     <th className={headerRowCls}>ตำแหน่ง</th>
                     <th className={headerRowCls}>พื้นที่</th>
                     <th className={headerRowCls}>TDD Pattern</th>
-                    <th className={headerRowCls}>ช่องสัญญาณ</th>
                     <th className={headerRowCls}>สถานะ</th>
                     <th className={`${headerRowCls} text-right rounded-tr-lg`}>จัดการ</th>
                   </tr>
@@ -439,10 +438,7 @@ export default function IMTManager({
                             {areaKm2 > 0 ? `${areaKm2.toFixed(2)} km²` : '—'}
                           </td>
                           <td className={dataMonoCls}>
-                            {alloc.frame_structure || <span className="text-gray-400">—</span>}
-                          </td>
-                          <td className={dataMonoCls}>
-                            {allocatedGuardCount}/{TOTAL_BLOCKS}
+                            {alloc.frame_structure || '—'} · {allocatedGuardCount}/{TOTAL_BLOCKS}
                           </td>
                           <td className={dataCellCls}>
                             <StatusBadge status={alloc.status} />
@@ -452,6 +448,25 @@ export default function IMTManager({
                               className="flex items-center justify-end gap-1"
                               onClick={(e) => e.stopPropagation()}
                             >
+                              {onViewPolygon && centroid && polygonCoords.length > 0 && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    const twRaw = (alloc as any).tower_positions
+                                    const towers = twRaw
+                                      ? typeof twRaw === 'string'
+                                        ? JSON.parse(twRaw)
+                                        : twRaw
+                                      : []
+                                    onViewPolygon(polygonCoords, towers, centroid)
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-[#C00000] hover:bg-[#A00000] text-white rounded-lg transition-colors whitespace-nowrap"
+                                  title="ดูบนแผนที่"
+                                >
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  ดูบนแผนที่
+                                </button>
+                              )}
                               <button
                                 onClick={() => openEdit(alloc)}
                                 className="p-1.5 text-[#666666] hover:text-[#C00000] hover:bg-red-50 rounded transition-colors"
@@ -473,7 +488,7 @@ export default function IMTManager({
                         {/* ── Expand row (detail panel) ── */}
                         {isExpanded && (
                           <tr key={`${alloc.id}-expand`} className="bg-[#FAFAFB] border-b border-[#F0F0EC]">
-                            <td colSpan={9} className="px-4 py-4">
+                            <td colSpan={8} className="px-4 py-4">
                               <div className="grid grid-cols-2 gap-x-8 gap-y-3 max-w-3xl">
                                 {/* ── Polygon shape + info ── */}
                                 <div className="col-span-2">

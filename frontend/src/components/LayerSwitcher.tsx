@@ -63,8 +63,9 @@ export default function LayerSwitcher({ current, onChange }: LayerSwitcherProps)
                 onChange(c.key)
                 setOpen(false)
               }}
-              className="flex w-20 flex-col items-center gap-1"
+              className="relative flex w-20 flex-col items-center gap-1"
             >
+              <div className="relative">
               {c.thumb ? (
                 <img
                   src={c.thumb}
@@ -81,6 +82,10 @@ export default function LayerSwitcher({ current, onChange }: LayerSwitcherProps)
                   style={{ backgroundColor: c.fallback }}
                 />
               )}
+              {current === c.key && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#C00000] ring-2 ring-[#7A0000]" />
+              )}
+              </div>
               <span
                 className={`text-xs ${current === c.key ? 'font-semibold text-[#C00000]' : 'text-gray-700'}`}
               >
