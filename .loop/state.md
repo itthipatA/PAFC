@@ -4,8 +4,8 @@
 
 ## Current
 
-- **Phase:** 38.7 (Inspo redesign items 2-7 — 2026-09-30 ~16:00 ICT)
-- **Git commit:** e94b6e9 — inspo redesign (proof strip, badges, thin tables, booking bar, recents + search crash fix)
+- **Phase:** 38.8 (Link Passport — 2026-09-30 ~16:20 ICT)
+- **Git commit:** b003840 — Link Passport expansion (FSLinkManager +227/-36, live-verified no errors)
 - **Backup (rollback-ready):** tag pafc-pre-inspo-20260930 + branch backup/pre-inspo-20260930 (pushed). Rollback: `git checkout backup/pre-inspo-20260930`
 - **Accent theme (oxblood-paired):** #C00000 action, #7A0000 hover, #F9E8E6 tint, #C9A227 counts only, #1A1A2E ink, #F5F5F0 paper, mono numerals. Tokens in index.css :root.
 - **Bug fixed (pre-existing):** Search tab blank — QueryPanel assumed center_lat/lon on IMT API (only polygon_geojson) → toFixed crash. Fixed via polygonCentroid + null guards. countOf fixed for {count,links}/{count,allocations}.
