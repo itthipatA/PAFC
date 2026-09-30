@@ -4,8 +4,13 @@
 
 ## Current
 
-- **Phase:** 38.3 (Real AWN FS Link Data — 2026-08-04)
-- **Git commit:** (after 7fe254e) — "feat: ingest 60 real AWN FS links + ITU-R F.699-9 antenna patterns"
+- **Phase:** 38.7 (Inspo redesign items 2-7 — 2026-09-30 ~16:00 ICT)
+- **Git commit:** e94b6e9 — inspo redesign (proof strip, badges, thin tables, booking bar, recents + search crash fix)
+- **Backup (rollback-ready):** tag pafc-pre-inspo-20260930 + branch backup/pre-inspo-20260930 (pushed). Rollback: `git checkout backup/pre-inspo-20260930`
+- **Accent theme (oxblood-paired):** #C00000 action, #7A0000 hover, #F9E8E6 tint, #C9A227 counts only, #1A1A2E ink, #F5F5F0 paper, mono numerals. Tokens in index.css :root.
+- **Bug fixed (pre-existing):** Search tab blank — QueryPanel assumed center_lat/lon on IMT API (only polygon_geojson) → toFixed crash. Fixed via polygonCentroid + null guards. countOf fixed for {count,links}/{count,allocations}.
+- **Tech debt (untouched):** `npm run build` fails on __tests__ (no @testing-library/react); dev via vite :5173 HMR. tsc clean on changed files.
+- **Services:** BE :8001 + FE :5173 + ngrok lisa-whale, all 200. Branch phase36-simplify @ e94b6e9. loop-gate 100 L3.
 - **Services (restored 2026-09-16 ~11:05 ICT):** backend=8001 (running, pid 75458), frontend=5173 (running, pid 75498), db=5432 pafc-db-1 (healthy), ngrok → lilith-whalelike-lisa.ngrok-free.dev (SAME URL, --url flag, verified public 200 + login 200)
 - **Services (restarted 2026-09-30 ~13:20 ICT):** all were down (db exited 2d, ports empty) → docker start pafc-db-1 (healthy) → BE :8001 + FE :5173 (background exec) → ngrok --url=lilith-whalelike-lisa.ngrok-free.dev → 5173. Verified: FE/BE local 200, /api/health 200, public page 200 + login 200. Branch phase36-simplify @ d931c51.
 - **Note:** state below (Phase 38.3, 2026-08-04) is stale — newer commits exist (9685d71 CARTO→OpenFreeMap, 6f19a23 TUC offshore links). Next session: rewrite Current section.
